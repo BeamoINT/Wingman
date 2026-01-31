@@ -4,9 +4,14 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { colors } from '../theme/colors';
 import type { RootStackParamList } from '../types';
 
-// Screens
+// Auth Screens
 import { SplashScreen } from '../screens/SplashScreen';
-import { OnboardingScreen } from '../screens/OnboardingScreen';
+import { WelcomeScreen } from '../screens/auth/WelcomeScreen';
+import { SignInScreen } from '../screens/auth/SignInScreen';
+import { SignupScreen } from '../screens/auth/SignupScreen';
+import { TutorialScreen } from '../screens/tutorial/TutorialScreen';
+
+// Main App Screens
 import { MainTabNavigator } from './MainTabNavigator';
 import { CompanionProfileScreen } from '../screens/CompanionProfileScreen';
 import { BookingScreen } from '../screens/BookingScreen';
@@ -30,8 +35,14 @@ export const RootNavigator: React.FC = () => {
           animation: 'slide_from_right',
         }}
       >
+        {/* Auth Flow */}
         <Stack.Screen name="Splash" component={SplashScreen} />
-        <Stack.Screen name="Onboarding" component={OnboardingScreen} />
+        <Stack.Screen name="Welcome" component={WelcomeScreen} />
+        <Stack.Screen name="SignIn" component={SignInScreen} />
+        <Stack.Screen name="Signup" component={SignupScreen} />
+        <Stack.Screen name="Tutorial" component={TutorialScreen} />
+
+        {/* Main App */}
         <Stack.Screen name="Main" component={MainTabNavigator} />
         <Stack.Screen
           name="CompanionProfile"

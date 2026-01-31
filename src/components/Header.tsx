@@ -5,6 +5,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   StatusBar,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -119,6 +120,14 @@ export const Header: React.FC<HeaderProps> = ({
     return <HeaderContent />;
   }
 
+  if (Platform.OS === 'web') {
+    return (
+      <View style={[styles.blur, styles.webBlur]}>
+        <HeaderContent />
+      </View>
+    );
+  }
+
   return (
     <BlurView intensity={80} tint="dark" style={styles.blur}>
       <HeaderContent />
@@ -133,6 +142,9 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     zIndex: 100,
+  },
+  webBlur: {
+    backgroundColor: 'rgba(10, 10, 15, 0.9)',
   },
   container: {
     paddingHorizontal: spacing.screenPadding,

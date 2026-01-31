@@ -1,5 +1,5 @@
 import React, { useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, Dimensions, Platform } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -117,6 +117,60 @@ export const Toast: React.FC<ToastProps> = ({
 
   if (!visible) return null;
 
+  const ToastContent = (
+    <View
+      style={[
+        styles.content,
+        { borderLeftColor: config.borderColor },
+      ]}
+    >
+      <View
+        style={[
+          styles.iconContainer,
+          { backgroundColor: config.bgColor },
+        ]}
+      >
+        <Ionicons
+          name={config.icon as any}
+          size={22}
+          color={config.iconColor}
+        />
+      </View>
+
+      <View style={styles.textContainer}>
+        <Text style={styles.title} numberOfLines={1}>
+          {title}
+        </Text>
+        {message && (
+          <Text style={styles.message} numberOfLines={2}>
+            {message}
+          </Text>
+        )}
+      </View>
+
+      {action && (
+        <AnimatedPressable
+          style={styles.actionButton}
+          onPress={() => {
+            action.onPress();
+            dismiss();
+          }}
+          hapticFeedback="medium"
+        >
+          <Text style={styles.actionText}>{action.label}</Text>
+        </AnimatedPressable>
+      )}
+
+      <AnimatedPressable
+        style={styles.closeButton}
+        onPress={dismiss}
+        hapticFeedback="light"
+      >
+        <Ionicons name="close" size={18} color={colors.text.tertiary} />
+      </AnimatedPressable>
+    </View>
+  );
+
   return (
     <Animated.View
       style={[
@@ -126,59 +180,15 @@ export const Toast: React.FC<ToastProps> = ({
       ]}
     >
       <AnimatedPressable onPress={dismiss} hapticFeedback="light">
-        <BlurView intensity={80} tint="dark" style={styles.blurContainer}>
-          <View
-            style={[
-              styles.content,
-              { borderLeftColor: config.borderColor },
-            ]}
-          >
-            <View
-              style={[
-                styles.iconContainer,
-                { backgroundColor: config.bgColor },
-              ]}
-            >
-              <Ionicons
-                name={config.icon as any}
-                size={22}
-                color={config.iconColor}
-              />
-            </View>
-
-            <View style={styles.textContainer}>
-              <Text style={styles.title} numberOfLines={1}>
-                {title}
-              </Text>
-              {message && (
-                <Text style={styles.message} numberOfLines={2}>
-                  {message}
-                </Text>
-              )}
-            </View>
-
-            {action && (
-              <AnimatedPressable
-                style={styles.actionButton}
-                onPress={() => {
-                  action.onPress();
-                  dismiss();
-                }}
-                hapticFeedback="medium"
-              >
-                <Text style={styles.actionText}>{action.label}</Text>
-              </AnimatedPressable>
-            )}
-
-            <AnimatedPressable
-              style={styles.closeButton}
-              onPress={dismiss}
-              hapticFeedback="light"
-            >
-              <Ionicons name="close" size={18} color={colors.text.tertiary} />
-            </AnimatedPressable>
+        {Platform.OS === 'web' ? (
+          <View style={[styles.blurContainer, styles.webBlurContainer]}>
+            {ToastContent}
           </View>
-        </BlurView>
+        ) : (
+          <BlurView intensity={80} tint="dark" style={styles.blurContainer}>
+            {ToastContent}
+          </BlurView>
+        )}
       </AnimatedPressable>
     </Animated.View>
   );
@@ -194,6 +204,9 @@ const styles = StyleSheet.create({
   blurContainer: {
     borderRadius: spacing.radius.xl,
     overflow: 'hidden',
+  },
+  webBlurContainer: {
+    backgroundColor: 'rgba(10, 10, 15, 0.95)',
   },
   content: {
     flexDirection: 'row',

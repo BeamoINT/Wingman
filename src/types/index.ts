@@ -190,11 +190,63 @@ export interface EmergencyContact {
   isPrimary: boolean;
 }
 
+// Signup Types
+export type Gender = 'male' | 'female' | 'non-binary' | 'other' | 'prefer-not-to-say';
+
+export interface SignupData {
+  // Step 1: Account
+  email: string;
+  password: string;
+
+  // Step 2: Personal
+  firstName: string;
+  lastName: string;
+  dateOfBirth: string;
+  gender: Gender | '';
+  phone: string;
+
+  // Step 3: Location
+  city: string;
+  state: string;
+  country: string;
+
+  // Step 4: Interests
+  interests: CompanionSpecialty[];
+
+  // Step 5: About
+  bio: string;
+  lookingFor: string[];
+  languages: string[];
+
+  // Step 6: Photo
+  avatar: string;
+}
+
+export const defaultSignupData: SignupData = {
+  email: '',
+  password: '',
+  firstName: '',
+  lastName: '',
+  dateOfBirth: '',
+  gender: '',
+  phone: '',
+  city: '',
+  state: '',
+  country: '',
+  interests: [],
+  bio: '',
+  lookingFor: [],
+  languages: [],
+  avatar: '',
+};
+
 // Navigation Types
 export type RootStackParamList = {
   Splash: undefined;
-  Onboarding: undefined;
-  Auth: undefined;
+  Welcome: undefined;
+  SignIn: undefined;
+  Signup: undefined;
+  Tutorial: undefined;
   Main: undefined;
   CompanionProfile: { companionId: string };
   Booking: { companionId: string };

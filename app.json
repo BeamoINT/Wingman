@@ -18,7 +18,10 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.wingman.app",
       "infoPlist": {
-        "UIBackgroundModes": ["fetch", "remote-notification"]
+        "UIBackgroundModes": [
+          "fetch",
+          "remote-notification"
+        ]
       }
     },
     "android": {
@@ -31,6 +34,8 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "plugins": []
+    "plugins": [
+      "expo-font"
+    ]
   }
 }

@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(wc:*)",
+      "Bash(npm run web:*)",
+      "Bash(pkill:*)",
+      "Bash(npx expo start --web --clear)",
+      "Bash(xcrun simctl:*)",
+      "Bash(xcode-select:*)",
+      "Bash(curl:*)",
+      "Bash(npx expo start:*)",
+      "Bash(lsof:*)",
+      "Bash(npm install:*)",
+      "Bash(npx expo install:*)",
+      "Bash(npx expo-doctor:*)"
+    ]
+  }
+}

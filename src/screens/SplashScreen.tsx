@@ -44,7 +44,7 @@ export const SplashScreen: React.FC = () => {
     // Navigate after animation
     const timer = setTimeout(async () => {
       await haptics.success();
-      navigation.replace('Onboarding');
+      navigation.replace('Welcome');
     }, 2500);
 
     return () => clearTimeout(timer);

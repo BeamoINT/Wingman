@@ -6,6 +6,8 @@ export { Badge } from './Badge';
 export { Rating } from './Rating';
 export { Input } from './Input';
 export { Header } from './Header';
+export { ProgressBar } from './ProgressBar';
+export { SelectableChip } from './SelectableChip';
 
 // Feature Components
 export { CompanionCard } from './CompanionCard';
