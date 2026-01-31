@@ -19,3 +19,8 @@ export { CompanionDashboardScreen } from './CompanionDashboardScreen';
 export { EventsScreen } from './EventsScreen';
 export { RewardsScreen } from './RewardsScreen';
 export { SmartMatchScreen } from './SmartMatchScreen';
+export { ReviewDisputeScreen } from './ReviewDisputeScreen';
+export { AccessibilityScreen } from './AccessibilityScreen';
+export { NotificationsScreen } from './NotificationsScreen';
+export { FavoritesScreen } from './FavoritesScreen';
+export { GiftCardScreen } from './GiftCardScreen';
