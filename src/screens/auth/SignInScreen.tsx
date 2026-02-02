@@ -20,6 +20,7 @@ import { spacing } from '../../theme/spacing';
 import { typography } from '../../theme/typography';
 import { haptics } from '../../utils/haptics';
 import { useAuth } from '../../context/AuthContext';
+import { supabase } from '../../services/supabase';
 import type { RootStackParamList } from '../../types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'SignIn'>;
@@ -27,7 +28,7 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'SignIn'>;
 export const SignInScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
-  const { signIn } = useAuth();
+  const { signIn, signInWithApple } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -56,18 +57,15 @@ export const SignInScreen: React.FC = () => {
     setLoading(true);
     setError('');
 
-    // Simulate network delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
-    const success = await signIn(email, password);
-    if (success) {
+    const result = await signIn(email, password);
+    if (result.success) {
       await haptics.success();
       navigation.reset({
         index: 0,
         routes: [{ name: 'Main' }],
       });
     } else {
-      setError('Invalid email or password');
+      setError(result.error || 'Invalid email or password');
       await haptics.error();
     }
 
@@ -95,23 +93,31 @@ export const SignInScreen: React.FC = () => {
         ],
       });
 
-      // Successfully authenticated with Apple
-      console.log('Apple auth successful:', {
-        user: credential.user,
-        email: credential.email,
-        fullName: credential.fullName,
+      // Check if we have the identity token
+      if (!credential.identityToken) {
+        Alert.alert(
+          'Sign In Failed',
+          'Could not get authentication token from Apple. Please try again.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+
+      // Sign in with Supabase using the Apple identity token
+      const result = await signInWithApple(credential.identityToken, {
+        givenName: credential.fullName?.givenName,
+        familyName: credential.fullName?.familyName,
       });
 
-      // Sign in with Apple credentials
-      const userEmail = credential.email || `${credential.user}@privaterelay.appleid.com`;
-      const success = await signIn(userEmail, 'apple-auth-token');
-
-      if (success) {
+      if (result.success) {
         await haptics.success();
         navigation.reset({
           index: 0,
           routes: [{ name: 'Main' }],
         });
+      } else {
+        setError(result.error || 'Sign in failed');
+        await haptics.error();
       }
     } catch (error: any) {
       if (error.code === 'ERR_REQUEST_CANCELED') {
@@ -123,6 +129,38 @@ export const SignInScreen: React.FC = () => {
         'Unable to sign in with Apple. Please try again or use email sign in.',
         [{ text: 'OK' }]
       );
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    if (!email.trim()) {
+      setError('Please enter your email first');
+      await haptics.warning();
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email);
+
+      if (error) {
+        setError(error.message);
+        await haptics.error();
+      } else {
+        await haptics.success();
+        Alert.alert(
+          'Check Your Email',
+          'We sent you a password reset link. Check your email to continue.',
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (err) {
+      setError('Failed to send reset email. Please try again.');
+      await haptics.error();
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -188,7 +226,7 @@ export const SignInScreen: React.FC = () => {
             </View>
           ) : null}
 
-          <TouchableOpacity style={styles.forgotPassword}>
+          <TouchableOpacity style={styles.forgotPassword} onPress={handleForgotPassword}>
             <Text style={styles.forgotPasswordText}>Forgot password?</Text>
           </TouchableOpacity>
         </View>

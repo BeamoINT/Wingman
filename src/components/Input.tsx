@@ -39,15 +39,15 @@ export const Input: React.FC<InputProps> = ({
 }) => {
   const [isFocused, setIsFocused] = useState(false);
 
-  const handleFocus = async () => {
+  const handleFocus: TextInputProps['onFocus'] = async (e) => {
     await haptics.selection();
     setIsFocused(true);
-    props.onFocus?.(null as any);
+    props.onFocus?.(e);
   };
 
-  const handleBlur = () => {
+  const handleBlur: TextInputProps['onBlur'] = (e) => {
     setIsFocused(false);
-    props.onBlur?.(null as any);
+    props.onBlur?.(e);
   };
 
   return (

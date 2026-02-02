@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   TextInput,
   Dimensions,
+  Image,
   Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
@@ -16,11 +17,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import Animated, {
-  FadeIn,
-  FadeOut,
-  SlideInRight,
-} from 'react-native-reanimated';
+import * as ImagePicker from 'expo-image-picker';
 import { Button, Input, ProgressBar, SelectableChip } from '../../components';
 import { colors } from '../../theme/colors';
 import { spacing } from '../../theme/spacing';
@@ -274,63 +271,41 @@ export const SignupScreen: React.FC = () => {
     }
   };
 
-  const handleSocialSignUp = async (provider: 'apple' | 'google' | 'facebook') => {
+  const handlePhotoUpload = async () => {
     await haptics.medium();
-    // TODO: Implement actual social auth
-    Alert.alert(
-      `Sign up with ${provider.charAt(0).toUpperCase() + provider.slice(1)}`,
-      'Social sign-up will be available soon. For now, please use email sign-up.',
-      [{ text: 'OK' }]
-    );
+
+    // Request permission
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert(
+        'Permission Required',
+        'Please allow access to your photos to add a profile picture.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    // Launch image picker
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      updateSignupData({ avatar: result.assets[0].uri });
+      await haptics.success();
+    }
   };
 
   const renderStepContent = () => {
     switch (currentStep) {
       case 1:
         return (
-          <Animated.View key={`step-${currentStep}`} entering={SlideInRight} style={styles.stepContent}>
+          <View key="step-1" style={styles.stepContent}>
             <Text style={styles.stepTitle}>Create your account</Text>
-            <Text style={styles.stepSubtitle}>Sign up with social or enter your details</Text>
-
-            {/* Social Sign Up Buttons */}
-            <View style={styles.socialButtonsContainer}>
-              <TouchableOpacity
-                style={styles.socialButton}
-                onPress={() => handleSocialSignUp('apple')}
-                activeOpacity={0.7}
-                accessibilityLabel="Sign up with Apple"
-                accessibilityRole="button"
-              >
-                <Ionicons name="logo-apple" size={22} color={colors.text.primary} />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.socialButton}
-                onPress={() => handleSocialSignUp('google')}
-                activeOpacity={0.7}
-                accessibilityLabel="Sign up with Google"
-                accessibilityRole="button"
-              >
-                <Ionicons name="logo-google" size={22} color={colors.text.primary} />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.socialButton}
-                onPress={() => handleSocialSignUp('facebook')}
-                activeOpacity={0.7}
-                accessibilityLabel="Sign up with Facebook"
-                accessibilityRole="button"
-              >
-                <Ionicons name="logo-facebook" size={22} color={colors.text.primary} />
-              </TouchableOpacity>
-            </View>
-
-            {/* Divider */}
-            <View style={styles.dividerContainer}>
-              <View style={styles.divider} />
-              <Text style={styles.dividerText}>or sign up with email</Text>
-              <View style={styles.divider} />
-            </View>
+            <Text style={styles.stepSubtitle}>Enter your email and password to get started</Text>
 
             <Input
               label="Email"
@@ -444,12 +419,12 @@ export const SignupScreen: React.FC = () => {
                 I'd like to receive promotional emails and updates (optional)
               </Text>
             </TouchableOpacity>
-          </Animated.View>
+          </View>
         );
 
       case 2:
         return (
-          <Animated.View key={`step-${currentStep}`} entering={SlideInRight} style={styles.stepContent}>
+          <View key="step-2" style={styles.stepContent}>
             <Text style={styles.stepTitle}>Tell us about yourself</Text>
             <Text style={styles.stepSubtitle}>We'd love to know more about you</Text>
 
@@ -500,12 +475,12 @@ export const SignupScreen: React.FC = () => {
               keyboardType="phone-pad"
               leftIcon="call-outline"
             />
-          </Animated.View>
+          </View>
         );
 
       case 3:
         return (
-          <Animated.View key={`step-${currentStep}`} entering={SlideInRight} style={styles.stepContent}>
+          <View key="step-3" style={styles.stepContent}>
             <Text style={styles.stepTitle}>Where are you located?</Text>
             <Text style={styles.stepSubtitle}>Help us find companions near you</Text>
 
@@ -535,12 +510,12 @@ export const SignupScreen: React.FC = () => {
               autoCapitalize="words"
               leftIcon="globe-outline"
             />
-          </Animated.View>
+          </View>
         );
 
       case 4:
         return (
-          <Animated.View key={`step-${currentStep}`} entering={SlideInRight} style={styles.stepContent}>
+          <View key="step-4" style={styles.stepContent}>
             <Text style={styles.stepTitle}>What are you interested in?</Text>
             <Text style={styles.stepSubtitle}>Select at least 3 activities you enjoy</Text>
 
@@ -559,12 +534,12 @@ export const SignupScreen: React.FC = () => {
             <Text style={styles.selectionCount}>
               {signupData.interests.length} selected (minimum 3)
             </Text>
-          </Animated.View>
+          </View>
         );
 
       case 5:
         return (
-          <Animated.View key={`step-${currentStep}`} entering={SlideInRight} style={styles.stepContent}>
+          <View key="step-5" style={styles.stepContent}>
             <Text style={styles.stepTitle}>Tell us more about you</Text>
             <Text style={styles.stepSubtitle}>Help others get to know you better</Text>
 
@@ -603,31 +578,44 @@ export const SignupScreen: React.FC = () => {
                 />
               ))}
             </View>
-          </Animated.View>
+          </View>
         );
 
       case 6:
         return (
-          <Animated.View key={`step-${currentStep}`} entering={SlideInRight} style={styles.stepContent}>
+          <View key="step-6" style={styles.stepContent}>
             <Text style={styles.stepTitle}>Add a profile photo</Text>
             <Text style={styles.stepSubtitle}>Help others recognize you</Text>
 
-            <TouchableOpacity style={styles.photoUpload}>
-              <View style={styles.photoPlaceholder}>
-                <Ionicons name="camera" size={48} color={colors.text.tertiary} />
-                <Text style={styles.photoText}>Tap to add photo</Text>
-              </View>
+            <TouchableOpacity style={styles.photoUpload} onPress={handlePhotoUpload}>
+              {signupData.avatar ? (
+                <Image
+                  source={{ uri: signupData.avatar }}
+                  style={styles.photoImage}
+                />
+              ) : (
+                <View style={styles.photoPlaceholder}>
+                  <Ionicons name="camera" size={48} color={colors.text.tertiary} />
+                  <Text style={styles.photoText}>Tap to add photo</Text>
+                </View>
+              )}
             </TouchableOpacity>
+
+            {signupData.avatar && (
+              <TouchableOpacity onPress={handlePhotoUpload} style={styles.changePhotoButton}>
+                <Text style={styles.changePhotoText}>Change Photo</Text>
+              </TouchableOpacity>
+            )}
 
             <Text style={styles.photoHint}>
               You can skip this step and add a photo later
             </Text>
-          </Animated.View>
+          </View>
         );
 
       case 7:
         return (
-          <Animated.View key={`step-${currentStep}`} entering={SlideInRight} style={styles.stepContent}>
+          <View key="step-7" style={styles.stepContent}>
             <View style={styles.completeContainer}>
               <LinearGradient
                 colors={colors.gradients.premium}
@@ -665,7 +653,7 @@ export const SignupScreen: React.FC = () => {
                 </View>
               </View>
             </View>
-          </Animated.View>
+          </View>
         );
 
       default:
@@ -749,7 +737,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.screenPadding,
   },
   stepContent: {
-    flex: 1,
+    // Removed flex: 1 to prevent touch issues
   },
   stepTitle: {
     ...typography.presets.h2,
@@ -875,6 +863,20 @@ const styles = StyleSheet.create({
     color: colors.text.muted,
     textAlign: 'center',
     marginTop: spacing.lg,
+  },
+  photoImage: {
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    borderWidth: 3,
+    borderColor: colors.primary.blue,
+  },
+  changePhotoButton: {
+    marginTop: spacing.md,
+  },
+  changePhotoText: {
+    ...typography.presets.body,
+    color: colors.primary.blue,
   },
   completeContainer: {
     alignItems: 'center',
