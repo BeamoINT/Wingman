@@ -37,7 +37,15 @@ interface ButtonProps {
   textStyle?: TextStyle;
   hapticType?: 'light' | 'medium' | 'heavy' | 'selection';
   fullWidth?: boolean;
+  /** Accessibility label for screen readers (defaults to title) */
+  accessibilityLabel?: string;
+  /** Accessibility hint for screen readers */
+  accessibilityHint?: string;
+  /** Test ID for E2E testing */
+  testID?: string;
 }
+
+export type { ButtonProps };
 
 export const Button: React.FC<ButtonProps> = ({
   title,
@@ -52,6 +60,9 @@ export const Button: React.FC<ButtonProps> = ({
   textStyle,
   hapticType = 'medium',
   fullWidth = false,
+  accessibilityLabel,
+  accessibilityHint,
+  testID,
 }) => {
   const pressed = useSharedValue(0);
   const isDisabled = disabled || loading;
@@ -128,6 +139,17 @@ export const Button: React.FC<ButtonProps> = ({
     </View>
   );
 
+  const accessibilityProps = {
+    accessibilityRole: 'button' as const,
+    accessibilityLabel: accessibilityLabel || title,
+    accessibilityHint,
+    accessibilityState: {
+      disabled: isDisabled,
+      busy: loading,
+    },
+    testID,
+  };
+
   if (variant === 'primary') {
     return (
       <AnimatedPressable
@@ -136,6 +158,7 @@ export const Button: React.FC<ButtonProps> = ({
         onPress={handlePress}
         disabled={isDisabled}
         style={animatedStyle}
+        {...accessibilityProps}
       >
         <LinearGradient
           colors={disabled ? ['#3A3A4A', '#2A2A3A'] : colors.gradients.primary}
@@ -157,6 +180,7 @@ export const Button: React.FC<ButtonProps> = ({
         onPress={handlePress}
         disabled={isDisabled}
         style={animatedStyle}
+        {...accessibilityProps}
       >
         <LinearGradient
           colors={disabled ? ['#3A3A4A', '#2A2A3A'] : colors.gradients.gold}
@@ -184,6 +208,7 @@ export const Button: React.FC<ButtonProps> = ({
       onPressOut={handlePressOut}
       onPress={handlePress}
       disabled={isDisabled}
+      {...accessibilityProps}
     >
       {renderContent()}
     </AnimatedPressable>

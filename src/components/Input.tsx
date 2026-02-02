@@ -22,6 +22,8 @@ interface InputProps extends TextInputProps {
   rightIcon?: keyof typeof Ionicons.glyphMap;
   onRightIconPress?: () => void;
   containerStyle?: ViewStyle;
+  /** Test ID for E2E testing */
+  testID?: string;
 }
 
 export const Input: React.FC<InputProps> = ({
@@ -32,6 +34,7 @@ export const Input: React.FC<InputProps> = ({
   rightIcon,
   onRightIconPress,
   containerStyle,
+  testID,
   ...props
 }) => {
   const [isFocused, setIsFocused] = useState(false);
@@ -49,7 +52,11 @@ export const Input: React.FC<InputProps> = ({
 
   return (
     <View style={[styles.container, containerStyle]}>
-      {label && <Text style={styles.label}>{label}</Text>}
+      {label && (
+        <Text style={styles.label} accessibilityRole="text">
+          {label}
+        </Text>
+      )}
 
       <View
         style={[
@@ -76,6 +83,12 @@ export const Input: React.FC<InputProps> = ({
           placeholderTextColor={colors.text.tertiary}
           onFocus={handleFocus}
           onBlur={handleBlur}
+          accessibilityLabel={label}
+          accessibilityHint={error || hint}
+          accessibilityState={{
+            disabled: props.editable === false,
+          }}
+          testID={testID}
           {...props}
         />
 
@@ -94,7 +107,11 @@ export const Input: React.FC<InputProps> = ({
       </View>
 
       {error && (
-        <View style={styles.errorContainer}>
+        <View
+          style={styles.errorContainer}
+          accessibilityRole="alert"
+          accessibilityLiveRegion="polite"
+        >
           <Ionicons name="alert-circle" size={14} color={colors.status.error} />
           <Text style={styles.errorText}>{error}</Text>
         </View>

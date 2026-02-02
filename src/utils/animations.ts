@@ -10,6 +10,7 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   runOnJS,
+  SharedValue,
 } from 'react-native-reanimated';
 
 // Spring configurations for different use cases
@@ -177,7 +178,7 @@ export const staggerDelay = (index: number, baseDelay = 50) => {
 
 // Interpolation helpers
 export const interpolateScale = (
-  progress: Animated.SharedValue<number>,
+  progress: SharedValue<number>,
   inputRange = [0, 1],
   outputRange = [0.95, 1]
 ) => {
@@ -186,7 +187,7 @@ export const interpolateScale = (
 };
 
 export const interpolateOpacity = (
-  progress: Animated.SharedValue<number>,
+  progress: SharedValue<number>,
   inputRange = [0, 1],
   outputRange = [0, 1]
 ) => {
@@ -195,7 +196,7 @@ export const interpolateOpacity = (
 };
 
 export const interpolateTranslateY = (
-  progress: Animated.SharedValue<number>,
+  progress: SharedValue<number>,
   inputRange = [0, 1],
   outputRange = [20, 0]
 ) => {

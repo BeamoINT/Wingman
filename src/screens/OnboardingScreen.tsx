@@ -46,7 +46,7 @@ const slides: OnboardingSlide[] = [
     iconColor: colors.status.success,
     title: 'Safety First',
     description:
-      'All companions undergo thorough background checks and ID verification. Feel secure knowing you\'re meeting trusted, vetted individuals.',
+      'All companions undergo thorough ID verification. Feel secure knowing you\'re meeting trusted, verified individuals.',
   },
   {
     id: '3',

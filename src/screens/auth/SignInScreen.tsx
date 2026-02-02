@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,11 +7,13 @@ import {
   Platform,
   ScrollView,
   TouchableOpacity,
+  Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import { Button, Input } from '../../components';
 import { colors } from '../../theme/colors';
 import { spacing } from '../../theme/spacing';
@@ -32,6 +34,17 @@ export const SignInScreen: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [isAppleAuthAvailable, setIsAppleAuthAvailable] = useState(false);
+
+  useEffect(() => {
+    const checkAppleAuth = async () => {
+      if (Platform.OS === 'ios') {
+        const isAvailable = await AppleAuthentication.isAvailableAsync();
+        setIsAppleAuthAvailable(isAvailable);
+      }
+    };
+    checkAppleAuth();
+  }, []);
 
   const handleSignIn = async () => {
     if (!email.trim() || !password.trim()) {
@@ -46,7 +59,7 @@ export const SignInScreen: React.FC = () => {
     // Simulate network delay
     await new Promise(resolve => setTimeout(resolve, 1000));
 
-    const success = signIn(email, password);
+    const success = await signIn(email, password);
     if (success) {
       await haptics.success();
       navigation.reset({
@@ -69,6 +82,57 @@ export const SignInScreen: React.FC = () => {
   const handleCreateAccount = async () => {
     await haptics.light();
     navigation.navigate('Signup');
+  };
+
+  const handleAppleSignIn = async () => {
+    try {
+      await haptics.medium();
+
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+
+      // Successfully authenticated with Apple
+      console.log('Apple auth successful:', {
+        user: credential.user,
+        email: credential.email,
+        fullName: credential.fullName,
+      });
+
+      // Sign in with Apple credentials
+      const userEmail = credential.email || `${credential.user}@privaterelay.appleid.com`;
+      const success = await signIn(userEmail, 'apple-auth-token');
+
+      if (success) {
+        await haptics.success();
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'Main' }],
+        });
+      }
+    } catch (error: any) {
+      if (error.code === 'ERR_REQUEST_CANCELED') {
+        return;
+      }
+      console.error('Apple Sign In Error:', error);
+      Alert.alert(
+        'Sign In Failed',
+        'Unable to sign in with Apple. Please try again or use email sign in.',
+        [{ text: 'OK' }]
+      );
+    }
+  };
+
+  const handleOtherSocialSignIn = async (provider: 'google' | 'facebook') => {
+    await haptics.medium();
+    Alert.alert(
+      `Sign in with ${provider.charAt(0).toUpperCase() + provider.slice(1)}`,
+      'This sign-in method will be available soon. Please use Apple or email sign-in.',
+      [{ text: 'OK' }]
+    );
   };
 
   return (
@@ -139,6 +203,49 @@ export const SignInScreen: React.FC = () => {
             loading={loading}
             disabled={loading}
           />
+
+          {/* Social Sign In Divider */}
+          <View style={styles.dividerContainer}>
+            <View style={styles.divider} />
+            <Text style={styles.dividerText}>or continue with</Text>
+            <View style={styles.divider} />
+          </View>
+
+          {/* Apple Sign In Button - Native */}
+          {isAppleAuthAvailable && (
+            <AppleAuthentication.AppleAuthenticationButton
+              buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+              buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE}
+              cornerRadius={spacing.radius.xl}
+              style={styles.appleButton}
+              onPress={handleAppleSignIn}
+            />
+          )}
+
+          {/* Other Social Sign In Buttons */}
+          <View style={styles.socialButtonsContainer}>
+            <TouchableOpacity
+              style={styles.socialButton}
+              onPress={() => handleOtherSocialSignIn('google')}
+              activeOpacity={0.7}
+              accessibilityLabel="Sign in with Google"
+              accessibilityRole="button"
+            >
+              <Ionicons name="logo-google" size={22} color={colors.text.primary} />
+              <Text style={styles.socialButtonText}>Google</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.socialButton}
+              onPress={() => handleOtherSocialSignIn('facebook')}
+              activeOpacity={0.7}
+              accessibilityLabel="Sign in with Facebook"
+              accessibilityRole="button"
+            >
+              <Ionicons name="logo-facebook" size={22} color={colors.text.primary} />
+              <Text style={styles.socialButtonText}>Facebook</Text>
+            </TouchableOpacity>
+          </View>
 
           <View style={styles.createAccountContainer}>
             <Text style={styles.createAccountText}>Don't have an account? </Text>
@@ -222,5 +329,47 @@ const styles = StyleSheet.create({
     ...typography.presets.body,
     color: colors.primary.blue,
     fontWeight: typography.weights.semibold as any,
+  },
+  dividerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: spacing.xl,
+  },
+  divider: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.border.light,
+  },
+  dividerText: {
+    ...typography.presets.caption,
+    color: colors.text.tertiary,
+    marginHorizontal: spacing.md,
+  },
+  appleButton: {
+    width: '100%',
+    height: 56,
+    marginBottom: spacing.md,
+  },
+  socialButtonsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  socialButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 48,
+    borderRadius: spacing.radius.lg,
+    backgroundColor: colors.background.tertiary,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+    gap: spacing.sm,
+  },
+  socialButtonText: {
+    ...typography.presets.label,
+    color: colors.text.primary,
   },
 });

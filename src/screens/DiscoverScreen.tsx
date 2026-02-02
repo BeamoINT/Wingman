@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,8 @@ import {
   TouchableOpacity,
   TextInput,
   Dimensions,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -16,7 +18,9 @@ import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 import { typography } from '../theme/typography';
 import { haptics } from '../utils/haptics';
-import { CompanionCard, Badge } from '../components';
+import { CompanionCard, EmptySearchResults } from '../components';
+import { fetchCompanions, searchCompanions } from '../services/api/companions';
+import type { CompanionData } from '../services/api/companions';
 import type { RootStackParamList, Companion, CompanionSpecialty } from '../types';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -33,127 +37,118 @@ const filters = [
   { id: 'safety-companion', label: 'Safety', icon: 'shield' },
 ];
 
-// Mock data
-const mockCompanions: Companion[] = [
-  {
-    id: '1',
+/**
+ * Transform API companion data to our Companion type
+ */
+function transformCompanionData(data: CompanionData): Companion {
+  return {
+    id: data.id,
     user: {
-      id: 'u1',
-      firstName: 'Sarah',
-      lastName: 'Johnson',
-      email: 'sarah@example.com',
-      avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400',
-      isVerified: true,
-      isBackgroundChecked: true,
-      isPremium: true,
-      createdAt: '2024-01-01',
+      id: data.user_id,
+      firstName: data.user?.first_name || '',
+      lastName: data.user?.last_name || '',
+      email: data.user?.email || '',
+      avatar: data.user?.avatar_url,
+      isVerified: data.user?.phone_verified || false,
+      isPremium: data.user?.subscription_tier !== 'free',
+      createdAt: data.user?.created_at || data.created_at,
     },
-    rating: 4.9,
-    reviewCount: 127,
-    hourlyRate: 45,
-    specialties: ['dining', 'social-events', 'nightlife'],
-    languages: ['English', 'Spanish'],
+    rating: data.rating || 0,
+    reviewCount: data.review_count || 0,
+    hourlyRate: data.hourly_rate,
+    specialties: (data.specialties || []) as CompanionSpecialty[],
+    languages: data.languages || [],
     availability: [],
-    isOnline: true,
-    responseTime: 'Usually responds within 15 min',
-    completedBookings: 89,
+    isOnline: data.is_available,
+    responseTime: data.response_time || 'Usually responds within 1 hour',
+    completedBookings: data.completed_bookings || 0,
     badges: [],
-    gallery: [],
-    about: '',
+    gallery: data.gallery || [],
+    about: data.about || '',
     interests: [],
-    verificationLevel: 'premium',
-  },
-  {
-    id: '2',
-    user: {
-      id: 'u2',
-      firstName: 'Michael',
-      lastName: 'Chen',
-      email: 'michael@example.com',
-      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400',
-      isVerified: true,
-      isBackgroundChecked: true,
-      isPremium: false,
-      createdAt: '2024-01-15',
-    },
-    rating: 4.7,
-    reviewCount: 64,
-    hourlyRate: 35,
-    specialties: ['coffee-chat', 'professional-networking', 'sports'],
-    languages: ['English', 'Mandarin'],
-    availability: [],
-    isOnline: true,
-    responseTime: '~1 hour',
-    completedBookings: 42,
-    badges: [],
-    gallery: [],
-    about: '',
-    interests: [],
-    verificationLevel: 'background',
-  },
-  {
-    id: '3',
-    user: {
-      id: 'u3',
-      firstName: 'Emma',
-      lastName: 'Wilson',
-      email: 'emma@example.com',
-      avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=400',
-      isVerified: true,
-      isBackgroundChecked: true,
-      isPremium: true,
-      createdAt: '2024-02-01',
-    },
-    rating: 4.8,
-    reviewCount: 89,
-    hourlyRate: 40,
-    specialties: ['concerts', 'movies', 'emotional-support'],
-    languages: ['English'],
-    availability: [],
-    isOnline: false,
-    responseTime: '~30 min',
-    completedBookings: 56,
-    badges: [],
-    gallery: [],
-    about: '',
-    interests: [],
-    verificationLevel: 'premium',
-  },
-  {
-    id: '4',
-    user: {
-      id: 'u4',
-      firstName: 'James',
-      lastName: 'Rodriguez',
-      email: 'james@example.com',
-      avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400',
-      isVerified: true,
-      isBackgroundChecked: true,
-      isPremium: false,
-      createdAt: '2024-02-15',
-    },
-    rating: 4.6,
-    reviewCount: 38,
-    hourlyRate: 30,
-    specialties: ['sports', 'outdoor-activities', 'workout-buddy'],
-    languages: ['English', 'Portuguese'],
-    availability: [],
-    isOnline: true,
-    responseTime: '~45 min',
-    completedBookings: 28,
-    badges: [],
-    gallery: [],
-    about: '',
-    interests: [],
-    verificationLevel: 'background',
-  },
-];
+    verificationLevel: data.user?.verification_level as any || 'basic',
+  };
+}
 
 export const DiscoverScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState('all');
+  const [companions, setCompanions] = useState<Companion[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadCompanions = useCallback(async (showRefresh = false) => {
+    if (showRefresh) {
+      setIsRefreshing(true);
+    } else {
+      setIsLoading(true);
+    }
+    setError(null);
+
+    try {
+      const filters: any = { isAvailable: true };
+
+      if (activeFilter !== 'all') {
+        filters.specialty = activeFilter;
+      }
+
+      const { companions: data, error: apiError } = await fetchCompanions(filters);
+
+      if (apiError) {
+        setError('Failed to load companions');
+        console.error('Error loading companions:', apiError);
+      } else {
+        setCompanions(data.map(transformCompanionData));
+      }
+    } catch (err) {
+      setError('Something went wrong');
+      console.error('Error in loadCompanions:', err);
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, [activeFilter]);
+
+  const handleSearch = useCallback(async () => {
+    if (!searchQuery.trim()) {
+      loadCompanions();
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const { companions: data, error: apiError } = await searchCompanions(searchQuery);
+
+      if (apiError) {
+        setError('Search failed');
+      } else {
+        setCompanions(data.map(transformCompanionData));
+      }
+    } catch (err) {
+      setError('Search failed');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [searchQuery, loadCompanions]);
+
+  useEffect(() => {
+    loadCompanions();
+  }, [loadCompanions]);
+
+  useEffect(() => {
+    const debounceTimer = setTimeout(() => {
+      if (searchQuery) {
+        handleSearch();
+      }
+    }, 500);
+
+    return () => clearTimeout(debounceTimer);
+  }, [searchQuery, handleSearch]);
 
   const handleCompanionPress = async (companionId: string) => {
     await haptics.medium();
@@ -165,10 +160,58 @@ export const DiscoverScreen: React.FC = () => {
     setActiveFilter(filterId);
   };
 
-  const filteredCompanions = mockCompanions.filter((companion) => {
-    if (activeFilter === 'all') return true;
-    return companion.specialties.includes(activeFilter as CompanionSpecialty);
-  });
+  const handleRefresh = () => {
+    loadCompanions(true);
+  };
+
+  const renderContent = () => {
+    if (isLoading && !isRefreshing) {
+      return (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary.blue} />
+          <Text style={styles.loadingText}>Finding companions...</Text>
+        </View>
+      );
+    }
+
+    if (error) {
+      return (
+        <View style={styles.errorContainer}>
+          <Ionicons name="alert-circle" size={48} color={colors.status.error} />
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={() => loadCompanions()}>
+            <Text style={styles.retryText}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    if (companions.length === 0) {
+      return (
+        <EmptySearchResults
+          query={searchQuery}
+          onClearSearch={() => {
+            setSearchQuery('');
+            setActiveFilter('all');
+          }}
+        />
+      );
+    }
+
+    return (
+      <>
+        <View style={styles.companionGrid}>
+          {companions.map((companion) => (
+            <CompanionCard
+              key={companion.id}
+              companion={companion}
+              onPress={() => handleCompanionPress(companion.id)}
+            />
+          ))}
+        </View>
+      </>
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -185,9 +228,18 @@ export const DiscoverScreen: React.FC = () => {
             value={searchQuery}
             onChangeText={setSearchQuery}
           />
-          <TouchableOpacity style={styles.filterButton} onPress={() => haptics.light()}>
-            <Ionicons name="options" size={20} color={colors.primary.blue} />
-          </TouchableOpacity>
+          {searchQuery ? (
+            <TouchableOpacity
+              style={styles.clearButton}
+              onPress={() => setSearchQuery('')}
+            >
+              <Ionicons name="close-circle" size={20} color={colors.text.tertiary} />
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity style={styles.filterButton} onPress={() => haptics.light()}>
+              <Ionicons name="options" size={20} color={colors.primary.blue} />
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Filters */}
@@ -227,33 +279,28 @@ export const DiscoverScreen: React.FC = () => {
         style={styles.scrollView}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.primary.blue}
+          />
+        }
       >
         {/* Results Count */}
-        <View style={styles.resultsHeader}>
-          <Text style={styles.resultsCount}>
-            {filteredCompanions.length} companions available
-          </Text>
-          <TouchableOpacity style={styles.sortButton} onPress={() => haptics.light()}>
-            <Text style={styles.sortText}>Sort by: Rating</Text>
-            <Ionicons name="chevron-down" size={16} color={colors.text.tertiary} />
-          </TouchableOpacity>
-        </View>
+        {!isLoading && !error && companions.length > 0 && (
+          <View style={styles.resultsHeader}>
+            <Text style={styles.resultsCount}>
+              {companions.length} companion{companions.length !== 1 ? 's' : ''} available
+            </Text>
+            <TouchableOpacity style={styles.sortButton} onPress={() => haptics.light()}>
+              <Text style={styles.sortText}>Sort by: Rating</Text>
+              <Ionicons name="chevron-down" size={16} color={colors.text.tertiary} />
+            </TouchableOpacity>
+          </View>
+        )}
 
-        {/* Companion Grid */}
-        <View style={styles.companionGrid}>
-          {filteredCompanions.map((companion) => (
-            <CompanionCard
-              key={companion.id}
-              companion={companion}
-              onPress={() => handleCompanionPress(companion.id)}
-            />
-          ))}
-        </View>
-
-        {/* Load More */}
-        <TouchableOpacity style={styles.loadMore} onPress={() => haptics.light()}>
-          <Text style={styles.loadMoreText}>Load more</Text>
-        </TouchableOpacity>
+        {renderContent()}
       </ScrollView>
     </View>
   );
@@ -291,6 +338,9 @@ const styles = StyleSheet.create({
     color: colors.text.primary,
   },
   filterButton: {
+    padding: spacing.sm,
+  },
+  clearButton: {
     padding: spacing.sm,
   },
   filtersContent: {
@@ -347,13 +397,35 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: spacing.md,
   },
-  loadMore: {
+  loadingContainer: {
     alignItems: 'center',
-    paddingVertical: spacing.xl,
-    marginTop: spacing.lg,
+    justifyContent: 'center',
+    paddingVertical: spacing.xxl * 2,
   },
-  loadMoreText: {
+  loadingText: {
+    ...typography.presets.body,
+    color: colors.text.secondary,
+    marginTop: spacing.md,
+  },
+  errorContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.xxl * 2,
+  },
+  errorText: {
+    ...typography.presets.body,
+    color: colors.text.secondary,
+    marginTop: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  retryButton: {
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.md,
+    backgroundColor: colors.primary.blue,
+    borderRadius: spacing.radius.md,
+  },
+  retryText: {
     ...typography.presets.button,
-    color: colors.primary.blue,
+    color: colors.text.primary,
   },
 });

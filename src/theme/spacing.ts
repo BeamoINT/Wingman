@@ -34,6 +34,7 @@ export const spacing = {
     xl: 20,
     xxl: 24,
     round: 9999,
+    full: 9999, // Alias for round
   },
 } as const;
 

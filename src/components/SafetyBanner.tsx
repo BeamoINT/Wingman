@@ -70,7 +70,7 @@ export const SafetyBanner: React.FC<SafetyBannerProps> = ({
         <View style={styles.content}>
           <Text style={styles.title}>Your Safety is Our Priority</Text>
           <Text style={styles.subtitle}>
-            All companions are verified and background-checked
+            All companions are ID verified for your safety
           </Text>
 
           <View style={styles.features}>
@@ -80,7 +80,7 @@ export const SafetyBanner: React.FC<SafetyBannerProps> = ({
             </View>
             <View style={styles.feature}>
               <Ionicons name="checkmark-circle" size={14} color={colors.status.success} />
-              <Text style={styles.featureText}>Background Checks</Text>
+              <Text style={styles.featureText}>Emergency SOS</Text>
             </View>
             <View style={styles.feature}>
               <Ionicons name="checkmark-circle" size={14} color={colors.status.success} />

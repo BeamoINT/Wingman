@@ -60,16 +60,67 @@ export const SubscriptionCard: React.FC<SubscriptionCardProps> = ({
     return `$${monthly.toFixed(0)}`;
   };
 
-  const CardWrapper = isPremium ? LinearGradient : View;
-  const wrapperProps = isPremium
-    ? {
-        colors: subscription.tier === 'elite'
-          ? ['rgba(255, 215, 0, 0.1)', 'rgba(255, 215, 0, 0.05)']
-          : ['rgba(167, 139, 250, 0.1)', 'rgba(167, 139, 250, 0.05)'],
-        start: { x: 0, y: 0 },
-        end: { x: 1, y: 1 },
-      }
-    : {};
+  const eliteColors = ['rgba(255, 215, 0, 0.1)', 'rgba(255, 215, 0, 0.05)'] as const;
+  const premiumColors = ['rgba(167, 139, 250, 0.1)', 'rgba(167, 139, 250, 0.05)'] as const;
+  const gradientColors = subscription.tier === 'elite' ? eliteColors : premiumColors;
+
+  const cardContent = (
+    <>
+      {subscription.isPopular && (
+        <View style={styles.popularBadge}>
+          <Text style={styles.popularText}>MOST POPULAR</Text>
+        </View>
+      )}
+
+      <View style={styles.header}>
+        <View style={[styles.iconContainer, { backgroundColor: `${getTierColor()}20` }]}>
+          <Ionicons name={getTierIcon()} size={24} color={getTierColor()} />
+        </View>
+
+        <View style={styles.tierInfo}>
+          <Text style={[styles.tierName, { color: getTierColor() }]}>
+            {subscription.tier.charAt(0).toUpperCase() + subscription.tier.slice(1)}
+          </Text>
+          <Text style={styles.billingPeriod}>
+            {subscription.billingPeriod === 'yearly' ? 'per year' : 'per month'}
+          </Text>
+        </View>
+
+        <View style={styles.priceContainer}>
+          <Text style={styles.price}>{formatPrice()}</Text>
+          {subscription.price > 0 && (
+            <Text style={styles.priceUnit}>/mo</Text>
+          )}
+        </View>
+      </View>
+
+      <View style={styles.features}>
+        {subscription.features.map((feature, index) => (
+          <View key={index} style={styles.featureRow}>
+            <Ionicons
+              name={feature.included ? 'checkmark-circle' : 'close-circle'}
+              size={18}
+              color={feature.included ? colors.status.success : colors.text.tertiary}
+            />
+            <Text
+              style={[
+                styles.featureText,
+                !feature.included && styles.featureDisabled,
+              ]}
+            >
+              {feature.name}
+            </Text>
+          </View>
+        ))}
+      </View>
+
+      {isSelected && (
+        <View style={styles.selectedIndicator}>
+          <Ionicons name="checkmark-circle" size={24} color={colors.primary.blue} />
+        </View>
+      )}
+    </>
+  );
 
   return (
     <TouchableOpacity
@@ -82,61 +133,20 @@ export const SubscriptionCard: React.FC<SubscriptionCardProps> = ({
         subscription.tier === 'elite' && styles.eliteContainer,
       ]}
     >
-      <CardWrapper {...wrapperProps} style={styles.content}>
-        {subscription.isPopular && (
-          <View style={styles.popularBadge}>
-            <Text style={styles.popularText}>MOST POPULAR</Text>
-          </View>
-        )}
-
-        <View style={styles.header}>
-          <View style={[styles.iconContainer, { backgroundColor: `${getTierColor()}20` }]}>
-            <Ionicons name={getTierIcon()} size={24} color={getTierColor()} />
-          </View>
-
-          <View style={styles.tierInfo}>
-            <Text style={[styles.tierName, { color: getTierColor() }]}>
-              {subscription.tier.charAt(0).toUpperCase() + subscription.tier.slice(1)}
-            </Text>
-            <Text style={styles.billingPeriod}>
-              {subscription.billingPeriod === 'yearly' ? 'per year' : 'per month'}
-            </Text>
-          </View>
-
-          <View style={styles.priceContainer}>
-            <Text style={styles.price}>{formatPrice()}</Text>
-            {subscription.price > 0 && (
-              <Text style={styles.priceUnit}>/mo</Text>
-            )}
-          </View>
+      {isPremium ? (
+        <LinearGradient
+          colors={gradientColors}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.content}
+        >
+          {cardContent}
+        </LinearGradient>
+      ) : (
+        <View style={styles.content}>
+          {cardContent}
         </View>
-
-        <View style={styles.features}>
-          {subscription.features.map((feature, index) => (
-            <View key={index} style={styles.featureRow}>
-              <Ionicons
-                name={feature.included ? 'checkmark-circle' : 'close-circle'}
-                size={18}
-                color={feature.included ? colors.status.success : colors.text.tertiary}
-              />
-              <Text
-                style={[
-                  styles.featureText,
-                  !feature.included && styles.featureDisabled,
-                ]}
-              >
-                {feature.name}
-              </Text>
-            </View>
-          ))}
-        </View>
-
-        {isSelected && (
-          <View style={styles.selectedIndicator}>
-            <Ionicons name="checkmark-circle" size={24} color={colors.primary.blue} />
-          </View>
-        )}
-      </CardWrapper>
+      )}
     </TouchableOpacity>
   );
 };

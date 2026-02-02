@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   TextInput,
   Dimensions,
+  Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -19,7 +20,6 @@ import Animated, {
   FadeIn,
   FadeOut,
   SlideInRight,
-  SlideOutLeft,
 } from 'react-native-reanimated';
 import { Button, Input, ProgressBar, SelectableChip } from '../../components';
 import { colors } from '../../theme/colors';
@@ -87,14 +87,32 @@ const LANGUAGES = [
 export const SignupScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
-  const { signupData, updateSignupData, signUp } = useAuth();
+  const {
+    signupData,
+    updateSignupData,
+    signUp,
+    signupConsents,
+    updateSignupConsents,
+    validateSignupConsents,
+  } = useAuth();
   const scrollRef = useRef<ScrollView>(null);
 
   const [currentStep, setCurrentStep] = useState(1);
   const [showPassword, setShowPassword] = useState(false);
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [error, setError] = useState('');
+
+  // Use AuthContext consent state
+  const confirmedAge = signupConsents.ageConfirmed;
+  const agreedToTerms = signupConsents.termsAccepted;
+  const agreedToPrivacy = signupConsents.privacyAccepted;
+  const optedInMarketing = signupConsents.marketingOptIn;
+
+  // Helper functions to update consents via AuthContext
+  const setConfirmedAge = (value: boolean) => updateSignupConsents({ ageConfirmed: value });
+  const setAgreedToTerms = (value: boolean) => updateSignupConsents({ termsAccepted: value });
+  const setAgreedToPrivacy = (value: boolean) => updateSignupConsents({ privacyAccepted: value });
+  const setOptedInMarketing = (value: boolean) => updateSignupConsents({ marketingOptIn: value });
 
   const handleBack = async () => {
     await haptics.light();
@@ -127,8 +145,16 @@ export const SignupScreen: React.FC = () => {
           setError('Passwords do not match');
           return false;
         }
+        if (!confirmedAge) {
+          setError('You must be 18 or older to use this service');
+          return false;
+        }
         if (!agreedToTerms) {
-          setError('Please agree to the terms and conditions');
+          setError('Please agree to the Terms of Service');
+          return false;
+        }
+        if (!agreedToPrivacy) {
+          setError('Please agree to the Privacy Policy');
           return false;
         }
         return true;
@@ -185,13 +211,39 @@ export const SignupScreen: React.FC = () => {
       setCurrentStep(currentStep + 1);
       scrollRef.current?.scrollTo({ y: 0, animated: true });
     } else {
-      // Complete signup
-      signUp();
+      // SECURITY: Final validation of all consents before completing signup
+      const consentValidation = validateSignupConsents();
+      if (!consentValidation.valid) {
+        await haptics.error();
+        setError(consentValidation.errors[0] || 'Please accept all required agreements');
+        // Navigate back to step 1 where consents are collected
+        setCurrentStep(1);
+        return;
+      }
+
+      // Complete signup with Supabase
+      const result = await signUp();
+      if (!result.success) {
+        await haptics.error();
+        setError(result.error || 'Signup failed. Please try again.');
+        setCurrentStep(1);
+        return;
+      }
+
       await haptics.success();
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'Tutorial' }],
-      });
+
+      // Navigate to email verification if needed, otherwise to tutorial
+      if (result.needsVerification) {
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'VerifyEmail' }],
+        });
+      } else {
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'Tutorial' }],
+        });
+      }
     }
   };
 
@@ -222,13 +274,63 @@ export const SignupScreen: React.FC = () => {
     }
   };
 
+  const handleSocialSignUp = async (provider: 'apple' | 'google' | 'facebook') => {
+    await haptics.medium();
+    // TODO: Implement actual social auth
+    Alert.alert(
+      `Sign up with ${provider.charAt(0).toUpperCase() + provider.slice(1)}`,
+      'Social sign-up will be available soon. For now, please use email sign-up.',
+      [{ text: 'OK' }]
+    );
+  };
+
   const renderStepContent = () => {
     switch (currentStep) {
       case 1:
         return (
-          <Animated.View entering={SlideInRight} exiting={SlideOutLeft} style={styles.stepContent}>
+          <Animated.View key={`step-${currentStep}`} entering={SlideInRight} style={styles.stepContent}>
             <Text style={styles.stepTitle}>Create your account</Text>
-            <Text style={styles.stepSubtitle}>Enter your email and create a password</Text>
+            <Text style={styles.stepSubtitle}>Sign up with social or enter your details</Text>
+
+            {/* Social Sign Up Buttons */}
+            <View style={styles.socialButtonsContainer}>
+              <TouchableOpacity
+                style={styles.socialButton}
+                onPress={() => handleSocialSignUp('apple')}
+                activeOpacity={0.7}
+                accessibilityLabel="Sign up with Apple"
+                accessibilityRole="button"
+              >
+                <Ionicons name="logo-apple" size={22} color={colors.text.primary} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.socialButton}
+                onPress={() => handleSocialSignUp('google')}
+                activeOpacity={0.7}
+                accessibilityLabel="Sign up with Google"
+                accessibilityRole="button"
+              >
+                <Ionicons name="logo-google" size={22} color={colors.text.primary} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.socialButton}
+                onPress={() => handleSocialSignUp('facebook')}
+                activeOpacity={0.7}
+                accessibilityLabel="Sign up with Facebook"
+                accessibilityRole="button"
+              >
+                <Ionicons name="logo-facebook" size={22} color={colors.text.primary} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Divider */}
+            <View style={styles.dividerContainer}>
+              <View style={styles.divider} />
+              <Text style={styles.dividerText}>or sign up with email</Text>
+              <View style={styles.divider} />
+            </View>
 
             <Input
               label="Email"
@@ -264,6 +366,22 @@ export const SignupScreen: React.FC = () => {
               leftIcon="lock-closed-outline"
             />
 
+            {/* Age Confirmation */}
+            <TouchableOpacity
+              style={styles.termsRow}
+              onPress={() => setConfirmedAge(!confirmedAge)}
+            >
+              <View style={[styles.checkbox, confirmedAge && styles.checkboxChecked]}>
+                {confirmedAge && (
+                  <Ionicons name="checkmark" size={14} color={colors.primary.black} />
+                )}
+              </View>
+              <Text style={styles.termsText}>
+                I confirm that I am at least 18 years of age
+              </Text>
+            </TouchableOpacity>
+
+            {/* Terms of Service */}
             <TouchableOpacity
               style={styles.termsRow}
               onPress={() => setAgreedToTerms(!agreedToTerms)}
@@ -274,8 +392,56 @@ export const SignupScreen: React.FC = () => {
                 )}
               </View>
               <Text style={styles.termsText}>
-                I agree to the <Text style={styles.termsLink}>Terms of Service</Text> and{' '}
-                <Text style={styles.termsLink}>Privacy Policy</Text>
+                I agree to the{' '}
+                <Text
+                  style={styles.termsLink}
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    navigation.navigate('LegalDocument', { documentType: 'terms-of-service' });
+                  }}
+                >
+                  Terms of Service
+                </Text>
+              </Text>
+            </TouchableOpacity>
+
+            {/* Privacy Policy */}
+            <TouchableOpacity
+              style={styles.termsRow}
+              onPress={() => setAgreedToPrivacy(!agreedToPrivacy)}
+            >
+              <View style={[styles.checkbox, agreedToPrivacy && styles.checkboxChecked]}>
+                {agreedToPrivacy && (
+                  <Ionicons name="checkmark" size={14} color={colors.primary.black} />
+                )}
+              </View>
+              <Text style={styles.termsText}>
+                I agree to the{' '}
+                <Text
+                  style={styles.termsLink}
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    navigation.navigate('LegalDocument', { documentType: 'privacy-policy' });
+                  }}
+                >
+                  Privacy Policy
+                </Text>
+                {' '}and consent to the processing of my personal data
+              </Text>
+            </TouchableOpacity>
+
+            {/* Marketing Opt-in (Optional) */}
+            <TouchableOpacity
+              style={styles.termsRow}
+              onPress={() => setOptedInMarketing(!optedInMarketing)}
+            >
+              <View style={[styles.checkbox, optedInMarketing && styles.checkboxChecked]}>
+                {optedInMarketing && (
+                  <Ionicons name="checkmark" size={14} color={colors.primary.black} />
+                )}
+              </View>
+              <Text style={styles.termsText}>
+                I'd like to receive promotional emails and updates (optional)
               </Text>
             </TouchableOpacity>
           </Animated.View>
@@ -283,7 +449,7 @@ export const SignupScreen: React.FC = () => {
 
       case 2:
         return (
-          <Animated.View entering={SlideInRight} exiting={SlideOutLeft} style={styles.stepContent}>
+          <Animated.View key={`step-${currentStep}`} entering={SlideInRight} style={styles.stepContent}>
             <Text style={styles.stepTitle}>Tell us about yourself</Text>
             <Text style={styles.stepSubtitle}>We'd love to know more about you</Text>
 
@@ -339,7 +505,7 @@ export const SignupScreen: React.FC = () => {
 
       case 3:
         return (
-          <Animated.View entering={SlideInRight} exiting={SlideOutLeft} style={styles.stepContent}>
+          <Animated.View key={`step-${currentStep}`} entering={SlideInRight} style={styles.stepContent}>
             <Text style={styles.stepTitle}>Where are you located?</Text>
             <Text style={styles.stepSubtitle}>Help us find companions near you</Text>
 
@@ -374,7 +540,7 @@ export const SignupScreen: React.FC = () => {
 
       case 4:
         return (
-          <Animated.View entering={SlideInRight} exiting={SlideOutLeft} style={styles.stepContent}>
+          <Animated.View key={`step-${currentStep}`} entering={SlideInRight} style={styles.stepContent}>
             <Text style={styles.stepTitle}>What are you interested in?</Text>
             <Text style={styles.stepSubtitle}>Select at least 3 activities you enjoy</Text>
 
@@ -398,7 +564,7 @@ export const SignupScreen: React.FC = () => {
 
       case 5:
         return (
-          <Animated.View entering={SlideInRight} exiting={SlideOutLeft} style={styles.stepContent}>
+          <Animated.View key={`step-${currentStep}`} entering={SlideInRight} style={styles.stepContent}>
             <Text style={styles.stepTitle}>Tell us more about you</Text>
             <Text style={styles.stepSubtitle}>Help others get to know you better</Text>
 
@@ -406,7 +572,7 @@ export const SignupScreen: React.FC = () => {
             <TextInput
               style={styles.textArea}
               placeholder="Write a short bio about yourself..."
-              placeholderTextColor={colors.text.quaternary}
+              placeholderTextColor={colors.text.muted}
               value={signupData.bio}
               onChangeText={(text) => updateSignupData({ bio: text })}
               multiline
@@ -442,7 +608,7 @@ export const SignupScreen: React.FC = () => {
 
       case 6:
         return (
-          <Animated.View entering={SlideInRight} exiting={SlideOutLeft} style={styles.stepContent}>
+          <Animated.View key={`step-${currentStep}`} entering={SlideInRight} style={styles.stepContent}>
             <Text style={styles.stepTitle}>Add a profile photo</Text>
             <Text style={styles.stepSubtitle}>Help others recognize you</Text>
 
@@ -461,7 +627,7 @@ export const SignupScreen: React.FC = () => {
 
       case 7:
         return (
-          <Animated.View entering={SlideInRight} exiting={SlideOutLeft} style={styles.stepContent}>
+          <Animated.View key={`step-${currentStep}`} entering={SlideInRight} style={styles.stepContent}>
             <View style={styles.completeContainer}>
               <LinearGradient
                 colors={colors.gradients.premium}
@@ -593,7 +759,38 @@ const styles = StyleSheet.create({
   stepSubtitle: {
     ...typography.presets.body,
     color: colors.text.secondary,
-    marginBottom: spacing.xl,
+    marginBottom: spacing.lg,
+  },
+  socialButtonsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: spacing.lg,
+    marginBottom: spacing.md,
+  },
+  socialButton: {
+    width: 56,
+    height: 56,
+    borderRadius: spacing.radius.lg,
+    backgroundColor: colors.background.tertiary,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dividerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: spacing.lg,
+  },
+  divider: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.border.light,
+  },
+  dividerText: {
+    ...typography.presets.caption,
+    color: colors.text.tertiary,
+    marginHorizontal: spacing.md,
   },
   fieldLabel: {
     ...typography.presets.label,
@@ -675,7 +872,7 @@ const styles = StyleSheet.create({
   },
   photoHint: {
     ...typography.presets.caption,
-    color: colors.text.quaternary,
+    color: colors.text.muted,
     textAlign: 'center',
     marginTop: spacing.lg,
   },

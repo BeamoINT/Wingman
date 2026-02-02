@@ -32,7 +32,7 @@ interface GiftAmount {
 interface GiftDesign {
   id: string;
   name: string;
-  gradient: string[];
+  gradient: readonly string[];
   icon: string;
 }
 
@@ -99,7 +99,7 @@ export const GiftCardScreen: React.FC = () => {
         {/* Preview Card */}
         <View style={styles.previewSection}>
           <LinearGradient
-            colors={giftDesigns.find(d => d.id === selectedDesign)?.gradient || colors.gradients.premium}
+            colors={[...(giftDesigns.find(d => d.id === selectedDesign)?.gradient || colors.gradients.premium)] as [string, string, ...string[]]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.giftCardPreview}
@@ -186,7 +186,7 @@ export const GiftCardScreen: React.FC = () => {
                 }}
               >
                 <LinearGradient
-                  colors={design.gradient}
+                  colors={[...design.gradient] as [string, string, ...string[]]}
                   style={styles.designPreview}
                 >
                   <Ionicons name={design.icon as any} size={20} color="rgba(0,0,0,0.5)" />

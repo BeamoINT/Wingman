@@ -13,5 +13,6 @@
       "@navigation/*": ["src/navigation/*"],
       "@types/*": ["src/types/*"]
     }
-  }
+  },
+  "exclude": ["node_modules", "supabase/functions"]
 }

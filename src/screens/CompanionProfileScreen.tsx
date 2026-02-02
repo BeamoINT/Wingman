@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Image,
   Dimensions,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,7 +19,9 @@ import { spacing } from '../theme/spacing';
 import { typography } from '../theme/typography';
 import { haptics } from '../utils/haptics';
 import { Button, Badge, Rating, Card, SafetyBanner } from '../components';
-import type { RootStackParamList, Companion } from '../types';
+import { useFeatureGate } from '../components/RequirementsGate';
+import { useRequirements } from '../context/RequirementsContext';
+import type { RootStackParamList, Companion, LegalDocumentType } from '../types';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -36,7 +39,6 @@ const mockCompanion: Companion = {
     avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=800',
     bio: 'Outgoing and friendly, I love making new connections!',
     isVerified: true,
-    isBackgroundChecked: true,
     isPremium: true,
     createdAt: '2024-01-01',
     location: {
@@ -91,13 +93,59 @@ export const CompanionProfileScreen: React.FC = () => {
   const route = useRoute<Props['route']>();
   const insets = useSafeAreaInsets();
   const [isFavorite, setIsFavorite] = useState(false);
+  const { checkBooking } = useFeatureGate();
+  const { checkBookingRequirements } = useRequirements();
 
   const companion = mockCompanion;
 
-  const handleBookPress = async () => {
+  /**
+   * Handle book press with requirement validation
+   * SECURITY: Validates all booking requirements before navigating to booking screen
+   */
+  const handleBookPress = useCallback(async () => {
     await haptics.medium();
+
+    // Check if all booking requirements are met
+    const { allowed, unmetRequirements } = checkBooking();
+
+    if (!allowed && unmetRequirements.length > 0) {
+      const firstUnmet = unmetRequirements[0];
+
+      await haptics.warning();
+
+      Alert.alert(
+        'Complete Requirements First',
+        firstUnmet.requirement,
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel',
+          },
+          {
+            text: firstUnmet.action || 'Complete',
+            onPress: () => {
+              // Navigate to the appropriate screen to complete the requirement
+              if (firstUnmet.navigateTo === 'Verification') {
+                navigation.navigate('Verification');
+              } else if (firstUnmet.navigateTo === 'Subscription') {
+                navigation.navigate('Subscription');
+              } else if (firstUnmet.navigateTo === 'SignIn') {
+                navigation.navigate('SignIn');
+              } else if (firstUnmet.navigateTo === 'LegalDocument') {
+                navigation.navigate('LegalDocument', { documentType: 'terms-of-service' as LegalDocumentType });
+              } else if (firstUnmet.navigateTo === 'EditProfile') {
+                navigation.navigate('EditProfile');
+              }
+            },
+          },
+        ]
+      );
+      return;
+    }
+
+    // All requirements met, proceed to booking
     navigation.navigate('Booking', { companionId: companion.id });
-  };
+  }, [navigation, companion.id, checkBooking]);
 
   const handleMessagePress = async () => {
     await haptics.light();
@@ -209,7 +257,6 @@ export const CompanionProfileScreen: React.FC = () => {
           {/* Verification Badges */}
           <View style={styles.verificationRow}>
             <Badge label="ID Verified" variant="verified" icon="checkmark-circle" />
-            <Badge label="Background Checked" variant="verified" icon="shield-checkmark" />
             {companion.verificationLevel === 'premium' && (
               <Badge label="Premium" variant="premium" icon="star" />
             )}

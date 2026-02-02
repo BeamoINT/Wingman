@@ -3,6 +3,7 @@ import {
   View,
   StyleSheet,
   ViewStyle,
+  StyleProp,
   TouchableOpacity,
   Pressable,
 } from 'react-native';
@@ -13,7 +14,7 @@ import { haptics } from '../utils/haptics';
 
 interface CardProps {
   children: React.ReactNode;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
   onPress?: () => void;
   variant?: 'default' | 'elevated' | 'outlined' | 'gradient' | 'premium';
   padding?: 'none' | 'small' | 'medium' | 'large';

@@ -1,128 +1,122 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Image,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 import { typography } from '../theme/typography';
 import { haptics } from '../utils/haptics';
 import { Card, Badge, Avatar } from '../components';
-import type { RootStackParamList, Booking } from '../types';
+import { fetchUserBookings } from '../services/api/bookingsApi';
+import type { BookingData } from '../services/api/bookingsApi';
+import type { RootStackParamList, Booking, CompanionSpecialty } from '../types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 type TabType = 'upcoming' | 'past';
 
-// Mock data
-const mockBookings: Booking[] = [
-  {
-    id: '1',
+/**
+ * Transform API booking data to our Booking type
+ */
+function transformBookingData(data: BookingData): Booking {
+  const companion = data.companion;
+  const user = companion?.user;
+
+  return {
+    id: data.id,
     companion: {
-      id: '1',
+      id: companion?.id || '',
       user: {
-        id: 'u1',
-        firstName: 'Sarah',
-        lastName: 'Johnson',
-        email: 'sarah@example.com',
-        avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400',
-        isVerified: true,
-        isBackgroundChecked: true,
-        isPremium: true,
-        createdAt: '2024-01-01',
+        id: user?.id || '',
+        firstName: user?.first_name || '',
+        lastName: user?.last_name || '',
+        email: user?.email || '',
+        avatar: user?.avatar_url,
+        isVerified: user?.phone_verified || false,
+        isPremium: user?.subscription_tier !== 'free',
+        createdAt: user?.created_at || data.created_at,
       },
-      rating: 4.9,
-      reviewCount: 127,
-      hourlyRate: 45,
-      specialties: ['dining'],
-      languages: [],
+      rating: companion?.rating || 0,
+      reviewCount: companion?.review_count || 0,
+      hourlyRate: companion?.hourly_rate || 0,
+      specialties: (companion?.specialties || []) as CompanionSpecialty[],
+      languages: companion?.languages || [],
       availability: [],
-      isOnline: true,
-      responseTime: '',
-      completedBookings: 89,
+      isOnline: companion?.is_available || false,
+      responseTime: companion?.response_time || '',
+      completedBookings: companion?.completed_bookings || 0,
       badges: [],
-      gallery: [],
-      about: '',
+      gallery: companion?.gallery || [],
+      about: companion?.about || '',
       interests: [],
-      verificationLevel: 'premium',
+      verificationLevel: user?.verification_level as any || 'basic',
     },
     user: {} as any,
-    status: 'confirmed',
-    date: '2024-03-15',
-    startTime: '19:00',
-    endTime: '22:00',
-    duration: 3,
-    totalPrice: 135,
+    status: data.status as Booking['status'],
+    date: data.date,
+    startTime: data.start_time,
+    endTime: data.end_time || '',
+    duration: data.duration_hours,
+    totalPrice: data.total_price,
     location: {
-      name: 'The French Laundry',
-      address: '123 Main St',
-      type: 'restaurant',
+      name: data.location_name || 'Location TBD',
+      address: data.location_address || '',
+      type: 'other' as const,
     },
-    activityType: 'dining',
-    createdAt: '',
-    updatedAt: '',
-  },
-  {
-    id: '2',
-    companion: {
-      id: '2',
-      user: {
-        id: 'u2',
-        firstName: 'Michael',
-        lastName: 'Chen',
-        email: 'michael@example.com',
-        avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400',
-        isVerified: true,
-        isBackgroundChecked: true,
-        isPremium: false,
-        createdAt: '2024-01-15',
-      },
-      rating: 4.7,
-      reviewCount: 64,
-      hourlyRate: 35,
-      specialties: ['coffee-chat'],
-      languages: [],
-      availability: [],
-      isOnline: false,
-      responseTime: '',
-      completedBookings: 42,
-      badges: [],
-      gallery: [],
-      about: '',
-      interests: [],
-      verificationLevel: 'background',
-    },
-    user: {} as any,
-    status: 'completed',
-    date: '2024-03-10',
-    startTime: '14:00',
-    endTime: '16:00',
-    duration: 2,
-    totalPrice: 70,
-    location: {
-      name: 'Blue Bottle Coffee',
-      address: '456 Oak Ave',
-      type: 'cafe',
-    },
-    activityType: 'coffee-chat',
-    createdAt: '',
-    updatedAt: '',
-  },
-];
+    activityType: (data.activity_type || 'social-events') as CompanionSpecialty,
+    createdAt: data.created_at,
+    updatedAt: data.updated_at,
+  };
+}
 
 export const BookingsScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<TabType>('upcoming');
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadBookings = useCallback(async (showRefresh = false) => {
+    if (showRefresh) {
+      setIsRefreshing(true);
+    } else {
+      setIsLoading(true);
+    }
+    setError(null);
+
+    try {
+      const { bookings: data, error: apiError } = await fetchUserBookings();
+
+      if (apiError) {
+        setError('Failed to load bookings');
+        console.error('Error loading bookings:', apiError);
+      } else {
+        setBookings(data.map(transformBookingData));
+      }
+    } catch (err) {
+      setError('Something went wrong');
+      console.error('Error in loadBookings:', err);
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadBookings();
+  }, [loadBookings]);
 
   const handleTabPress = async (tab: TabType) => {
     await haptics.selection();
@@ -131,32 +125,21 @@ export const BookingsScreen: React.FC = () => {
 
   const handleBookingPress = async (booking: Booking) => {
     await haptics.light();
-    // Navigate to booking details
+    navigation.navigate('BookingConfirmation', { bookingId: booking.id });
   };
 
-  const upcomingBookings = mockBookings.filter(
-    (b) => b.status === 'confirmed' || b.status === 'pending'
+  const handleRefresh = () => {
+    loadBookings(true);
+  };
+
+  const upcomingBookings = bookings.filter(
+    (b) => b.status === 'confirmed' || b.status === 'pending' || b.status === 'in-progress'
   );
-  const pastBookings = mockBookings.filter(
+  const pastBookings = bookings.filter(
     (b) => b.status === 'completed' || b.status === 'cancelled'
   );
 
   const currentBookings = activeTab === 'upcoming' ? upcomingBookings : pastBookings;
-
-  const getStatusColor = (status: Booking['status']) => {
-    switch (status) {
-      case 'confirmed':
-        return colors.status.success;
-      case 'pending':
-        return colors.status.warning;
-      case 'completed':
-        return colors.primary.blue;
-      case 'cancelled':
-        return colors.status.error;
-      default:
-        return colors.text.tertiary;
-    }
-  };
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
@@ -168,10 +151,127 @@ export const BookingsScreen: React.FC = () => {
   };
 
   const formatTime = (time: string) => {
+    if (!time) return '';
     const [hours, minutes] = time.split(':').map(Number);
     const period = hours >= 12 ? 'PM' : 'AM';
     const displayHours = hours % 12 || 12;
-    return `${displayHours}:${minutes.toString().padStart(2, '0')} ${period}`;
+    return `${displayHours}:${(minutes || 0).toString().padStart(2, '0')} ${period}`;
+  };
+
+  const renderContent = () => {
+    if (isLoading && !isRefreshing) {
+      return (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary.blue} />
+          <Text style={styles.loadingText}>Loading bookings...</Text>
+        </View>
+      );
+    }
+
+    if (error) {
+      return (
+        <View style={styles.errorContainer}>
+          <Ionicons name="alert-circle" size={48} color={colors.status.error} />
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={() => loadBookings()}>
+            <Text style={styles.retryText}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    if (currentBookings.length === 0) {
+      return (
+        <View style={styles.emptyState}>
+          <View style={styles.emptyIcon}>
+            <Ionicons name="calendar-outline" size={48} color={colors.text.tertiary} />
+          </View>
+          <Text style={styles.emptyTitle}>No {activeTab} bookings</Text>
+          <Text style={styles.emptySubtitle}>
+            {activeTab === 'upcoming'
+              ? 'Find a companion and book your first outing!'
+              : 'Your completed bookings will appear here.'}
+          </Text>
+        </View>
+      );
+    }
+
+    return currentBookings.map((booking) => (
+      <TouchableOpacity
+        key={booking.id}
+        onPress={() => handleBookingPress(booking)}
+        activeOpacity={0.8}
+      >
+        <Card variant="outlined" style={styles.bookingCard}>
+          <View style={styles.bookingHeader}>
+            <Avatar
+              source={booking.companion.user.avatar}
+              name={booking.companion.user.firstName}
+              size="medium"
+              showVerified
+              verificationLevel={booking.companion.verificationLevel}
+            />
+            <View style={styles.bookingInfo}>
+              <Text style={styles.companionName}>
+                {booking.companion.user.firstName}
+              </Text>
+              <View style={styles.bookingMeta}>
+                <Badge
+                  label={booking.status.charAt(0).toUpperCase() + booking.status.slice(1).replace('-', ' ')}
+                  variant={
+                    booking.status === 'confirmed' ? 'success' :
+                    booking.status === 'pending' ? 'warning' :
+                    booking.status === 'in-progress' ? 'info' :
+                    booking.status === 'completed' ? 'info' : 'error'
+                  }
+                  size="small"
+                />
+              </View>
+            </View>
+            <Text style={styles.bookingPrice}>${booking.totalPrice.toFixed(2)}</Text>
+          </View>
+
+          <View style={styles.bookingDetails}>
+            <View style={styles.detailRow}>
+              <Ionicons name="calendar-outline" size={16} color={colors.text.tertiary} />
+              <Text style={styles.detailText}>{formatDate(booking.date)}</Text>
+            </View>
+            <View style={styles.detailRow}>
+              <Ionicons name="time-outline" size={16} color={colors.text.tertiary} />
+              <Text style={styles.detailText}>
+                {formatTime(booking.startTime)}{booking.endTime ? ` - ${formatTime(booking.endTime)}` : ` (${booking.duration}h)`}
+              </Text>
+            </View>
+            <View style={styles.detailRow}>
+              <Ionicons name="location-outline" size={16} color={colors.text.tertiary} />
+              <Text style={styles.detailText} numberOfLines={1}>
+                {booking.location.name}
+              </Text>
+            </View>
+          </View>
+
+          {(booking.status === 'confirmed' || booking.status === 'in-progress') && (
+            <View style={styles.bookingActions}>
+              <TouchableOpacity style={styles.actionButton} onPress={() => haptics.light()}>
+                <Ionicons name="chatbubble-outline" size={18} color={colors.primary.blue} />
+                <Text style={styles.actionText}>Message</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.actionButton} onPress={() => haptics.light()}>
+                <Ionicons name="navigate-outline" size={18} color={colors.primary.blue} />
+                <Text style={styles.actionText}>Directions</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {booking.status === 'completed' && (
+            <TouchableOpacity style={styles.reviewButton} onPress={() => haptics.light()}>
+              <Ionicons name="star-outline" size={18} color={colors.primary.gold} />
+              <Text style={styles.reviewText}>Leave a Review</Text>
+            </TouchableOpacity>
+          )}
+        </Card>
+      </TouchableOpacity>
+    ));
   };
 
   return (
@@ -219,96 +319,15 @@ export const BookingsScreen: React.FC = () => {
         style={styles.scrollView}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.primary.blue}
+          />
+        }
       >
-        {currentBookings.length === 0 ? (
-          <View style={styles.emptyState}>
-            <View style={styles.emptyIcon}>
-              <Ionicons name="calendar-outline" size={48} color={colors.text.tertiary} />
-            </View>
-            <Text style={styles.emptyTitle}>No {activeTab} bookings</Text>
-            <Text style={styles.emptySubtitle}>
-              {activeTab === 'upcoming'
-                ? 'Find a companion and book your first outing!'
-                : 'Your completed bookings will appear here.'}
-            </Text>
-          </View>
-        ) : (
-          currentBookings.map((booking) => (
-            <TouchableOpacity
-              key={booking.id}
-              onPress={() => handleBookingPress(booking)}
-              activeOpacity={0.8}
-            >
-              <Card variant="outlined" style={styles.bookingCard}>
-                <View style={styles.bookingHeader}>
-                  <Avatar
-                    source={booking.companion.user.avatar}
-                    name={booking.companion.user.firstName}
-                    size="medium"
-                    showVerified
-                    verificationLevel={booking.companion.verificationLevel}
-                  />
-                  <View style={styles.bookingInfo}>
-                    <Text style={styles.companionName}>
-                      {booking.companion.user.firstName}
-                    </Text>
-                    <View style={styles.bookingMeta}>
-                      <Badge
-                        label={booking.status.charAt(0).toUpperCase() + booking.status.slice(1)}
-                        variant={
-                          booking.status === 'confirmed' ? 'success' :
-                          booking.status === 'pending' ? 'warning' :
-                          booking.status === 'completed' ? 'info' : 'error'
-                        }
-                        size="small"
-                      />
-                    </View>
-                  </View>
-                  <Text style={styles.bookingPrice}>${booking.totalPrice}</Text>
-                </View>
-
-                <View style={styles.bookingDetails}>
-                  <View style={styles.detailRow}>
-                    <Ionicons name="calendar-outline" size={16} color={colors.text.tertiary} />
-                    <Text style={styles.detailText}>{formatDate(booking.date)}</Text>
-                  </View>
-                  <View style={styles.detailRow}>
-                    <Ionicons name="time-outline" size={16} color={colors.text.tertiary} />
-                    <Text style={styles.detailText}>
-                      {formatTime(booking.startTime)} - {formatTime(booking.endTime)}
-                    </Text>
-                  </View>
-                  <View style={styles.detailRow}>
-                    <Ionicons name="location-outline" size={16} color={colors.text.tertiary} />
-                    <Text style={styles.detailText} numberOfLines={1}>
-                      {booking.location.name}
-                    </Text>
-                  </View>
-                </View>
-
-                {booking.status === 'confirmed' && (
-                  <View style={styles.bookingActions}>
-                    <TouchableOpacity style={styles.actionButton} onPress={() => haptics.light()}>
-                      <Ionicons name="chatbubble-outline" size={18} color={colors.primary.blue} />
-                      <Text style={styles.actionText}>Message</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.actionButton} onPress={() => haptics.light()}>
-                      <Ionicons name="navigate-outline" size={18} color={colors.primary.blue} />
-                      <Text style={styles.actionText}>Directions</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-
-                {booking.status === 'completed' && (
-                  <TouchableOpacity style={styles.reviewButton} onPress={() => haptics.light()}>
-                    <Ionicons name="star-outline" size={18} color={colors.primary.gold} />
-                    <Text style={styles.reviewText}>Leave a Review</Text>
-                  </TouchableOpacity>
-                )}
-              </Card>
-            </TouchableOpacity>
-          ))
-        )}
+        {renderContent()}
       </ScrollView>
     </View>
   );
@@ -371,6 +390,37 @@ const styles = StyleSheet.create({
     padding: spacing.screenPadding,
     paddingBottom: 100,
     gap: spacing.md,
+  },
+  loadingContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.xxl * 2,
+  },
+  loadingText: {
+    ...typography.presets.body,
+    color: colors.text.secondary,
+    marginTop: spacing.md,
+  },
+  errorContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.xxl * 2,
+  },
+  errorText: {
+    ...typography.presets.body,
+    color: colors.text.secondary,
+    marginTop: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  retryButton: {
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.md,
+    backgroundColor: colors.primary.blue,
+    borderRadius: spacing.radius.md,
+  },
+  retryText: {
+    ...typography.presets.button,
+    color: colors.text.primary,
   },
   emptyState: {
     alignItems: 'center',

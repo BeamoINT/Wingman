@@ -1,13 +1,13 @@
 /**
  * Wingman Color Palette
- * Primary: Black, Light Blue/Teal, Gold
+ * Primary: Black, White, Electric Blue
  * Designed for a premium, modern social companion app
  *
  * Design Philosophy:
  * - Deep blacks create depth and elegance
- * - Teal accent provides energy and trust
- * - Gold highlights premium features
- * - Subtle gradients add dimension
+ * - Electric blue accent provides energy and modernity
+ * - Silver highlights premium features
+ * - Clean black and white foundation
  */
 
 export const colors = {
@@ -18,20 +18,33 @@ export const colors = {
     darkBlack: '#050508',
     lightBlack: '#13131A',
 
-    // Teal/Light Blue - Primary accent
-    blue: '#4ECDC4',
-    blueLight: '#6FE7DF',
-    blueDark: '#3AAFA6',
-    blueMuted: '#3A9A94',
-    blueGlow: 'rgba(78, 205, 196, 0.25)',
-    blueSoft: 'rgba(78, 205, 196, 0.12)',
+    // Electric Blue - Primary accent
+    blue: '#00D4FF',
+    blueLight: '#33DFFF',
+    blueDark: '#00A8CC',
+    blueMuted: '#0099BB',
+    blueGlow: 'rgba(0, 212, 255, 0.25)',
+    blueSoft: 'rgba(0, 212, 255, 0.12)',
 
-    // Gold - Premium accent
-    gold: '#FFD700',
-    goldLight: '#FFE55C',
-    goldDark: '#DAA520',
-    goldGlow: 'rgba(255, 215, 0, 0.25)',
-    goldSoft: 'rgba(255, 215, 0, 0.12)',
+    // Silver - Premium accent (replacing gold)
+    silver: '#C0C0C0',
+    silverLight: '#E8E8E8',
+    silverDark: '#A0A0A0',
+    silverGlow: 'rgba(192, 192, 192, 0.25)',
+    silverSoft: 'rgba(192, 192, 192, 0.12)',
+
+    // Gold - Mapped to silver for backwards compatibility
+    gold: '#C0C0C0',
+    goldLight: '#E8E8E8',
+    goldDark: '#A0A0A0',
+    goldGlow: 'rgba(192, 192, 192, 0.25)',
+    goldSoft: 'rgba(192, 192, 192, 0.12)',
+
+    // Coral - For social/friends features
+    coral: '#FF6B6B',
+    coralLight: '#FF8E8E',
+    coralDark: '#E55555',
+    coralSoft: 'rgba(255, 107, 107, 0.12)',
   },
 
   // Background Colors - Layered depth
@@ -49,12 +62,12 @@ export const colors = {
   // Text Colors - Clear hierarchy
   text: {
     primary: '#FFFFFF',
-    secondary: '#A8A8B8',
-    tertiary: '#686878',
-    muted: '#484858',
-    placeholder: '#505060',
-    accent: '#4ECDC4',
-    gold: '#FFD700',
+    secondary: '#B0B0B0',
+    tertiary: '#707070',
+    muted: '#505050',
+    placeholder: '#606060',
+    accent: '#00D4FF',
+    gold: '#C0C0C0',
     inverse: '#0A0A0F',
   },
 
@@ -67,17 +80,16 @@ export const colors = {
     warningLight: 'rgba(251, 191, 36, 0.12)',
     error: '#F87171',
     errorLight: 'rgba(248, 113, 113, 0.12)',
-    info: '#60A5FA',
-    infoLight: 'rgba(96, 165, 250, 0.12)',
+    info: '#00D4FF',
+    infoLight: 'rgba(0, 212, 255, 0.12)',
   },
 
   // Verification/Badge Colors
   verification: {
     verified: '#34D399',
-    backgroundChecked: '#4ECDC4',
-    premium: '#FFD700',
-    trusted: '#A78BFA',
-    trustedLight: 'rgba(167, 139, 250, 0.12)',
+    premium: '#C0C0C0',
+    trusted: '#00D4FF',
+    trustedLight: 'rgba(0, 212, 255, 0.12)',
   },
 
   // Border Colors - Subtle definition
@@ -86,21 +98,21 @@ export const colors = {
     light: 'rgba(255, 255, 255, 0.08)',
     medium: 'rgba(255, 255, 255, 0.12)',
     heavy: 'rgba(255, 255, 255, 0.18)',
-    accent: 'rgba(78, 205, 196, 0.4)',
-    gold: 'rgba(255, 215, 0, 0.4)',
-    focus: 'rgba(78, 205, 196, 0.6)',
+    accent: 'rgba(0, 212, 255, 0.4)',
+    gold: 'rgba(192, 192, 192, 0.4)',
+    focus: 'rgba(0, 212, 255, 0.6)',
   },
 
   // Gradient Presets - Smooth transitions
   gradients: {
     // Primary button gradient
-    primary: ['#4ECDC4', '#3AAFA6'],
-    primarySoft: ['rgba(78, 205, 196, 0.2)', 'rgba(58, 175, 166, 0.1)'],
+    primary: ['#00D4FF', '#00A8CC'],
+    primarySoft: ['rgba(0, 212, 255, 0.2)', 'rgba(0, 168, 204, 0.1)'],
 
-    // Gold/Premium gradients
-    gold: ['#FFE55C', '#FFD700', '#DAA520'],
-    goldSoft: ['rgba(255, 215, 0, 0.2)', 'rgba(218, 165, 32, 0.1)'],
-    premium: ['#FFD700', '#4ECDC4'],
+    // Silver/Premium gradients
+    gold: ['#E8E8E8', '#C0C0C0', '#A0A0A0'],
+    goldSoft: ['rgba(192, 192, 192, 0.2)', 'rgba(160, 160, 160, 0.1)'],
+    premium: ['#C0C0C0', '#00D4FF'],
 
     // Background gradients
     dark: ['#16161F', '#0A0A0F'],
@@ -108,8 +120,8 @@ export const colors = {
     cardShine: ['rgba(255, 255, 255, 0.06)', 'rgba(255, 255, 255, 0)'],
 
     // Accent gradients
-    blueToPurple: ['#4ECDC4', '#A78BFA'],
-    sunset: ['#F472B6', '#FB923C'],
+    blueToPurple: ['#00D4FF', '#0099DD'],
+    sunset: ['#00D4FF', '#00A8CC'],
 
     // Overlay gradients
     fadeBottom: ['transparent', 'rgba(10, 10, 15, 0.95)'],
@@ -121,18 +133,18 @@ export const colors = {
     light: 'rgba(0, 0, 0, 0.08)',
     medium: 'rgba(0, 0, 0, 0.2)',
     heavy: 'rgba(0, 0, 0, 0.4)',
-    blue: 'rgba(78, 205, 196, 0.2)',
-    blueStrong: 'rgba(78, 205, 196, 0.35)',
-    gold: 'rgba(255, 215, 0, 0.2)',
-    goldStrong: 'rgba(255, 215, 0, 0.35)',
+    blue: 'rgba(0, 212, 255, 0.2)',
+    blueStrong: 'rgba(0, 212, 255, 0.35)',
+    gold: 'rgba(192, 192, 192, 0.2)',
+    goldStrong: 'rgba(192, 192, 192, 0.35)',
   },
 
   // Interactive States
   interactive: {
     pressed: 'rgba(255, 255, 255, 0.05)',
     hover: 'rgba(255, 255, 255, 0.08)',
-    focus: 'rgba(78, 205, 196, 0.15)',
-    selected: 'rgba(78, 205, 196, 0.12)',
+    focus: 'rgba(0, 212, 255, 0.15)',
+    selected: 'rgba(0, 212, 255, 0.12)',
   },
 } as const;
 

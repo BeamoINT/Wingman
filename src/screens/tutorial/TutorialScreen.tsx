@@ -61,9 +61,9 @@ const SLIDES: TutorialSlide[] = [
     subtitle: 'Every companion is verified for your safety',
     features: [
       'Identity verification for all companions',
-      'Background checks available',
       'Secure in-app messaging',
       'Transparent pricing with no surprises',
+      'Safety features and emergency SOS',
     ],
   },
   {
@@ -305,7 +305,7 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: colors.text.quaternary,
+    backgroundColor: colors.text.muted,
     marginHorizontal: 4,
   },
   paginationDotActive: {

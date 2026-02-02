@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Modal,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -16,7 +18,11 @@ import { spacing } from '../theme/spacing';
 import { typography } from '../theme/typography';
 import { haptics } from '../utils/haptics';
 import { Button, Card, Avatar, Badge, Input } from '../components';
-import type { RootStackParamList, CompanionSpecialty } from '../types';
+import { RequirementsGate, useFeatureGate } from '../components/RequirementsGate';
+import { useAuth } from '../context/AuthContext';
+import { useRequirements } from '../context/RequirementsContext';
+import { useVerification } from '../context/VerificationContext';
+import type { RootStackParamList, CompanionSpecialty, LegalDocumentType } from '../types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Booking'>;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -47,10 +53,14 @@ const activities: { id: CompanionSpecialty; label: string; icon: string }[] = [
   { id: 'safety-companion', label: 'Safety', icon: 'shield' },
 ];
 
-export const BookingScreen: React.FC = () => {
+// Inner component that contains the actual booking UI
+const BookingScreenContent: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute<Props['route']>();
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
+  const { checkBookingRequirements, consents } = useRequirements();
+  const { idVerified, emailVerified } = useVerification();
 
   const [selectedDate, setSelectedDate] = useState<number>(0);
   const [selectedTime, setSelectedTime] = useState<string>('7:00 PM');
@@ -58,6 +68,8 @@ export const BookingScreen: React.FC = () => {
   const [selectedActivity, setSelectedActivity] = useState<CompanionSpecialty>('dining');
   const [location, setLocation] = useState('');
   const [notes, setNotes] = useState('');
+  const [showRequirementsModal, setShowRequirementsModal] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const hourlyRate = 45;
   const totalPrice = hourlyRate * selectedDuration;
@@ -75,14 +87,101 @@ export const BookingScreen: React.FC = () => {
     };
   });
 
+  // Final validation before booking
+  const validateBeforeBooking = useCallback((): { valid: boolean; message?: string } => {
+    // Check all requirements one more time
+    const requirements = checkBookingRequirements();
+
+    if (!requirements.isAuthenticated.met) {
+      return { valid: false, message: 'You must be signed in to book a companion.' };
+    }
+
+    if (!requirements.ageConfirmed.met) {
+      return { valid: false, message: 'You must confirm you are 18 or older.' };
+    }
+
+    if (!requirements.termsAccepted.met) {
+      return { valid: false, message: 'You must accept the Terms of Service.' };
+    }
+
+    if (!requirements.privacyAccepted.met) {
+      return { valid: false, message: 'You must accept the Privacy Policy.' };
+    }
+
+    if (!requirements.emailVerified.met) {
+      return { valid: false, message: 'You must verify your email address.' };
+    }
+
+    if (!requirements.idVerified.met) {
+      return { valid: false, message: 'You must verify your identity before booking.' };
+    }
+
+    if (!requirements.profileComplete.met) {
+      return { valid: false, message: 'Please complete your profile before booking.' };
+    }
+
+    // Validate booking-specific fields
+    if (!location.trim()) {
+      return { valid: false, message: 'Please enter a meeting location.' };
+    }
+
+    return { valid: true };
+  }, [checkBookingRequirements, location]);
+
   const handleBookPress = async () => {
-    await haptics.success();
-    navigation.navigate('BookingConfirmation', { bookingId: '123' });
+    // Perform final validation
+    const validation = validateBeforeBooking();
+
+    if (!validation.valid) {
+      await haptics.warning();
+      Alert.alert(
+        'Cannot Complete Booking',
+        validation.message,
+        [
+          {
+            text: 'OK',
+            style: 'default',
+          },
+        ]
+      );
+      return;
+    }
+
+    setIsProcessing(true);
+
+    try {
+      await haptics.success();
+      navigation.navigate('BookingConfirmation', { bookingId: '123' });
+    } catch (error) {
+      await haptics.error();
+      Alert.alert('Error', 'Failed to complete booking. Please try again.');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const handleBackPress = async () => {
     await haptics.light();
     navigation.goBack();
+  };
+
+  const handleRequirementPress = async (navigateTo: string) => {
+    await haptics.light();
+    setShowRequirementsModal(false);
+
+    switch (navigateTo) {
+      case 'Verification':
+        navigation.navigate('Verification');
+        break;
+      case 'Subscription':
+        navigation.navigate('Subscription');
+        break;
+      case 'LegalDocument':
+        navigation.navigate('LegalDocument', { documentType: 'terms-of-service' as LegalDocumentType });
+        break;
+      default:
+        break;
+    }
   };
 
   return (
@@ -269,9 +368,32 @@ export const BookingScreen: React.FC = () => {
         <View style={styles.safetyReminder}>
           <Ionicons name="shield-checkmark" size={20} color={colors.primary.blue} />
           <Text style={styles.safetyText}>
-            Sarah is background-checked and ID-verified. You can share your live location during the booking.
+            Sarah is ID-verified. You can share your live location during the booking.
           </Text>
         </View>
+
+        {/* Verification Status */}
+        {(!idVerified || !emailVerified) && (
+          <View style={styles.verificationWarning}>
+            <Ionicons name="warning" size={20} color={colors.status.warning} />
+            <View style={styles.verificationWarningContent}>
+              <Text style={styles.verificationWarningTitle}>Verification Required</Text>
+              <Text style={styles.verificationWarningText}>
+                {!emailVerified && !idVerified
+                  ? 'Complete email and ID verification to book'
+                  : !emailVerified
+                  ? 'Verify your email to book'
+                  : 'Complete ID verification to book'}
+              </Text>
+              <TouchableOpacity
+                style={styles.verifyButton}
+                onPress={() => navigation.navigate('Verification')}
+              >
+                <Text style={styles.verifyButtonText}>Complete Verification</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
       </ScrollView>
 
       {/* Bottom Pricing Bar */}
@@ -296,14 +418,39 @@ export const BookingScreen: React.FC = () => {
         </Card>
 
         <Button
-          title="Confirm Booking"
+          title={isProcessing ? 'Processing...' : 'Confirm Booking'}
           onPress={handleBookPress}
           variant="primary"
           size="large"
           fullWidth
+          disabled={isProcessing || !idVerified || !emailVerified || !location.trim()}
         />
       </LinearGradient>
     </View>
+  );
+};
+
+/**
+ * BookingScreen - Wrapped with RequirementsGate to enforce all booking requirements
+ *
+ * Requirements checked before allowing access:
+ * - User is authenticated
+ * - Age is confirmed (18+)
+ * - Terms of Service accepted
+ * - Privacy Policy accepted
+ * - Email verified
+ * - ID verified
+ * - Within monthly booking limit
+ * - Profile is complete
+ */
+export const BookingScreen: React.FC = () => {
+  return (
+    <RequirementsGate
+      feature="book_companion"
+      modalTitle="Complete Requirements to Book"
+    >
+      <BookingScreenContent />
+    </RequirementsGate>
   );
 };
 
@@ -483,6 +630,42 @@ const styles = StyleSheet.create({
     color: colors.text.tertiary,
     flex: 1,
     lineHeight: 18,
+  },
+  verificationWarning: {
+    flexDirection: 'row',
+    marginHorizontal: spacing.screenPadding,
+    marginBottom: spacing.md,
+    padding: spacing.md,
+    backgroundColor: colors.status.warningLight,
+    borderRadius: spacing.radius.lg,
+    borderWidth: 1,
+    borderColor: colors.status.warning,
+  },
+  verificationWarningContent: {
+    flex: 1,
+    marginLeft: spacing.sm,
+  },
+  verificationWarningTitle: {
+    ...typography.presets.label,
+    color: colors.status.warning,
+    marginBottom: spacing.xs,
+  },
+  verificationWarningText: {
+    ...typography.presets.bodySmall,
+    color: colors.text.secondary,
+    marginBottom: spacing.sm,
+  },
+  verifyButton: {
+    alignSelf: 'flex-start',
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.status.warning,
+    borderRadius: spacing.radius.md,
+  },
+  verifyButtonText: {
+    ...typography.presets.button,
+    color: colors.text.inverse,
+    fontSize: 12,
   },
   bottomBar: {
     position: 'absolute',

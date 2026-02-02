@@ -29,17 +29,17 @@ interface SelectedCompanion {
 const mockAvailableCompanions: Companion[] = [
   {
     id: '1',
-    user: { id: 'u1', firstName: 'Sarah', lastName: 'J', email: '', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200', isVerified: true, isBackgroundChecked: true, isPremium: true, createdAt: '' },
+    user: { id: 'u1', firstName: 'Sarah', lastName: 'J', email: '', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200', isVerified: true,  isPremium: true, createdAt: '' },
     rating: 4.9, reviewCount: 127, hourlyRate: 45, specialties: ['social-events', 'dining'], languages: ['English'], availability: [], isOnline: true, responseTime: '', completedBookings: 89, badges: [], gallery: [], about: '', interests: [], verificationLevel: 'premium',
   },
   {
     id: '2',
-    user: { id: 'u2', firstName: 'Michael', lastName: 'C', email: '', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200', isVerified: true, isBackgroundChecked: true, isPremium: false, createdAt: '' },
-    rating: 4.7, reviewCount: 64, hourlyRate: 35, specialties: ['social-events', 'sports'], languages: ['English'], availability: [], isOnline: true, responseTime: '', completedBookings: 42, badges: [], gallery: [], about: '', interests: [], verificationLevel: 'background',
+    user: { id: 'u2', firstName: 'Michael', lastName: 'C', email: '', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200', isVerified: true,  isPremium: false, createdAt: '' },
+    rating: 4.7, reviewCount: 64, hourlyRate: 35, specialties: ['social-events', 'sports'], languages: ['English'], availability: [], isOnline: true, responseTime: '', completedBookings: 42, badges: [], gallery: [], about: '', interests: [], verificationLevel: 'verified',
   },
   {
     id: '3',
-    user: { id: 'u3', firstName: 'Emma', lastName: 'W', email: '', avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200', isVerified: true, isBackgroundChecked: true, isPremium: true, createdAt: '' },
+    user: { id: 'u3', firstName: 'Emma', lastName: 'W', email: '', avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200', isVerified: true,  isPremium: true, createdAt: '' },
     rating: 4.8, reviewCount: 89, hourlyRate: 40, specialties: ['social-events', 'concerts'], languages: ['English'], availability: [], isOnline: false, responseTime: '', completedBookings: 56, badges: [], gallery: [], about: '', interests: [], verificationLevel: 'premium',
   },
 ];

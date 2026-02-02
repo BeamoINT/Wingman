@@ -1,4 +1,3 @@
-export { SplashScreen } from './SplashScreen';
 export { OnboardingScreen } from './OnboardingScreen';
 export { HomeScreen } from './HomeScreen';
 export { DiscoverScreen } from './DiscoverScreen';
@@ -24,3 +23,14 @@ export { AccessibilityScreen } from './AccessibilityScreen';
 export { NotificationsScreen } from './NotificationsScreen';
 export { FavoritesScreen } from './FavoritesScreen';
 export { GiftCardScreen } from './GiftCardScreen';
+
+// Verification Screens
+export {
+  VerificationTabScreen,
+  VerificationHistoryScreen,
+  VerificationPreferencesScreen,
+} from './verification';
+
+// Auth Verification Screens
+export { VerifyEmailScreen } from './auth/VerifyEmailScreen';
+export { VerifyPhoneScreen } from './auth/VerifyPhoneScreen';

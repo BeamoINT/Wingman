@@ -13,7 +13,13 @@
       "Bash(lsof:*)",
       "Bash(npm install:*)",
       "Bash(npx expo install:*)",
-      "Bash(npx expo-doctor:*)"
+      "Bash(npx expo-doctor:*)",
+      "WebSearch",
+      "WebFetch(domain:docs.certn.co)",
+      "Bash(echo:*)",
+      "Bash(npx supabase secrets set:*)",
+      "Bash(npx supabase:*)",
+      "Bash(export:*)"
     ]
   }
 }

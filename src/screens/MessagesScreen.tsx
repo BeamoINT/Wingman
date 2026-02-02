@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -6,9 +6,11 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
@@ -16,109 +18,112 @@ import { spacing } from '../theme/spacing';
 import { typography } from '../theme/typography';
 import { haptics } from '../utils/haptics';
 import { Avatar } from '../components';
-import type { RootStackParamList, Conversation, Message, User } from '../types';
+import { useAuth } from '../context/AuthContext';
+import { fetchConversations } from '../services/api/messages';
+import type { ConversationData } from '../services/api/messages';
+import type { RootStackParamList, Conversation, User } from '../types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
-// Mock data
-const mockConversations: Conversation[] = [
-  {
-    id: '1',
-    participants: [
-      {
-        id: 'u1',
-        firstName: 'Sarah',
-        lastName: 'Johnson',
-        email: 'sarah@example.com',
-        avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400',
-        isVerified: true,
-        isBackgroundChecked: true,
-        isPremium: true,
-        createdAt: '2024-01-01',
-      },
-    ],
-    lastMessage: {
-      id: 'm1',
-      conversationId: '1',
-      sender: {} as User,
-      content: 'Looking forward to dinner tomorrow! 🍝',
+/**
+ * Transform API conversation data to our Conversation type
+ */
+function transformConversationData(data: ConversationData, currentUserId: string): Conversation {
+  // Get the other participant (not the current user)
+  const otherProfile = data.participant_1 === currentUserId
+    ? data.participant_2_profile
+    : data.participant_1_profile;
+
+  const participant: User = {
+    id: otherProfile?.id || '',
+    firstName: otherProfile?.first_name || 'Unknown',
+    lastName: otherProfile?.last_name || '',
+    email: otherProfile?.email || '',
+    avatar: otherProfile?.avatar_url,
+    isVerified: otherProfile?.phone_verified || false,
+    isPremium: otherProfile?.subscription_tier !== 'free',
+    createdAt: otherProfile?.created_at || data.created_at,
+  };
+
+  return {
+    id: data.id,
+    participants: [participant],
+    lastMessage: data.last_message_preview ? {
+      id: 'preview',
+      conversationId: data.id,
+      sender: participant,
+      content: data.last_message_preview,
       type: 'text',
-      isRead: false,
-      createdAt: new Date(Date.now() - 1000 * 60 * 5).toISOString(), // 5 mins ago
-    },
-    unreadCount: 2,
-    createdAt: '',
-    updatedAt: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
-  },
-  {
-    id: '2',
-    participants: [
-      {
-        id: 'u2',
-        firstName: 'Michael',
-        lastName: 'Chen',
-        email: 'michael@example.com',
-        avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400',
-        isVerified: true,
-        isBackgroundChecked: true,
-        isPremium: false,
-        createdAt: '2024-01-15',
-      },
-    ],
-    lastMessage: {
-      id: 'm2',
-      conversationId: '2',
-      sender: {} as User,
-      content: 'Thanks for the great coffee chat! Let me know if you want to do it again.',
-      type: 'text',
-      isRead: true,
-      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(), // 2 hours ago
-    },
-    unreadCount: 0,
-    createdAt: '',
-    updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
-  },
-  {
-    id: '3',
-    participants: [
-      {
-        id: 'u3',
-        firstName: 'Emma',
-        lastName: 'Wilson',
-        email: 'emma@example.com',
-        avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=400',
-        isVerified: true,
-        isBackgroundChecked: true,
-        isPremium: true,
-        createdAt: '2024-02-01',
-      },
-    ],
-    lastMessage: {
-      id: 'm3',
-      conversationId: '3',
-      sender: {} as User,
-      content: 'The concert was amazing! Thank you for suggesting it.',
-      type: 'text',
-      isRead: true,
-      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(), // 1 day ago
-    },
-    unreadCount: 0,
-    createdAt: '',
-    updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
-  },
-];
+      isRead: data.unread_count === 0,
+      createdAt: data.last_message_at || data.created_at,
+    } : undefined,
+    unreadCount: data.unread_count || 0,
+    createdAt: data.created_at,
+    updatedAt: data.last_message_at || data.created_at,
+  };
+}
 
 export const MessagesScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadConversations = useCallback(async (showRefresh = false) => {
+    if (showRefresh) {
+      setIsRefreshing(true);
+    } else {
+      setIsLoading(true);
+    }
+    setError(null);
+
+    try {
+      const { conversations: data, error: apiError } = await fetchConversations();
+
+      if (apiError) {
+        setError('Failed to load messages');
+        console.error('Error loading conversations:', apiError);
+      } else {
+        const transformed = data.map(conv =>
+          transformConversationData(conv, user?.id || '')
+        );
+        setConversations(transformed);
+      }
+    } catch (err) {
+      setError('Something went wrong');
+      console.error('Error in loadConversations:', err);
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    loadConversations();
+  }, [loadConversations]);
+
+  // Refresh when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      loadConversations();
+    }, [loadConversations])
+  );
 
   const handleConversationPress = async (conversationId: string) => {
     await haptics.light();
     navigation.navigate('Chat', { conversationId });
   };
 
+  const handleRefresh = () => {
+    loadConversations(true);
+  };
+
   const formatTime = (dateStr: string) => {
+    if (!dateStr) return '';
     const date = new Date(dateStr);
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
@@ -131,6 +136,101 @@ export const MessagesScreen: React.FC = () => {
     if (diffHours < 24) return `${diffHours}h`;
     if (diffDays < 7) return `${diffDays}d`;
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
+  const filteredConversations = conversations.filter(conversation => {
+    if (!searchQuery.trim()) return true;
+    const participant = conversation.participants[0];
+    const name = `${participant.firstName} ${participant.lastName}`.toLowerCase();
+    return name.includes(searchQuery.toLowerCase());
+  });
+
+  const renderContent = () => {
+    if (isLoading && !isRefreshing) {
+      return (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary.blue} />
+          <Text style={styles.loadingText}>Loading messages...</Text>
+        </View>
+      );
+    }
+
+    if (error) {
+      return (
+        <View style={styles.errorContainer}>
+          <Ionicons name="alert-circle" size={48} color={colors.status.error} />
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={() => loadConversations()}>
+            <Text style={styles.retryText}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    if (filteredConversations.length === 0) {
+      return (
+        <View style={styles.emptyState}>
+          <View style={styles.emptyIcon}>
+            <Ionicons name="chatbubbles-outline" size={48} color={colors.text.tertiary} />
+          </View>
+          <Text style={styles.emptyTitle}>
+            {searchQuery ? 'No conversations found' : 'No messages yet'}
+          </Text>
+          <Text style={styles.emptySubtitle}>
+            {searchQuery
+              ? 'Try a different search term'
+              : 'Start a conversation by booking a companion'}
+          </Text>
+        </View>
+      );
+    }
+
+    return filteredConversations.map((conversation) => {
+      const participant = conversation.participants[0];
+      const hasUnread = conversation.unreadCount > 0;
+
+      return (
+        <TouchableOpacity
+          key={conversation.id}
+          style={styles.conversationItem}
+          onPress={() => handleConversationPress(conversation.id)}
+          activeOpacity={0.7}
+        >
+          <View style={styles.avatarContainer}>
+            <Avatar
+              source={participant.avatar}
+              name={participant.firstName}
+              size="medium"
+              showOnlineStatus={false}
+            />
+          </View>
+
+          <View style={styles.conversationContent}>
+            <View style={styles.conversationHeader}>
+              <Text style={[styles.participantName, hasUnread && styles.unreadName]}>
+                {participant.firstName} {participant.lastName}
+              </Text>
+              <Text style={[styles.timeText, hasUnread && styles.unreadTime]}>
+                {formatTime(conversation.updatedAt)}
+              </Text>
+            </View>
+            <View style={styles.messagePreview}>
+              <Text
+                style={[styles.messageText, hasUnread && styles.unreadMessage]}
+                numberOfLines={1}
+              >
+                {conversation.lastMessage?.content || 'No messages yet'}
+              </Text>
+              {hasUnread && (
+                <View style={styles.unreadBadge}>
+                  <Text style={styles.unreadCount}>{conversation.unreadCount}</Text>
+                </View>
+              )}
+            </View>
+          </View>
+        </TouchableOpacity>
+      );
+    });
   };
 
   return (
@@ -148,6 +248,11 @@ export const MessagesScreen: React.FC = () => {
             value={searchQuery}
             onChangeText={setSearchQuery}
           />
+          {searchQuery ? (
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <Ionicons name="close-circle" size={20} color={colors.text.tertiary} />
+            </TouchableOpacity>
+          ) : null}
         </View>
       </View>
 
@@ -155,66 +260,15 @@ export const MessagesScreen: React.FC = () => {
         style={styles.scrollView}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.primary.blue}
+          />
+        }
       >
-        {mockConversations.length === 0 ? (
-          <View style={styles.emptyState}>
-            <View style={styles.emptyIcon}>
-              <Ionicons name="chatbubbles-outline" size={48} color={colors.text.tertiary} />
-            </View>
-            <Text style={styles.emptyTitle}>No messages yet</Text>
-            <Text style={styles.emptySubtitle}>
-              Start a conversation by booking a companion
-            </Text>
-          </View>
-        ) : (
-          mockConversations.map((conversation) => {
-            const participant = conversation.participants[0];
-            const hasUnread = conversation.unreadCount > 0;
-
-            return (
-              <TouchableOpacity
-                key={conversation.id}
-                style={styles.conversationItem}
-                onPress={() => handleConversationPress(conversation.id)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.avatarContainer}>
-                  <Avatar
-                    source={participant.avatar}
-                    name={participant.firstName}
-                    size="medium"
-                    showOnlineStatus
-                    isOnline={participant.id === 'u1'}
-                  />
-                </View>
-
-                <View style={styles.conversationContent}>
-                  <View style={styles.conversationHeader}>
-                    <Text style={[styles.participantName, hasUnread && styles.unreadName]}>
-                      {participant.firstName}
-                    </Text>
-                    <Text style={[styles.timeText, hasUnread && styles.unreadTime]}>
-                      {formatTime(conversation.updatedAt)}
-                    </Text>
-                  </View>
-                  <View style={styles.messagePreview}>
-                    <Text
-                      style={[styles.messageText, hasUnread && styles.unreadMessage]}
-                      numberOfLines={1}
-                    >
-                      {conversation.lastMessage?.content}
-                    </Text>
-                    {hasUnread && (
-                      <View style={styles.unreadBadge}>
-                        <Text style={styles.unreadCount}>{conversation.unreadCount}</Text>
-                      </View>
-                    )}
-                  </View>
-                </View>
-              </TouchableOpacity>
-            );
-          })
-        )}
+        {renderContent()}
       </ScrollView>
     </View>
   );
@@ -253,6 +307,37 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingBottom: 100,
+  },
+  loadingContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.xxl * 2,
+  },
+  loadingText: {
+    ...typography.presets.body,
+    color: colors.text.secondary,
+    marginTop: spacing.md,
+  },
+  errorContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.xxl * 2,
+  },
+  errorText: {
+    ...typography.presets.body,
+    color: colors.text.secondary,
+    marginTop: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  retryButton: {
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.md,
+    backgroundColor: colors.primary.blue,
+    borderRadius: spacing.radius.md,
+  },
+  retryText: {
+    ...typography.presets.button,
+    color: colors.text.primary,
   },
   emptyState: {
     alignItems: 'center',

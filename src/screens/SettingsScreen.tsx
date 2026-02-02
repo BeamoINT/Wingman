@@ -158,18 +158,70 @@ export const SettingsScreen: React.FC = () => {
           icon: 'document-text',
           label: 'Terms of Service',
           type: 'link',
+          onPress: () => navigation.navigate('LegalDocument', { documentType: 'terms-of-service' }),
         },
         {
           id: 'privacy',
-          icon: 'shield',
+          icon: 'shield-checkmark',
           label: 'Privacy Policy',
           type: 'link',
+          onPress: () => navigation.navigate('LegalDocument', { documentType: 'privacy-policy' }),
         },
         {
-          id: 'licenses',
-          icon: 'code',
-          label: 'Open Source Licenses',
+          id: 'community',
+          icon: 'people',
+          label: 'Community Guidelines',
           type: 'link',
+          onPress: () => navigation.navigate('LegalDocument', { documentType: 'community-guidelines' }),
+        },
+        {
+          id: 'refund',
+          icon: 'card',
+          label: 'Refund Policy',
+          type: 'link',
+          onPress: () => navigation.navigate('LegalDocument', { documentType: 'refund-policy' }),
+        },
+        {
+          id: 'safety',
+          icon: 'warning',
+          label: 'Safety Disclaimer',
+          type: 'link',
+          onPress: () => navigation.navigate('LegalDocument', { documentType: 'safety-disclaimer' }),
+        },
+        {
+          id: 'cookies',
+          icon: 'analytics',
+          label: 'Cookie Policy',
+          type: 'link',
+          onPress: () => navigation.navigate('LegalDocument', { documentType: 'cookie-policy' }),
+        },
+        {
+          id: 'acceptable-use',
+          icon: 'checkmark-circle',
+          label: 'Acceptable Use Policy',
+          type: 'link',
+          onPress: () => navigation.navigate('LegalDocument', { documentType: 'acceptable-use' }),
+        },
+        {
+          id: 'copyright',
+          icon: 'copy',
+          label: 'DMCA & Copyright Policy',
+          type: 'link',
+          onPress: () => navigation.navigate('LegalDocument', { documentType: 'copyright-policy' }),
+        },
+        {
+          id: 'california',
+          icon: 'location',
+          label: 'California Privacy Notice',
+          type: 'link',
+          onPress: () => navigation.navigate('LegalDocument', { documentType: 'california-privacy' }),
+        },
+        {
+          id: 'esign',
+          icon: 'create',
+          label: 'Electronic Signature Consent',
+          type: 'link',
+          onPress: () => navigation.navigate('LegalDocument', { documentType: 'electronic-signature' }),
         },
       ],
     },
@@ -271,7 +323,7 @@ export const SettingsScreen: React.FC = () => {
         <View style={styles.appInfo}>
           <Text style={styles.appName}>Wingman</Text>
           <Text style={styles.appVersion}>Version 1.0.0</Text>
-          <Text style={styles.copyright}>© 2024 Wingman Inc.</Text>
+          <Text style={styles.copyright}>© 2026 Beamo LLC</Text>
         </View>
       </ScrollView>
     </View>
@@ -336,7 +388,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 10,
-    backgroundColor: 'rgba(78, 205, 196, 0.15)',
+    backgroundColor: colors.primary.blueSoft,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: spacing.md,

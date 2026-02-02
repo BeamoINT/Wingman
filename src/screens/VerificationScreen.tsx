@@ -52,14 +52,6 @@ const verificationSteps: VerificationStep[] = [
     status: 'in_progress',
     action: 'Continue',
   },
-  {
-    id: 'background',
-    title: 'Background Check',
-    description: 'Complete a background screening',
-    icon: 'shield-checkmark',
-    status: 'pending',
-    action: 'Start',
-  },
 ];
 
 export const VerificationScreen: React.FC = () => {
@@ -228,19 +220,6 @@ export const VerificationScreen: React.FC = () => {
               )}
             </Card>
           ))}
-        </View>
-
-        {/* Background Check Info */}
-        <View style={styles.section}>
-          <Card variant="outlined" style={styles.infoCard}>
-            <Ionicons name="information-circle" size={24} color={colors.primary.blue} />
-            <View style={styles.infoContent}>
-              <Text style={styles.infoTitle}>About Background Checks</Text>
-              <Text style={styles.infoDescription}>
-                Our background checks are conducted by a trusted third-party provider. The process typically takes 2-5 business days and includes criminal record, identity, and reference verification.
-              </Text>
-            </View>
-          </Card>
         </View>
 
         {/* Privacy Note */}

@@ -11,6 +11,7 @@ import type { MainTabParamList } from '../types';
 // Screens
 import { HomeScreen } from '../screens/HomeScreen';
 import { DiscoverScreen } from '../screens/DiscoverScreen';
+import { VerificationTabScreen } from '../screens/verification/VerificationTabScreen';
 import { BookingsScreen } from '../screens/BookingsScreen';
 import { MessagesScreen } from '../screens/MessagesScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
@@ -42,6 +43,9 @@ export const MainTabNavigator: React.FC = () => {
             case 'Discover':
               iconName = focused ? 'compass' : 'compass-outline';
               break;
+            case 'Verification':
+              iconName = focused ? 'shield-checkmark' : 'shield-checkmark-outline';
+              break;
             case 'Bookings':
               iconName = focused ? 'calendar' : 'calendar-outline';
               break;
@@ -70,6 +74,7 @@ export const MainTabNavigator: React.FC = () => {
     >
       <Tab.Screen name="Home" component={HomeScreen} />
       <Tab.Screen name="Discover" component={DiscoverScreen} />
+      <Tab.Screen name="Verification" component={VerificationTabScreen} />
       <Tab.Screen name="Bookings" component={BookingsScreen} />
       <Tab.Screen name="Messages" component={MessagesScreen} />
       <Tab.Screen name="Profile" component={ProfileScreen} />

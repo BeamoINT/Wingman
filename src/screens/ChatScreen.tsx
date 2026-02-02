@@ -17,7 +17,7 @@ import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 import { typography } from '../theme/typography';
 import { haptics } from '../utils/haptics';
-import { Avatar } from '../components';
+import { Avatar, RequirementsGate, EmptyChat } from '../components';
 import type { RootStackParamList, Message } from '../types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -27,7 +27,7 @@ const mockMessages: Message[] = [
   {
     id: '1',
     conversationId: '1',
-    sender: { id: 'u1', firstName: 'Sarah', lastName: 'J', email: '', isVerified: true, isBackgroundChecked: true, isPremium: true, createdAt: '' },
+    sender: { id: 'u1', firstName: 'Sarah', lastName: 'J', email: '', isVerified: true, isPremium: true, createdAt: '' },
     content: 'Hey! I saw you booked me for dinner on Friday. Looking forward to it! 🎉',
     type: 'text',
     isRead: true,
@@ -36,7 +36,7 @@ const mockMessages: Message[] = [
   {
     id: '2',
     conversationId: '1',
-    sender: { id: 'me', firstName: 'Me', lastName: '', email: '', isVerified: true, isBackgroundChecked: false, isPremium: false, createdAt: '' },
+    sender: { id: 'me', firstName: 'Me', lastName: '', email: '', isVerified: true, isPremium: false, createdAt: '' },
     content: 'Hi Sarah! Yes, I\'m excited too. I was thinking we could try that new Italian place downtown?',
     type: 'text',
     isRead: true,
@@ -45,7 +45,7 @@ const mockMessages: Message[] = [
   {
     id: '3',
     conversationId: '1',
-    sender: { id: 'u1', firstName: 'Sarah', lastName: 'J', email: '', isVerified: true, isBackgroundChecked: true, isPremium: true, createdAt: '' },
+    sender: { id: 'u1', firstName: 'Sarah', lastName: 'J', email: '', isVerified: true, isPremium: true, createdAt: '' },
     content: 'Oh I love Italian food! That sounds perfect. Do they take reservations?',
     type: 'text',
     isRead: true,
@@ -54,7 +54,7 @@ const mockMessages: Message[] = [
   {
     id: '4',
     conversationId: '1',
-    sender: { id: 'me', firstName: 'Me', lastName: '', email: '', isVerified: true, isBackgroundChecked: false, isPremium: false, createdAt: '' },
+    sender: { id: 'me', firstName: 'Me', lastName: '', email: '', isVerified: true, isPremium: false, createdAt: '' },
     content: 'Yes! I already made a reservation for 7pm. Is that time good for you?',
     type: 'text',
     isRead: true,
@@ -63,7 +63,7 @@ const mockMessages: Message[] = [
   {
     id: '5',
     conversationId: '1',
-    sender: { id: 'u1', firstName: 'Sarah', lastName: 'J', email: '', isVerified: true, isBackgroundChecked: true, isPremium: true, createdAt: '' },
+    sender: { id: 'u1', firstName: 'Sarah', lastName: 'J', email: '', isVerified: true, isPremium: true, createdAt: '' },
     content: '7pm works great! See you then 😊',
     type: 'text',
     isRead: true,
@@ -71,7 +71,10 @@ const mockMessages: Message[] = [
   },
 ];
 
-export const ChatScreen: React.FC = () => {
+/**
+ * Inner content component for the Chat screen
+ */
+const ChatScreenContent: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
   const flatListRef = useRef<FlatList>(null);
@@ -92,7 +95,7 @@ export const ChatScreen: React.FC = () => {
     const newMessage: Message = {
       id: Date.now().toString(),
       conversationId: '1',
-      sender: { id: 'me', firstName: 'Me', lastName: '', email: '', isVerified: true, isBackgroundChecked: false, isPremium: false, createdAt: '' },
+      sender: { id: 'me', firstName: 'Me', lastName: '', email: '', isVerified: true, isPremium: false, createdAt: '' },
       content: inputText.trim(),
       type: 'text',
       isRead: false,
@@ -181,7 +184,7 @@ export const ChatScreen: React.FC = () => {
       <View style={styles.safetyTip}>
         <Ionicons name="shield-checkmark" size={14} color={colors.primary.blue} />
         <Text style={styles.safetyTipText}>
-          Sarah is verified and background-checked
+          Sarah is ID-verified
         </Text>
       </View>
 
@@ -191,9 +194,13 @@ export const ChatScreen: React.FC = () => {
         data={messages}
         renderItem={renderMessage}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.messagesList}
+        contentContainerStyle={[
+          styles.messagesList,
+          messages.length === 0 && styles.emptyMessagesList,
+        ]}
         showsVerticalScrollIndicator={false}
-        onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
+        onContentSizeChange={() => messages.length > 0 && flatListRef.current?.scrollToEnd({ animated: false })}
+        ListEmptyComponent={<EmptyChat companionName="Sarah" />}
       />
 
       {/* Input */}
@@ -230,6 +237,27 @@ export const ChatScreen: React.FC = () => {
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
+  );
+};
+
+/**
+ * ChatScreen - Wrapped with RequirementsGate to enforce messaging requirements
+ *
+ * Requirements checked:
+ * - User is authenticated
+ * - Age confirmed (18+)
+ * - Terms and Privacy accepted
+ * - Email verified
+ * - ID verified
+ */
+export const ChatScreen: React.FC = () => {
+  return (
+    <RequirementsGate
+      feature="send_message"
+      modalTitle="Complete Requirements to Message"
+    >
+      <ChatScreenContent />
+    </RequirementsGate>
   );
 };
 
@@ -295,6 +323,10 @@ const styles = StyleSheet.create({
   messagesList: {
     padding: spacing.screenPadding,
     gap: spacing.sm,
+  },
+  emptyMessagesList: {
+    flex: 1,
+    justifyContent: 'center',
   },
   messageRow: {
     flexDirection: 'row',

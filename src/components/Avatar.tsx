@@ -13,7 +13,7 @@ interface AvatarProps {
   showOnlineStatus?: boolean;
   isOnline?: boolean;
   showVerified?: boolean;
-  verificationLevel?: 'basic' | 'verified' | 'background' | 'premium';
+  verificationLevel?: 'basic' | 'verified' | 'premium';
   style?: ViewStyle;
 }
 
@@ -48,8 +48,6 @@ export const Avatar: React.FC<AvatarProps> = ({
     switch (verificationLevel) {
       case 'premium':
         return colors.verification.premium;
-      case 'background':
-        return colors.verification.backgroundChecked;
       case 'verified':
         return colors.verification.verified;
       default:

@@ -15,7 +15,6 @@ export interface User {
   gender?: 'male' | 'female' | 'non-binary' | 'other' | 'prefer-not-to-say';
   location?: Location;
   isVerified: boolean;
-  isBackgroundChecked: boolean;
   isPremium: boolean;
   subscriptionTier?: SubscriptionTier;
   createdAt: string;
@@ -83,8 +82,7 @@ export interface Badge {
 export type VerificationLevel =
   | 'basic'        // Email verified
   | 'verified'     // ID verified
-  | 'background'   // Background check passed
-  | 'premium';     // Premium verified + background
+  | 'premium';     // Premium verified
 
 // Booking Types
 export interface Booking {
@@ -240,13 +238,29 @@ export const defaultSignupData: SignupData = {
   avatar: '',
 };
 
+// Legal Document Types (for navigation)
+export type LegalDocumentType =
+  | 'terms-of-service'
+  | 'privacy-policy'
+  | 'community-guidelines'
+  | 'cookie-policy'
+  | 'acceptable-use'
+  | 'refund-policy'
+  | 'safety-disclaimer'
+  | 'copyright-policy'
+  | 'california-privacy'
+  | 'electronic-signature'
+  | 'companion-agreement';
+
 // Navigation Types
 export type RootStackParamList = {
-  Splash: undefined;
   Welcome: undefined;
   SignIn: undefined;
   Signup: undefined;
+  VerifyEmail: undefined;
+  VerifyPhone: undefined;
   Tutorial: undefined;
+  Onboarding: undefined;
   Main: undefined;
   CompanionProfile: { companionId: string };
   Booking: { companionId: string };
@@ -258,12 +272,38 @@ export type RootStackParamList = {
   Safety: undefined;
   Verification: undefined;
   Notifications: undefined;
+  // Verification sub-screens (accessible from verification tab)
+  VerificationHistory: undefined;
+  VerificationPreferences: undefined;
+  // Legal screens
+  LegalDocument: { documentType: LegalDocumentType };
+  TermsOfService: undefined;
+  PrivacyPolicy: undefined;
+  // Friends feature screens
+  Friends: undefined;
+  FriendMatching: undefined;
+  SocialFeed: undefined;
+  Groups: undefined;
+  GroupDetail: { groupId: string };
+  Events: undefined;
+  EventDetail: { eventId: string };
 };
 
 export type MainTabParamList = {
   Home: undefined;
   Discover: undefined;
+  Verification: undefined;
   Bookings: undefined;
   Messages: undefined;
   Profile: undefined;
 };
+
+// Verification Stack Navigator Types
+export type VerificationStackParamList = {
+  VerificationMain: undefined;
+  VerificationHistory: undefined;
+  VerificationPreferences: undefined;
+};
+
+// Re-export verification types
+export * from './verification';

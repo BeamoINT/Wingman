@@ -30,7 +30,7 @@ interface FavoriteCompanion extends Companion {
 const mockFavorites: FavoriteCompanion[] = [
   {
     id: '1',
-    user: { id: 'u1', firstName: 'Sarah', lastName: 'Johnson', email: '', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400', isVerified: true, isBackgroundChecked: true, isPremium: true, createdAt: '' },
+    user: { id: 'u1', firstName: 'Sarah', lastName: 'Johnson', email: '', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400', isVerified: true,  isPremium: true, createdAt: '' },
     rating: 4.9, reviewCount: 127, hourlyRate: 45, specialties: ['dining', 'social-events', 'concerts'], languages: ['English', 'Spanish'], availability: [], isOnline: true, responseTime: '15 min', completedBookings: 89, badges: [], gallery: [], about: '', interests: ['Travel', 'Food', 'Music'], verificationLevel: 'premium',
     savedAt: '2 weeks ago',
     notes: 'Great for Italian restaurants',
@@ -39,15 +39,15 @@ const mockFavorites: FavoriteCompanion[] = [
   },
   {
     id: '2',
-    user: { id: 'u2', firstName: 'Michael', lastName: 'Chen', email: '', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400', isVerified: true, isBackgroundChecked: true, isPremium: false, createdAt: '' },
-    rating: 4.7, reviewCount: 64, hourlyRate: 35, specialties: ['coffee-chat', 'sports', 'movies'], languages: ['English', 'Mandarin'], availability: [], isOnline: false, responseTime: '30 min', completedBookings: 42, badges: [], gallery: [], about: '', interests: ['Tech', 'Sports', 'Coffee'], verificationLevel: 'background',
+    user: { id: 'u2', firstName: 'Michael', lastName: 'Chen', email: '', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400', isVerified: true,  isPremium: false, createdAt: '' },
+    rating: 4.7, reviewCount: 64, hourlyRate: 35, specialties: ['coffee-chat', 'sports', 'movies'], languages: ['English', 'Mandarin'], availability: [], isOnline: false, responseTime: '30 min', completedBookings: 42, badges: [], gallery: [], about: '', interests: ['Tech', 'Sports', 'Coffee'], verificationLevel: 'verified',
     savedAt: '1 month ago',
     lastBooked: 'Dec 20, 2023',
     bookingCount: 1,
   },
   {
     id: '3',
-    user: { id: 'u3', firstName: 'Emma', lastName: 'Wilson', email: '', avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=400', isVerified: true, isBackgroundChecked: true, isPremium: true, createdAt: '' },
+    user: { id: 'u3', firstName: 'Emma', lastName: 'Wilson', email: '', avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=400', isVerified: true,  isPremium: true, createdAt: '' },
     rating: 4.8, reviewCount: 89, hourlyRate: 40, specialties: ['concerts', 'movies', 'emotional-support'], languages: ['English', 'French'], availability: [], isOnline: true, responseTime: '1 hour', completedBookings: 56, badges: [], gallery: [], about: '', interests: ['Music', 'Art', 'Reading'], verificationLevel: 'premium',
     savedAt: '3 days ago',
     bookingCount: 0,

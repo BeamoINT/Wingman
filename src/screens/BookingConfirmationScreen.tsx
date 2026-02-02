@@ -157,7 +157,7 @@ export const BookingConfirmationScreen: React.FC = () => {
             variant="outline"
             size="large"
             fullWidth
-            icon={<Ionicons name="chatbubble-outline" size={18} color={colors.primary.blue} />}
+            icon="chatbubble-outline"
           />
           <Button
             title="View My Bookings"

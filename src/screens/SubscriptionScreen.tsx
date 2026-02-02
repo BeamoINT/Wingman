@@ -20,6 +20,11 @@ import type { RootStackParamList, Subscription, SubscriptionTier } from '../type
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
+/**
+ * Subscription tiers for the "Find New Friends" feature
+ * NOTE: Companion booking is FREE for all users (10% platform fee)
+ * Subscriptions are ONLY for the Friends feature
+ */
 const subscriptions: Subscription[] = [
   {
     id: 'free',
@@ -27,12 +32,12 @@ const subscriptions: Subscription[] = [
     price: 0,
     billingPeriod: 'monthly',
     features: [
-      { name: 'Browse companions', description: '', included: true },
-      { name: '2 bookings per month', description: '', included: true },
+      { name: 'Unlimited companion bookings', description: '', included: true },
+      { name: 'Browse Friends profiles', description: '', included: true },
       { name: 'Basic messaging', description: '', included: true },
       { name: 'Friend matching', description: '', included: false },
-      { name: 'Priority support', description: '', included: false },
-      { name: 'Exclusive events', description: '', included: false },
+      { name: 'Join groups', description: '', included: false },
+      { name: 'Create events', description: '', included: false },
     ],
   },
   {
@@ -41,12 +46,12 @@ const subscriptions: Subscription[] = [
     price: 14.99,
     billingPeriod: 'monthly',
     features: [
-      { name: 'Browse companions', description: '', included: true },
-      { name: '10 bookings per month', description: '', included: true },
-      { name: 'Unlimited messaging', description: '', included: true },
-      { name: 'Friend matching (5/month)', description: '', included: true },
-      { name: 'Priority support', description: '', included: false },
-      { name: 'Exclusive events', description: '', included: false },
+      { name: 'Unlimited companion bookings', description: '', included: true },
+      { name: '5 friend matches/month', description: '', included: true },
+      { name: 'Join up to 3 groups', description: '', included: true },
+      { name: 'View social feed', description: '', included: true },
+      { name: 'Post to feed', description: '', included: false },
+      { name: 'Create events', description: '', included: false },
     ],
     isPopular: true,
   },
@@ -56,12 +61,12 @@ const subscriptions: Subscription[] = [
     price: 29.99,
     billingPeriod: 'monthly',
     features: [
-      { name: 'Browse companions', description: '', included: true },
-      { name: 'Unlimited bookings', description: '', included: true },
-      { name: 'Unlimited messaging', description: '', included: true },
-      { name: 'Unlimited friend matching', description: '', included: true },
+      { name: 'Unlimited companion bookings', description: '', included: true },
+      { name: 'Unlimited friend matches', description: '', included: true },
+      { name: 'Unlimited groups', description: '', included: true },
+      { name: 'Post to feed', description: '', included: true },
       { name: 'Priority support', description: '', included: true },
-      { name: 'Exclusive events', description: '', included: false },
+      { name: 'Create events', description: '', included: false },
     ],
   },
   {
@@ -71,10 +76,10 @@ const subscriptions: Subscription[] = [
     billingPeriod: 'monthly',
     features: [
       { name: 'Everything in Premium', description: '', included: true },
-      { name: 'VIP companion access', description: '', included: true },
-      { name: 'Concierge service', description: '', included: true },
-      { name: 'All exclusive events', description: '', included: true },
+      { name: 'Create and host events', description: '', included: true },
       { name: 'Priority matching', description: '', included: true },
+      { name: 'VIP badge on profile', description: '', included: true },
+      { name: 'Concierge service', description: '', included: true },
       { name: 'Personal account manager', description: '', included: true },
     ],
   },
@@ -89,7 +94,7 @@ const friendMatchingBenefits = [
   {
     icon: 'shield-checkmark-outline',
     title: 'Safe & Verified',
-    description: 'All members are background-checked and verified',
+    description: 'All members are ID-verified for your safety',
   },
   {
     icon: 'people-outline',
@@ -149,7 +154,7 @@ export const SubscriptionScreen: React.FC = () => {
           <Ionicons name="star" size={40} color={colors.primary.darkBlack} />
           <Text style={styles.heroTitle}>Upgrade Your Experience</Text>
           <Text style={styles.heroSubtitle}>
-            Unlock unlimited bookings and start making real friends
+            Unlock the Find New Friends feature and start making real connections
           </Text>
         </LinearGradient>
 
@@ -230,9 +235,9 @@ export const SubscriptionScreen: React.FC = () => {
         <View style={styles.guaranteeSection}>
           <Ionicons name="shield-checkmark" size={24} color={colors.status.success} />
           <View style={styles.guaranteeText}>
-            <Text style={styles.guaranteeTitle}>100% Safety Guarantee</Text>
+            <Text style={styles.guaranteeTitle}>Safe & Secure</Text>
             <Text style={styles.guaranteeDescription}>
-              All members undergo thorough background checks. Cancel anytime.
+              All members are ID-verified. Cancel your subscription anytime.
             </Text>
           </View>
         </View>

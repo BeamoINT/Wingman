@@ -74,9 +74,9 @@ export const CompanionCard: React.FC<CompanionCardProps> = ({
           <Rating rating={companion.rating} reviewCount={companion.reviewCount} size="small" />
           <Text style={styles.compactRate}>${companion.hourlyRate}/hr</Text>
         </View>
-        {companion.verificationLevel === 'background' || companion.verificationLevel === 'premium' ? (
+        {companion.verificationLevel === 'verified' || companion.verificationLevel === 'premium' ? (
           <View style={styles.verifiedIcon}>
-            <Ionicons name="shield-checkmark" size={16} color={colors.verification.backgroundChecked} />
+            <Ionicons name="shield-checkmark" size={16} color={colors.verification.verified} />
           </View>
         ) : null}
       </TouchableOpacity>
@@ -103,8 +103,8 @@ export const CompanionCard: React.FC<CompanionCardProps> = ({
               {companion.verificationLevel === 'premium' && (
                 <Badge label="Premium" variant="premium" icon="star" />
               )}
-              {(companion.verificationLevel === 'background' || companion.verificationLevel === 'premium') && (
-                <Badge label="Background Checked" variant="verified" icon="shield-checkmark" />
+              {(companion.verificationLevel === 'verified' || companion.verificationLevel === 'premium') && (
+                <Badge label="ID Verified" variant="verified" icon="shield-checkmark" />
               )}
             </View>
             <Text style={styles.featuredName}>
@@ -160,8 +160,8 @@ export const CompanionCard: React.FC<CompanionCardProps> = ({
       <View style={styles.info}>
         <View style={styles.header}>
           <Text style={styles.name}>{companion.user.firstName}</Text>
-          {(companion.verificationLevel === 'background' || companion.verificationLevel === 'premium') && (
-            <Ionicons name="shield-checkmark" size={14} color={colors.verification.backgroundChecked} />
+          {(companion.verificationLevel === 'verified' || companion.verificationLevel === 'premium') && (
+            <Ionicons name="shield-checkmark" size={14} color={colors.verification.verified} />
           )}
         </View>
 

@@ -30,3 +30,32 @@ export { ScreenTransition } from './ScreenTransition';
 // Overlay Components
 export { BottomSheet } from './BottomSheet';
 export { Toast } from './Toast';
+
+// Verification Components
+export {
+  VerificationStatusCard,
+  VerificationStepItem,
+} from './verification';
+
+// Security Components
+export { RequirementsGate, useFeatureGate } from './RequirementsGate';
+
+// Error Handling Components
+export { ErrorBoundary } from './ErrorBoundary';
+export { ErrorFallback } from './ErrorFallback';
+
+// Loading & Empty State Components
+export { LoadingOverlay, LoadingIndicator, LoadingScreen } from './LoadingOverlay';
+export {
+  EmptyState,
+  EmptySearchResults,
+  EmptyMessages,
+  EmptyBookings,
+  EmptyNotifications,
+  EmptyFavorites,
+  EmptyFeed,
+  EmptyChat,
+} from './EmptyState';
+
+// Network Components
+export { OfflineBanner } from './OfflineBanner';
