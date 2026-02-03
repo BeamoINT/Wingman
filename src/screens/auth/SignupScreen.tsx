@@ -324,6 +324,7 @@ export const SignupScreen: React.FC = () => {
               keyboardType="email-address"
               autoCapitalize="none"
               autoComplete="email"
+              textContentType="emailAddress"
               leftIcon="mail-outline"
             />
 
@@ -334,6 +335,8 @@ export const SignupScreen: React.FC = () => {
               onChangeText={(text) => updateSignupData({ password: text })}
               secureTextEntry={!showPassword}
               autoCapitalize="none"
+              autoComplete="new-password"
+              textContentType="newPassword"
               leftIcon="lock-closed-outline"
               rightIcon={showPassword ? 'eye-off-outline' : 'eye-outline'}
               onRightIconPress={() => setShowPassword(!showPassword)}
@@ -347,6 +350,8 @@ export const SignupScreen: React.FC = () => {
               onChangeText={setConfirmPassword}
               secureTextEntry={!showPassword}
               autoCapitalize="none"
+              autoComplete="new-password"
+              textContentType="newPassword"
               leftIcon="lock-closed-outline"
             />
 
@@ -444,6 +449,8 @@ export const SignupScreen: React.FC = () => {
               onChangeText={(text) => updateSignupData({ firstName: text })}
               autoCapitalize="words"
               autoCorrect={false}
+              autoComplete="given-name"
+              textContentType="givenName"
               leftIcon="person-outline"
             />
 
@@ -454,6 +461,8 @@ export const SignupScreen: React.FC = () => {
               onChangeText={(text) => updateSignupData({ lastName: text })}
               autoCapitalize="words"
               autoCorrect={false}
+              autoComplete="family-name"
+              textContentType="familyName"
               leftIcon="person-outline"
             />
 
@@ -464,6 +473,8 @@ export const SignupScreen: React.FC = () => {
               onChangeText={(text) => updateSignupData({ dateOfBirth: text })}
               keyboardType="default"
               autoCorrect={false}
+              autoComplete="off"
+              textContentType="none"
               leftIcon="calendar-outline"
             />
 
@@ -485,6 +496,8 @@ export const SignupScreen: React.FC = () => {
               value={signupData.phone}
               onChangeText={(text) => updateSignupData({ phone: text })}
               keyboardType="phone-pad"
+              autoComplete="tel"
+              textContentType="telephoneNumber"
               leftIcon="call-outline"
             />
           </View>
@@ -502,6 +515,8 @@ export const SignupScreen: React.FC = () => {
               value={signupData.city}
               onChangeText={(text) => updateSignupData({ city: text })}
               autoCapitalize="words"
+              autoComplete="postal-address-locality"
+              textContentType="addressCity"
               leftIcon="location-outline"
             />
 
@@ -511,6 +526,8 @@ export const SignupScreen: React.FC = () => {
               value={signupData.state}
               onChangeText={(text) => updateSignupData({ state: text })}
               autoCapitalize="words"
+              autoComplete="postal-address-region"
+              textContentType="addressState"
               leftIcon="map-outline"
             />
 
@@ -520,6 +537,8 @@ export const SignupScreen: React.FC = () => {
               value={signupData.country}
               onChangeText={(text) => updateSignupData({ country: text })}
               autoCapitalize="words"
+              autoComplete="country"
+              textContentType="countryName"
               leftIcon="globe-outline"
             />
           </View>
@@ -674,7 +693,10 @@ export const SignupScreen: React.FC = () => {
   };
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
       <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}>
         <TouchableOpacity style={styles.backButton} onPress={handleBack}>
           <Ionicons name="chevron-back" size={24} color={colors.text.primary} />
@@ -715,7 +737,7 @@ export const SignupScreen: React.FC = () => {
           </TouchableOpacity>
         )}
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 };
 
