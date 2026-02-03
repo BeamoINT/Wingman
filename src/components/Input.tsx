@@ -12,7 +12,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 import { typography } from '../theme/typography';
-import { haptics } from '../utils/haptics';
 
 interface InputProps extends TextInputProps {
   label?: string;
@@ -39,8 +38,7 @@ export const Input: React.FC<InputProps> = ({
 }) => {
   const [isFocused, setIsFocused] = useState(false);
 
-  const handleFocus: TextInputProps['onFocus'] = async (e) => {
-    await haptics.selection();
+  const handleFocus: TextInputProps['onFocus'] = (e) => {
     setIsFocused(true);
     props.onFocus?.(e);
   };
@@ -64,32 +62,40 @@ export const Input: React.FC<InputProps> = ({
           isFocused && styles.inputFocused,
           error && styles.inputError,
         ]}
+        pointerEvents="auto"
       >
         {leftIcon && (
-          <Ionicons
-            name={leftIcon}
-            size={20}
-            color={isFocused ? colors.primary.blue : colors.text.tertiary}
-            style={styles.leftIcon}
-          />
+          <View pointerEvents="none">
+            <Ionicons
+              name={leftIcon}
+              size={20}
+              color={isFocused ? colors.primary.blue : colors.text.tertiary}
+              style={styles.leftIcon}
+            />
+          </View>
         )}
 
         <TextInput
+          {...props}
           style={[
             styles.input,
             leftIcon && styles.inputWithLeftIcon,
             rightIcon && styles.inputWithRightIcon,
           ]}
           placeholderTextColor={colors.text.tertiary}
+          selectionColor={colors.primary.blue}
+          cursorColor={colors.primary.blue}
           onFocus={handleFocus}
           onBlur={handleBlur}
+          editable={true}
+          selectTextOnFocus={false}
+          contextMenuHidden={false}
           accessibilityLabel={label}
           accessibilityHint={error || hint}
           accessibilityState={{
             disabled: props.editable === false,
           }}
           testID={testID}
-          {...props}
         />
 
         {rightIcon && (

@@ -230,8 +230,8 @@ const BookingScreenContent: React.FC = () => {
                   styles.dateCard,
                   selectedDate === index && styles.dateCardSelected,
                 ]}
-                onPress={() => {
-                  haptics.selection();
+                onPress={async () => {
+                  await haptics.selection();
                   setSelectedDate(index);
                 }}
               >
@@ -260,8 +260,8 @@ const BookingScreenContent: React.FC = () => {
                   styles.timeSlot,
                   selectedTime === time && styles.timeSlotSelected,
                 ]}
-                onPress={() => {
-                  haptics.selection();
+                onPress={async () => {
+                  await haptics.selection();
                   setSelectedTime(time);
                 }}
               >
@@ -287,8 +287,8 @@ const BookingScreenContent: React.FC = () => {
                   styles.durationCard,
                   selectedDuration === duration.hours && styles.durationCardSelected,
                 ]}
-                onPress={() => {
-                  haptics.selection();
+                onPress={async () => {
+                  await haptics.selection();
                   setSelectedDuration(duration.hours);
                 }}
               >
@@ -320,8 +320,8 @@ const BookingScreenContent: React.FC = () => {
                   styles.activityCard,
                   selectedActivity === activity.id && styles.activityCardSelected,
                 ]}
-                onPress={() => {
-                  haptics.selection();
+                onPress={async () => {
+                  await haptics.selection();
                   setSelectedActivity(activity.id);
                 }}
               >

@@ -69,11 +69,11 @@ export const Button: React.FC<ButtonProps> = ({
 
   const handlePressIn = useCallback(() => {
     pressed.value = withSpring(1, { damping: 15, stiffness: 300 });
-  }, []);
+  }, [pressed]);
 
   const handlePressOut = useCallback(() => {
     pressed.value = withSpring(0, { damping: 20, stiffness: 200 });
-  }, []);
+  }, [pressed]);
 
   const handlePress = useCallback(async () => {
     if (isDisabled) return;

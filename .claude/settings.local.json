@@ -19,7 +19,9 @@
       "Bash(echo:*)",
       "Bash(npx supabase secrets set:*)",
       "Bash(npx supabase:*)",
-      "Bash(export:*)"
+      "Bash(export:*)",
+      "Bash(npm run lint:*)",
+      "Bash(npx tsc:*)"
     ]
   }
 }

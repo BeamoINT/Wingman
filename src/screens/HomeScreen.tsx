@@ -160,25 +160,25 @@ export const HomeScreen: React.FC = () => {
 
         {/* Quick Actions */}
         <View style={styles.quickActions}>
-          <TouchableOpacity style={styles.quickAction} onPress={() => haptics.light()}>
+          <TouchableOpacity style={styles.quickAction} onPress={async () => await haptics.light()}>
             <View style={[styles.quickActionIcon, { backgroundColor: 'rgba(78, 205, 196, 0.15)' }]}>
               <Ionicons name="search" size={20} color={colors.primary.blue} />
             </View>
             <Text style={styles.quickActionText}>Find Now</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.quickAction} onPress={() => haptics.light()}>
+          <TouchableOpacity style={styles.quickAction} onPress={async () => await haptics.light()}>
             <View style={[styles.quickActionIcon, { backgroundColor: 'rgba(255, 215, 0, 0.15)' }]}>
               <Ionicons name="calendar" size={20} color={colors.primary.gold} />
             </View>
             <Text style={styles.quickActionText}>Schedule</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.quickAction} onPress={() => haptics.light()}>
+          <TouchableOpacity style={styles.quickAction} onPress={async () => await haptics.light()}>
             <View style={[styles.quickActionIcon, { backgroundColor: 'rgba(167, 139, 250, 0.15)' }]}>
               <Ionicons name="people" size={20} color={colors.verification.trusted} />
             </View>
             <Text style={styles.quickActionText}>Friends</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.quickAction} onPress={() => haptics.light()}>
+          <TouchableOpacity style={styles.quickAction} onPress={async () => await haptics.light()}>
             <View style={[styles.quickActionIcon, { backgroundColor: 'rgba(74, 222, 128, 0.15)' }]}>
               <Ionicons name="shield" size={20} color={colors.status.success} />
             </View>
@@ -211,7 +211,7 @@ export const HomeScreen: React.FC = () => {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Featured Companion</Text>
-            <TouchableOpacity onPress={() => haptics.light()}>
+            <TouchableOpacity onPress={async () => await haptics.light()}>
               <Text style={styles.seeAllText}>See all</Text>
             </TouchableOpacity>
           </View>
@@ -231,7 +231,7 @@ export const HomeScreen: React.FC = () => {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Available Now</Text>
-            <TouchableOpacity onPress={() => haptics.light()}>
+            <TouchableOpacity onPress={async () => await haptics.light()}>
               <Text style={styles.seeAllText}>See all</Text>
             </TouchableOpacity>
           </View>
@@ -265,7 +265,7 @@ export const HomeScreen: React.FC = () => {
               <TouchableOpacity
                 key={index}
                 style={styles.categoryCard}
-                onPress={() => haptics.light()}
+                onPress={async () => await haptics.light()}
               >
                 <View style={[styles.categoryIcon, { backgroundColor: `${category.color}20` }]}>
                   <Ionicons name={category.icon as any} size={24} color={category.color} />

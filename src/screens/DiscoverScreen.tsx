@@ -236,7 +236,7 @@ export const DiscoverScreen: React.FC = () => {
               <Ionicons name="close-circle" size={20} color={colors.text.tertiary} />
             </TouchableOpacity>
           ) : (
-            <TouchableOpacity style={styles.filterButton} onPress={() => haptics.light()}>
+            <TouchableOpacity style={styles.filterButton} onPress={async () => await haptics.light()}>
               <Ionicons name="options" size={20} color={colors.primary.blue} />
             </TouchableOpacity>
           )}
@@ -293,7 +293,7 @@ export const DiscoverScreen: React.FC = () => {
             <Text style={styles.resultsCount}>
               {companions.length} companion{companions.length !== 1 ? 's' : ''} available
             </Text>
-            <TouchableOpacity style={styles.sortButton} onPress={() => haptics.light()}>
+            <TouchableOpacity style={styles.sortButton} onPress={async () => await haptics.light()}>
               <Text style={styles.sortText}>Sort by: Rating</Text>
               <Ionicons name="chevron-down" size={16} color={colors.text.tertiary} />
             </TouchableOpacity>

@@ -106,8 +106,8 @@ export const ProfileScreen: React.FC = () => {
         {/* Profile Card */}
         <TouchableOpacity
           activeOpacity={0.8}
-          onPress={() => {
-            haptics.light();
+          onPress={async () => {
+            await haptics.light();
             // Navigate to edit profile
           }}
         >
@@ -150,7 +150,7 @@ export const ProfileScreen: React.FC = () => {
         </TouchableOpacity>
 
         {/* Become a Companion */}
-        <TouchableOpacity activeOpacity={0.9} onPress={() => haptics.medium()}>
+        <TouchableOpacity activeOpacity={0.9} onPress={async () => await haptics.medium()}>
           <LinearGradient
             colors={colors.gradients.premium}
             start={{ x: 0, y: 0 }}
@@ -203,7 +203,7 @@ export const ProfileScreen: React.FC = () => {
         {/* Logout */}
         <TouchableOpacity
           style={styles.logoutButton}
-          onPress={() => haptics.warning()}
+          onPress={async () => await haptics.warning()}
         >
           <Ionicons name="log-out-outline" size={20} color={colors.status.error} />
           <Text style={styles.logoutText}>Log Out</Text>

@@ -285,17 +285,26 @@ export const SignupScreen: React.FC = () => {
       return;
     }
 
-    // Launch image picker
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
-    });
+    try {
+      // Launch image picker
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
 
-    if (!result.canceled && result.assets[0]) {
-      updateSignupData({ avatar: result.assets[0].uri });
-      await haptics.success();
+      if (!result.canceled && result.assets[0]) {
+        updateSignupData({ avatar: result.assets[0].uri });
+        await haptics.success();
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Alert.alert(
+        'Error',
+        'Failed to select image. Please try again.',
+        [{ text: 'OK' }]
+      );
     }
   };
 
@@ -431,27 +440,30 @@ export const SignupScreen: React.FC = () => {
             <Input
               label="First Name"
               placeholder="Enter your first name"
-              value={signupData.firstName}
+              value={signupData.firstName || ''}
               onChangeText={(text) => updateSignupData({ firstName: text })}
               autoCapitalize="words"
+              autoCorrect={false}
               leftIcon="person-outline"
             />
 
             <Input
               label="Last Name"
               placeholder="Enter your last name"
-              value={signupData.lastName}
+              value={signupData.lastName || ''}
               onChangeText={(text) => updateSignupData({ lastName: text })}
               autoCapitalize="words"
+              autoCorrect={false}
               leftIcon="person-outline"
             />
 
             <Input
               label="Date of Birth"
               placeholder="MM/DD/YYYY"
-              value={signupData.dateOfBirth}
+              value={signupData.dateOfBirth || ''}
               onChangeText={(text) => updateSignupData({ dateOfBirth: text })}
-              keyboardType="numbers-and-punctuation"
+              keyboardType="default"
+              autoCorrect={false}
               leftIcon="calendar-outline"
             />
 
@@ -662,10 +674,7 @@ export const SignupScreen: React.FC = () => {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
+    <View style={styles.container}>
       <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}>
         <TouchableOpacity style={styles.backButton} onPress={handleBack}>
           <Ionicons name="chevron-back" size={24} color={colors.text.primary} />
@@ -678,7 +687,8 @@ export const SignupScreen: React.FC = () => {
       <ScrollView
         ref={scrollRef}
         contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
+        keyboardShouldPersistTaps="always"
+        keyboardDismissMode="interactive"
         showsVerticalScrollIndicator={false}
       >
         {renderStepContent()}
@@ -705,7 +715,7 @@ export const SignupScreen: React.FC = () => {
           </TouchableOpacity>
         )}
       </View>
-    </KeyboardAvoidingView>
+    </View>
   );
 };
 
