@@ -76,20 +76,19 @@ export const Input: React.FC<InputProps> = ({
         )}
 
         <TextInput
+          placeholderTextColor={colors.text.tertiary}
+          selectionColor={colors.primary.blue}
+          cursorColor={colors.primary.blue}
           {...props}
           style={[
             styles.input,
             leftIcon && styles.inputWithLeftIcon,
             rightIcon && styles.inputWithRightIcon,
+            props.style,
           ]}
-          placeholderTextColor={colors.text.tertiary}
-          selectionColor={colors.primary.blue}
-          cursorColor={colors.primary.blue}
           onFocus={handleFocus}
           onBlur={handleBlur}
-          editable={true}
-          selectTextOnFocus={false}
-          contextMenuHidden={false}
+          editable={props.editable !== false}
           accessibilityLabel={label}
           accessibilityHint={error || hint}
           accessibilityState={{
