@@ -207,6 +207,7 @@ export interface SignupData {
   city: string;
   state: string;
   country: string;
+  countryCode?: string;
 
   // Step 4: Interests
   interests: CompanionSpecialty[];
@@ -231,6 +232,7 @@ export const defaultSignupData: SignupData = {
   city: '',
   state: '',
   country: '',
+  countryCode: '',
   interests: [],
   bio: '',
   lookingFor: [],
@@ -307,3 +309,6 @@ export type VerificationStackParamList = {
 
 // Re-export verification types
 export * from './verification';
+
+// Re-export location types
+export * from './location';

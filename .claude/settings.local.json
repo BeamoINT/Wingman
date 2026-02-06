@@ -21,7 +21,8 @@
       "Bash(npx supabase:*)",
       "Bash(export:*)",
       "Bash(npm run lint:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(SUPABASE_ACCESS_TOKEN=sbp_589777e04c7e594a16883dc834e929c0b9c030d5 npx supabase:*)"
     ]
   }
 }

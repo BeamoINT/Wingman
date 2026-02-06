@@ -18,13 +18,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
-import { Button, Input, ProgressBar, SelectableChip } from '../../components';
+import { Button, Input, ProgressBar, SelectableChip, LocationPicker } from '../../components';
 import { colors } from '../../theme/colors';
 import { spacing } from '../../theme/spacing';
 import { typography } from '../../theme/typography';
 import { haptics } from '../../utils/haptics';
 import { useAuth } from '../../context/AuthContext';
-import type { RootStackParamList, CompanionSpecialty, Gender } from '../../types';
+import type { RootStackParamList, CompanionSpecialty, Gender, LocationData } from '../../types';
 
 const { width } = Dimensions.get('window');
 const TOTAL_STEPS = 7;
@@ -509,37 +509,21 @@ export const SignupScreen: React.FC = () => {
             <Text style={styles.stepTitle}>Where are you located?</Text>
             <Text style={styles.stepSubtitle}>Help us find companions near you</Text>
 
-            <Input
-              label="City"
-              placeholder="Enter your city"
-              value={signupData.city}
-              onChangeText={(text) => updateSignupData({ city: text })}
-              autoCapitalize="words"
-              autoComplete="postal-address-locality"
-              textContentType="addressCity"
-              leftIcon="location-outline"
-            />
-
-            <Input
-              label="State/Region (Optional)"
-              placeholder="Enter your state or region"
-              value={signupData.state}
-              onChangeText={(text) => updateSignupData({ state: text })}
-              autoCapitalize="words"
-              autoComplete="postal-address-region"
-              textContentType="addressState"
-              leftIcon="map-outline"
-            />
-
-            <Input
-              label="Country"
-              placeholder="Enter your country"
-              value={signupData.country}
-              onChangeText={(text) => updateSignupData({ country: text })}
-              autoCapitalize="words"
-              autoComplete="country"
-              textContentType="countryName"
-              leftIcon="globe-outline"
+            <LocationPicker
+              value={{
+                city: signupData.city,
+                state: signupData.state || undefined,
+                country: signupData.country,
+                countryCode: signupData.countryCode || '',
+              }}
+              onChange={(location: LocationData) => {
+                updateSignupData({
+                  city: location.city,
+                  state: location.state || '',
+                  country: location.country,
+                  countryCode: location.countryCode,
+                });
+              }}
             />
           </View>
         );

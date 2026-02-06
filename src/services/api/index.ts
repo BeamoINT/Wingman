@@ -3,3 +3,4 @@
  */
 
 export * from './verificationApi';
+export * from './locationApi';

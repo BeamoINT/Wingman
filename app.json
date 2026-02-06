@@ -21,7 +21,8 @@
         "UIBackgroundModes": [
           "fetch",
           "remote-notification"
-        ]
+        ],
+        "NSLocationWhenInUseUsageDescription": "Wingman needs your location to find companions near you and auto-fill your location during signup."
       }
     },
     "android": {
@@ -29,13 +30,23 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0A0A0F"
       },
-      "package": "com.wingman.app"
+      "package": "com.wingman.app",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-font"
+      "expo-font",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Wingman needs your location to find companions near you and auto-fill your location during signup."
+        }
+      ]
     ]
   }
 }
