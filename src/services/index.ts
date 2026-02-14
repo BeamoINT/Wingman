@@ -9,3 +9,4 @@ export { supabase, getAuthToken, invokeEdgeFunction } from './supabase';
 
 // API Services
 export * from './api/verificationApi';
+export { fetchCompanions } from './companionsApi';

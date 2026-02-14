@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import { Pressable, PressableProps, StyleProp, ViewStyle } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -32,6 +32,17 @@ export const AnimatedPressable: React.FC<AnimatedPressableProps> = ({
   ...props
 }) => {
   const pressed = useSharedValue(0);
+  const scaleShared = useSharedValue(scaleValue);
+  // 0 = scale, 1 = opacity, 2 = both
+  const animTypeShared = useSharedValue(animationType === 'scale' ? 0 : animationType === 'opacity' ? 1 : 2);
+
+  useEffect(() => {
+    scaleShared.value = scaleValue;
+  }, [scaleValue]);
+
+  useEffect(() => {
+    animTypeShared.value = animationType === 'scale' ? 0 : animationType === 'opacity' ? 1 : 2;
+  }, [animationType]);
 
   const handlePressIn = useCallback((e: any) => {
     pressed.value = withSpring(1, springConfigs.quick);
@@ -47,13 +58,13 @@ export const AnimatedPressable: React.FC<AnimatedPressableProps> = ({
   }, [onPressOut]);
 
   const animatedStyle = useAnimatedStyle(() => {
-    const scale = interpolate(pressed.value, [0, 1], [1, scaleValue]);
+    const scale = interpolate(pressed.value, [0, 1], [1, scaleShared.value]);
     const opacity = interpolate(pressed.value, [0, 1], [1, 0.8]);
 
-    if (animationType === 'scale') {
+    if (animTypeShared.value === 0) {
       return { transform: [{ scale }] };
     }
-    if (animationType === 'opacity') {
+    if (animTypeShared.value === 1) {
       return { opacity };
     }
     return {

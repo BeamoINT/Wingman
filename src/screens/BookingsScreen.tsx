@@ -62,7 +62,7 @@ function transformBookingData(data: BookingData): Booking {
       verificationLevel: user?.verification_level as any || 'basic',
     },
     user: {} as any,
-    status: data.status as Booking['status'],
+    status: data.status.replace(/_/g, '-') as Booking['status'],
     date: data.date,
     startTime: data.start_time,
     endTime: data.end_time || '',

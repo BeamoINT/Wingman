@@ -91,7 +91,7 @@ export const ScreenTransition: React.FC<ScreenTransitionProps> = ({
 
       default:
         return {
-          opacity: progress.value,
+          opacity: interpolate(progress.value, [0, 1], [0, 1], Extrapolation.CLAMP),
         };
     }
   });

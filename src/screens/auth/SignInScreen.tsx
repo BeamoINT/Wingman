@@ -20,7 +20,6 @@ import { spacing } from '../../theme/spacing';
 import { typography } from '../../theme/typography';
 import { haptics } from '../../utils/haptics';
 import { useAuth } from '../../context/AuthContext';
-import { supabase } from '../../services/supabase';
 import type { RootStackParamList } from '../../types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'SignIn'>;
@@ -57,19 +56,21 @@ export const SignInScreen: React.FC = () => {
     setLoading(true);
     setError('');
 
-    const result = await signIn(email, password);
-    if (result.success) {
-      await haptics.success();
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'Main' }],
-      });
-    } else {
-      setError(result.error || 'Invalid email or password');
-      await haptics.error();
+    try {
+      const result = await signIn(email, password);
+      if (result.success) {
+        await haptics.success();
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'Main' }],
+        });
+      } else {
+        setError(result.error || 'Invalid email or password');
+        await haptics.error();
+      }
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   const handleBack = async () => {
@@ -133,35 +134,13 @@ export const SignInScreen: React.FC = () => {
   };
 
   const handleForgotPassword = async () => {
-    if (!email.trim()) {
-      setError('Please enter your email first');
-      await haptics.warning();
-      return;
-    }
+    await haptics.light();
+    navigation.navigate('ForgotPassword', { email: email.trim() || undefined });
+  };
 
-    setLoading(true);
-    setError('');
-
-    try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email);
-
-      if (error) {
-        setError(error.message);
-        await haptics.error();
-      } else {
-        await haptics.success();
-        Alert.alert(
-          'Check Your Email',
-          'We sent you a password reset link. Check your email to continue.',
-          [{ text: 'OK' }]
-        );
-      }
-    } catch (err) {
-      setError('Failed to send reset email. Please try again.');
-      await haptics.error();
-    } finally {
-      setLoading(false);
-    }
+  const handleMagicLinkLogin = async () => {
+    await haptics.light();
+    navigation.navigate('MagicLinkLogin', { email: email.trim() || undefined });
   };
 
   const handleOtherSocialSignIn = async (provider: 'google' | 'facebook') => {
@@ -241,6 +220,11 @@ export const SignInScreen: React.FC = () => {
             loading={loading}
             disabled={loading}
           />
+
+          <TouchableOpacity style={styles.magicLinkButton} onPress={handleMagicLinkLogin}>
+            <Ionicons name="sparkles" size={18} color={colors.primary.blue} />
+            <Text style={styles.magicLinkText}>Sign in with email code</Text>
+          </TouchableOpacity>
 
           {/* Social Sign In Divider */}
           <View style={styles.dividerContainer}>
@@ -367,6 +351,19 @@ const styles = StyleSheet.create({
     ...typography.presets.body,
     color: colors.primary.blue,
     fontWeight: typography.weights.semibold as any,
+  },
+  magicLinkButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+    paddingVertical: spacing.md,
+  },
+  magicLinkText: {
+    ...typography.presets.body,
+    color: colors.primary.blue,
+    fontWeight: '600',
   },
   dividerContainer: {
     flexDirection: 'row',

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Wingman is a React Native mobile application (Expo 50) for booking verified social companions for activities like dining, nightlife, and events. Built with TypeScript in strict mode.
+Wingman is a React Native mobile app (Expo 54, React Native 0.81, TypeScript strict mode) for booking verified social companions. Dark-mode-first UI with Supabase backend.
 
 ## Development Commands
 
@@ -19,64 +19,102 @@ npm run format     # Prettier format all files
 
 No test framework is currently configured.
 
+## Path Aliases
+
+Configured in both `tsconfig.json` and `babel.config.js` (must stay in sync):
+- `@/` → `src/`
+- `@components/`, `@screens/`, `@theme/`, `@utils/`, `@hooks/`, `@navigation/`, `@types/` → corresponding `src/` subdirectories
+
 ## Architecture
 
 ### Directory Structure
 
-- `src/components/` - Reusable UI components with variant patterns (Button, Card, Avatar, etc.)
-- `src/screens/` - Screen components (26+ screens)
-- `src/navigation/` - React Navigation setup (RootNavigator with stack, MainTabNavigator with bottom tabs)
-- `src/theme/` - Design system (colors, spacing, typography)
-- `src/types/` - TypeScript interfaces (User, Companion, Booking, Message, etc.)
-- `src/utils/` - Utilities (haptics, formatters, animations)
+```
+src/
+├── components/          # Reusable UI (30+ components, variant-based)
+│   ├── location/        # Location pickers
+│   └── verification/    # Verification-specific components
+├── screens/             # 40+ screens organized by feature
+│   ├── auth/            # SignIn, Signup, email/phone verification
+│   ├── tutorial/        # Onboarding flow
+│   ├── verification/    # ID verification flow
+│   ├── friends/         # Social features (subscription-gated)
+│   └── legal/           # Terms, privacy, guidelines
+├── navigation/          # RootNavigator (stack) + MainTabNavigator (6 bottom tabs)
+├── context/             # Auth, Verification, Requirements, Network providers
+├── theme/               # colors, spacing, typography
+├── types/               # Central TypeScript definitions
+├── utils/               # haptics, validation, formatters, animations, sanitize, apiErrors
+├── hooks/               # useLocation, useNetworkStatus, usePlacesAutocomplete
+├── services/            # Supabase config + API modules (bookings, companions, messages, etc.)
+└── data/                # Country/region lookup data
+```
 
 ### Navigation Flow
 
-`SplashScreen → OnboardingScreen → MainTabNavigator (Home, Discover, Bookings, Messages, Profile)`
+**Auth flow:** Welcome → SignIn/Signup → VerifyEmail → VerifyPhone → Tutorial → Main App
 
-### Path Aliases
+**Main tabs (6):** Home, Discover, Verification, Bookings, Messages, Profile
 
-Configured in tsconfig.json and babel.config.js:
-- `@/` → `src/`
-- `@components/` → `src/components/`
-- `@screens/` → `src/screens/`
-- `@theme/` → `src/theme/`
-- `@utils/` → `src/utils/`
-- `@navigation/` → `src/navigation/`
-- `@types/` → `src/types/`
+Protected routes use `withAuthGuard()` HOC. Navigation is fully typed via `RootStackParamList` and `MainTabParamList` in the types directory.
+
+### State Management
+
+Context API only (no Redux). Provider nesting order in App.tsx:
+```
+NetworkProvider → AuthProvider → VerificationProvider → RequirementsProvider
+```
+
+- **AuthContext** — Session, signup flow (multi-step data), Supabase auth, Apple auth, consent management
+- **VerificationContext** — Progressive verification (email → phone → ID → background check)
+- **RequirementsContext** — Feature gating based on verification status and subscription tier
+- **NetworkContext** — Online/offline detection
+
+Persistent storage: AsyncStorage for preferences, Expo SecureStore for sensitive data.
+
+### Services Layer
+
+`src/services/` contains Supabase client config and API modules: `bookingsApi`, `companions`, `locationApi`, `messages`, `profiles`, `verificationApi`, `phoneVerification`.
 
 ## Key Patterns
 
-### Component Structure
+### Component Conventions
 
-Components use StyleSheet.create() with styles at bottom of file. Most components support variants:
-- Button: primary, secondary, outline, ghost, gold, danger
-- Card: default, elevated, outlined, gradient, premium
+- All styling via `StyleSheet.create()` at bottom of file
+- Components support variant props (e.g., Button: primary/secondary/outline/ghost/gold/danger)
+- Interactive components use haptic feedback via `haptics.light()`, `haptics.medium()`, etc. from `@utils/haptics`
+- Animations use React Native Reanimated 4 with spring physics
 
-### Haptic Feedback
+### Screen Structure
 
-Interactive components integrate haptics via `haptics.light()`, `haptics.medium()`, etc. from `src/utils/haptics.ts`.
+1. React/RN imports → External libs → Theme/Utils/Types
+2. Navigation typed via `NativeStackNavigationProp<RootStackParamList, 'ScreenName'>`
+3. Component with hooks → Render
+4. `StyleSheet.create()` at bottom
 
-### Type Definitions
+### Theme Usage
 
-- Verification levels: basic, verified, background, premium
-- Booking statuses: pending, confirmed, in-progress, completed, cancelled, disputed
-- Subscription tiers: free, plus, premium, elite
+Import from `@theme/`:
+- `colors` — Dark palette (primary #0A0A0F, accent #00D4FF, premium gold #C0C0C0)
+- `spacing` — Base units (xxs–massive) + semantic aliases (screenPadding, cardPadding, sectionGap)
+- `typography` — Presets (hero, h1–h4, body, caption, button, label)
 
-### Theme System
+### Domain Types
 
-Import from `src/theme/`:
-- `colors` - Nested color palette (primary, background, text, status, gradients, shadows)
-- `spacing` - Base units (xxs through massive) and semantic aliases (screenPadding, cardPadding)
-- `typography` - Platform-specific fonts, sizes, weights, preset styles
+Key enums/unions in `src/types/`:
+- **VerificationLevel:** basic, verified, premium
+- **BookingStatus:** pending, confirmed, in-progress, completed, cancelled, disputed
+- **SubscriptionTier:** free, plus, premium, elite
+- **CompanionSpecialty:** 14 activity types (dining, nightlife, sports, etc.)
+- **Gender:** male, female, non-binary, other, prefer-not-to-say
 
-### Screen Pattern
+### Validation
 
-Screens follow this structure:
-1. React/RN imports
-2. Navigation hooks and typed props
-3. Theme and utility imports
-4. Components
-5. Mock data (currently hardcoded)
-6. Functional component with hooks
-7. StyleSheet at bottom
+`src/utils/validation.ts` provides composable validators with `compose()`. Validators for email (RFC5322), password (8+ chars, uppercase, lowercase, number, special), phone (US format), name, date.
+
+### Platform Handling
+
+- Tab bar: 88px height iOS, 68px Android
+- Typography uses system fonts per platform
+- Safe area insets via `react-native-safe-area-context`
+- BlurView for native blur effects

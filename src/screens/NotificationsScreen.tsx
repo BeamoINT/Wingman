@@ -32,76 +32,8 @@ interface Notification {
   data?: Record<string, string>;
 }
 
-const mockNotifications: Notification[] = [
-  {
-    id: '1',
-    type: 'booking',
-    title: 'Booking Confirmed!',
-    message: 'Your dinner booking with Sarah J. on Saturday at 7pm has been confirmed.',
-    timestamp: '2 min ago',
-    isRead: false,
-    avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100',
-  },
-  {
-    id: '2',
-    type: 'message',
-    title: 'New Message',
-    message: 'Sarah J.: "Looking forward to dinner tomorrow! 🍝"',
-    timestamp: '15 min ago',
-    isRead: false,
-    avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100',
-  },
-  {
-    id: '3',
-    type: 'reward',
-    title: 'Points Earned! 🎉',
-    message: 'You earned 50 points for your recent booking. Only 200 more to reach Gold!',
-    timestamp: '1 hour ago',
-    isRead: false,
-  },
-  {
-    id: '4',
-    type: 'review',
-    title: 'Leave a Review',
-    message: 'How was your coffee chat with Michael C.? Share your experience!',
-    timestamp: '3 hours ago',
-    isRead: true,
-    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100',
-  },
-  {
-    id: '5',
-    type: 'social',
-    title: 'New Follower',
-    message: 'Emma W. started following you',
-    timestamp: '5 hours ago',
-    isRead: true,
-    avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100',
-  },
-  {
-    id: '6',
-    type: 'promo',
-    title: 'Weekend Special! 🌟',
-    message: 'Get 20% off your next booking this weekend. Use code: WEEKEND20',
-    timestamp: 'Yesterday',
-    isRead: true,
-  },
-  {
-    id: '7',
-    type: 'safety',
-    title: 'Safety Reminder',
-    message: 'Remember to share your location with a friend during your next booking.',
-    timestamp: 'Yesterday',
-    isRead: true,
-  },
-  {
-    id: '8',
-    type: 'system',
-    title: 'Profile Update',
-    message: 'Your ID verification has been approved! You now have full access.',
-    timestamp: '2 days ago',
-    isRead: true,
-  },
-];
+// Notifications will be fetched from the backend when the notifications table is implemented.
+// For now, the screen shows an empty state.
 
 const filterTabs = [
   { id: 'all', label: 'All' },
@@ -115,7 +47,7 @@ export const NotificationsScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
   const [activeFilter, setActiveFilter] = useState('all');
-  const [notifications, setNotifications] = useState(mockNotifications);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
 
   const handleBackPress = async () => {
     await haptics.light();

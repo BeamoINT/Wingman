@@ -1,14 +1,15 @@
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect, CommonActions } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
@@ -16,7 +17,9 @@ import { spacing } from '../theme/spacing';
 import { typography } from '../theme/typography';
 import { haptics } from '../utils/haptics';
 import { Avatar, Badge, Card } from '../components';
-import type { RootStackParamList } from '../types';
+import { useAuth } from '../context/AuthContext';
+import { getCompanionApplication, checkExistingCompanionProfile } from '../services/api/companionApplicationApi';
+import type { RootStackParamList, CompanionApplicationStatus } from '../types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -33,10 +36,60 @@ interface MenuItem {
 export const ProfileScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
+  const { user, signOut } = useAuth();
+
+  const [companionStatus, setCompanionStatus] = useState<CompanionApplicationStatus | 'active' | null>(null);
+
+  // Load companion/application status on screen focus
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      (async () => {
+        // Check if already an active companion
+        const { exists } = await checkExistingCompanionProfile();
+        if (cancelled) return;
+        if (exists) {
+          setCompanionStatus('active');
+          return;
+        }
+        // Check for an existing application
+        const { application } = await getCompanionApplication();
+        if (cancelled) return;
+        setCompanionStatus(application?.status || null);
+      })();
+      return () => { cancelled = true; };
+    }, [])
+  );
+
+  const fullName = user ? `${user.firstName} ${user.lastName}`.trim() : 'User';
 
   const handleMenuPress = async (item: MenuItem) => {
     await haptics.light();
     item.onPress();
+  };
+
+  const handleLogout = async () => {
+    await haptics.warning();
+    Alert.alert(
+      'Log Out',
+      'Are you sure you want to log out?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Log Out',
+          style: 'destructive',
+          onPress: async () => {
+            await signOut();
+            navigation.dispatch(
+              CommonActions.reset({
+                index: 0,
+                routes: [{ name: 'Welcome' }],
+              })
+            );
+          },
+        },
+      ]
+    );
   };
 
   const menuItems: MenuItem[] = [
@@ -114,17 +167,19 @@ export const ProfileScreen: React.FC = () => {
           <Card variant="gradient" style={styles.profileCard}>
             <View style={styles.profileHeader}>
               <Avatar
-                source="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400"
-                name="Alex Thompson"
+                source={user?.avatar}
+                name={fullName}
                 size="large"
-                showVerified
-                verificationLevel="verified"
+                showVerified={user?.isVerified}
+                verificationLevel={user?.isVerified ? 'verified' : 'basic'}
               />
               <View style={styles.profileInfo}>
-                <Text style={styles.profileName}>Alex Thompson</Text>
-                <Text style={styles.profileEmail}>alex@example.com</Text>
+                <Text style={styles.profileName}>{fullName}</Text>
+                <Text style={styles.profileEmail}>{user?.email || ''}</Text>
                 <View style={styles.profileBadges}>
-                  <Badge label="Verified" variant="verified" icon="checkmark-circle" size="small" />
+                  {user?.isVerified && (
+                    <Badge label="Verified" variant="verified" icon="checkmark-circle" size="small" />
+                  )}
                 </View>
               </View>
               <Ionicons name="chevron-forward" size={20} color={colors.text.tertiary} />
@@ -132,25 +187,40 @@ export const ProfileScreen: React.FC = () => {
 
             <View style={styles.statsRow}>
               <View style={styles.stat}>
-                <Text style={styles.statValue}>12</Text>
+                <Text style={styles.statValue}>—</Text>
                 <Text style={styles.statLabel}>Bookings</Text>
               </View>
               <View style={styles.statDivider} />
               <View style={styles.stat}>
-                <Text style={styles.statValue}>4.8</Text>
+                <Text style={styles.statValue}>—</Text>
                 <Text style={styles.statLabel}>Rating</Text>
               </View>
               <View style={styles.statDivider} />
               <View style={styles.stat}>
-                <Text style={styles.statValue}>8</Text>
+                <Text style={styles.statValue}>—</Text>
                 <Text style={styles.statLabel}>Reviews</Text>
               </View>
             </View>
           </Card>
         </TouchableOpacity>
 
-        {/* Become a Companion */}
-        <TouchableOpacity activeOpacity={0.9} onPress={async () => await haptics.medium()}>
+        {/* Become a Companion / Companion Status Banner */}
+        <TouchableOpacity
+          activeOpacity={0.9}
+          onPress={async () => {
+            await haptics.medium();
+            if (companionStatus === 'active' || companionStatus === 'approved') {
+              navigation.navigate('CompanionDashboard');
+            } else if (companionStatus === 'pending_review' || companionStatus === 'under_review' || companionStatus === 'suspended') {
+              navigation.navigate('CompanionApplicationStatus');
+            } else if (companionStatus === 'draft') {
+              navigation.navigate('CompanionOnboarding');
+            } else {
+              // No application yet — start onboarding
+              navigation.navigate('CompanionOnboarding');
+            }
+          }}
+        >
           <LinearGradient
             colors={colors.gradients.premium}
             start={{ x: 0, y: 0 }}
@@ -158,12 +228,36 @@ export const ProfileScreen: React.FC = () => {
             style={styles.companionBanner}
           >
             <View style={styles.companionIcon}>
-              <Ionicons name="people" size={24} color={colors.primary.darkBlack} />
+              <Ionicons
+                name={
+                  companionStatus === 'active' || companionStatus === 'approved'
+                    ? 'grid'
+                    : companionStatus === 'pending_review' || companionStatus === 'under_review'
+                    ? 'time'
+                    : 'people'
+                }
+                size={24}
+                color={colors.primary.darkBlack}
+              />
             </View>
             <View style={styles.companionContent}>
-              <Text style={styles.companionTitle}>Become a Companion</Text>
+              <Text style={styles.companionTitle}>
+                {companionStatus === 'active' || companionStatus === 'approved'
+                  ? 'Companion Dashboard'
+                  : companionStatus === 'pending_review' || companionStatus === 'under_review'
+                  ? 'Application Under Review'
+                  : companionStatus === 'draft'
+                  ? 'Continue Application'
+                  : 'Become a Companion'}
+              </Text>
               <Text style={styles.companionSubtitle}>
-                Earn money by being a great friend
+                {companionStatus === 'active' || companionStatus === 'approved'
+                  ? 'Manage your companion profile'
+                  : companionStatus === 'pending_review' || companionStatus === 'under_review'
+                  ? 'Check your application status'
+                  : companionStatus === 'draft'
+                  ? 'Pick up where you left off'
+                  : 'Earn money by being a great friend'}
               </Text>
             </View>
             <Ionicons name="arrow-forward" size={20} color={colors.primary.darkBlack} />
@@ -203,7 +297,7 @@ export const ProfileScreen: React.FC = () => {
         {/* Logout */}
         <TouchableOpacity
           style={styles.logoutButton}
-          onPress={async () => await haptics.warning()}
+          onPress={handleLogout}
         >
           <Ionicons name="log-out-outline" size={20} color={colors.status.error} />
           <Text style={styles.logoutText}>Log Out</Text>

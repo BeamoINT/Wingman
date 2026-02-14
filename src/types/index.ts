@@ -188,6 +188,59 @@ export interface EmergencyContact {
   isPrimary: boolean;
 }
 
+// Companion Application Types
+export type CompanionApplicationStatus =
+  | 'draft'
+  | 'pending_review'
+  | 'under_review'
+  | 'approved'
+  | 'rejected'
+  | 'suspended';
+
+export type IdDocumentType = 'passport' | 'drivers_license' | 'national_id';
+
+export interface CompanionApplication {
+  id: string;
+  userId: string;
+  status: CompanionApplicationStatus;
+  idDocumentUrl: string | null;
+  idDocumentType: IdDocumentType | null;
+  selfieUrl: string | null;
+  specialties: CompanionSpecialty[];
+  hourlyRate: number | null;
+  about: string;
+  languages: string[];
+  gallery: string[];
+  companionAgreementAccepted: boolean;
+  companionAgreementAcceptedAt: string | null;
+  rejectionReason: string | null;
+  submittedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CompanionOnboardingData {
+  idDocumentUri: string;
+  idDocumentType: IdDocumentType;
+  selfieUri: string;
+  specialties: CompanionSpecialty[];
+  hourlyRate: number;
+  about: string;
+  languages: string[];
+  gallery: string[];
+}
+
+export const defaultCompanionOnboardingData: CompanionOnboardingData = {
+  idDocumentUri: '',
+  idDocumentType: 'drivers_license',
+  selfieUri: '',
+  specialties: [],
+  hourlyRate: 25,
+  about: '',
+  languages: [],
+  gallery: [],
+};
+
 // Signup Types
 export type Gender = 'male' | 'female' | 'non-binary' | 'other' | 'prefer-not-to-say';
 
@@ -258,9 +311,11 @@ export type LegalDocumentType =
 export type RootStackParamList = {
   Welcome: undefined;
   SignIn: undefined;
-  Signup: undefined;
+  Signup: { resumeStep?: number } | undefined;
   VerifyEmail: undefined;
   VerifyPhone: undefined;
+  ForgotPassword: { email?: string } | undefined;
+  MagicLinkLogin: { email?: string } | undefined;
   Tutorial: undefined;
   Onboarding: undefined;
   Main: undefined;
@@ -269,6 +324,8 @@ export type RootStackParamList = {
   BookingConfirmation: { bookingId: string };
   Chat: { conversationId: string };
   Settings: undefined;
+  ChangePassword: undefined;
+  ChangeEmail: undefined;
   EditProfile: undefined;
   Subscription: undefined;
   Safety: undefined;
@@ -281,6 +338,10 @@ export type RootStackParamList = {
   LegalDocument: { documentType: LegalDocumentType };
   TermsOfService: undefined;
   PrivacyPolicy: undefined;
+  // Companion onboarding screens
+  CompanionOnboarding: { resumeStep?: number } | undefined;
+  CompanionApplicationStatus: undefined;
+  CompanionDashboard: undefined;
   // Friends feature screens
   Friends: undefined;
   FriendMatching: undefined;

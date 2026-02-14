@@ -6,7 +6,6 @@
 import { useState, useCallback } from 'react';
 import * as Location from 'expo-location';
 import { Linking, Platform, Alert } from 'react-native';
-import { reverseGeocode } from '../services/api/locationApi';
 import type { LocationData, LocationPermissionStatus } from '../types/location';
 
 interface UseLocationState {
@@ -113,23 +112,25 @@ export function useLocation(): UseLocationReturn {
 
       const { latitude, longitude } = position.coords;
 
-      // Reverse geocode to get address
-      const { details, error: geocodeError } = await reverseGeocode(latitude, longitude);
+      // Reverse geocode using device's native geocoder (no API keys needed)
+      const geocodeResults = await Location.reverseGeocodeAsync({ latitude, longitude });
 
-      if (geocodeError || !details) {
+      if (!geocodeResults || geocodeResults.length === 0) {
         setState((prev) => ({
           ...prev,
           isDetecting: false,
-          error: geocodeError || 'Could not determine your location',
+          error: 'Could not determine your location',
         }));
         return null;
       }
 
+      const result = geocodeResults[0];
+
       const locationData: LocationData = {
-        city: details.city,
-        state: details.state,
-        country: details.country,
-        countryCode: details.countryCode,
+        city: result.city || result.subregion || '',
+        state: result.region || undefined,
+        country: result.country || '',
+        countryCode: result.isoCountryCode || '',
         coordinates: {
           latitude,
           longitude,

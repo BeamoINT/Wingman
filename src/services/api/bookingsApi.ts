@@ -105,7 +105,7 @@ export async function fetchUserBookings(): Promise<{ bookings: BookingData[]; er
         *,
         companion:companions(
           *,
-          user:profiles(*)
+          user:profiles!companions_user_id_fkey(*)
         )
       `)
       .eq('client_id', user.id)
@@ -149,7 +149,7 @@ export async function fetchCompanionBookings(): Promise<{ bookings: BookingData[
       .from('bookings')
       .select(`
         *,
-        client:profiles!client_id(*)
+        client:profiles!bookings_client_id_fkey(*)
       `)
       .eq('companion_id', companion.id)
       .order('date', { ascending: false });
@@ -177,9 +177,9 @@ export async function fetchBookingById(bookingId: string): Promise<{ booking: Bo
         *,
         companion:companions(
           *,
-          user:profiles(*)
+          user:profiles!companions_user_id_fkey(*)
         ),
-        client:profiles!client_id(*)
+        client:profiles!bookings_client_id_fkey(*)
       `)
       .eq('id', bookingId)
       .single();

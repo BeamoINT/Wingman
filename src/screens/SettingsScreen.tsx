@@ -16,6 +16,7 @@ import { spacing } from '../theme/spacing';
 import { typography } from '../theme/typography';
 import { haptics } from '../utils/haptics';
 import { Card } from '../components';
+import { useAuth } from '../context/AuthContext';
 import type { RootStackParamList } from '../types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -37,6 +38,7 @@ interface SettingSection {
 export const SettingsScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
 
   const [notifications, setNotifications] = useState(true);
   const [emailUpdates, setEmailUpdates] = useState(true);
@@ -57,6 +59,26 @@ export const SettingsScreen: React.FC = () => {
   };
 
   const settingSections: SettingSection[] = [
+    {
+      title: 'Account & Security',
+      items: [
+        {
+          id: 'change-email',
+          icon: 'mail',
+          label: 'Change Email',
+          type: 'value',
+          value: user?.email || '',
+          onPress: () => navigation.navigate('ChangeEmail'),
+        },
+        {
+          id: 'change-password',
+          icon: 'lock-closed',
+          label: 'Change Password',
+          type: 'link',
+          onPress: () => navigation.navigate('ChangePassword'),
+        },
+      ],
+    },
     {
       title: 'Notifications',
       items: [

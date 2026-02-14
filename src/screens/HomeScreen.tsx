@@ -1,11 +1,11 @@
-import React from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Dimensions,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -16,102 +16,45 @@ import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 import { typography } from '../theme/typography';
 import { haptics } from '../utils/haptics';
-import { Avatar, Badge, CompanionCard, SafetyBanner, Card } from '../components';
+import { CompanionCard, SafetyBanner } from '../components';
+import { useAuth } from '../context/AuthContext';
+import { fetchCompanions } from '../services/companionsApi';
 import type { RootStackParamList, Companion } from '../types';
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
-// Mock data
-const mockFeaturedCompanion: Companion = {
-  id: '1',
-  user: {
-    id: 'u1',
-    firstName: 'Sarah',
-    lastName: 'Johnson',
-    email: 'sarah@example.com',
-    avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400',
-    isVerified: true,
-        isPremium: true,
-    createdAt: '2024-01-01',
-  },
-  rating: 4.9,
-  reviewCount: 127,
-  hourlyRate: 45,
-  specialties: ['dining', 'social-events', 'nightlife'],
-  languages: ['English', 'Spanish'],
-  availability: [],
-  isOnline: true,
-  responseTime: 'Usually responds within 15 min',
-  completedBookings: 89,
-  badges: [],
-  gallery: [],
-  about: 'Love meeting new people and making everyone feel comfortable!',
-  interests: ['Travel', 'Food', 'Music'],
-  verificationLevel: 'premium',
-};
-
-const mockCompanions: Companion[] = [
-  {
-    id: '2',
-    user: {
-      id: 'u2',
-      firstName: 'Michael',
-      lastName: 'Chen',
-      email: 'michael@example.com',
-      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400',
-      isVerified: true,
-            isPremium: false,
-      createdAt: '2024-01-15',
-    },
-    rating: 4.7,
-    reviewCount: 64,
-    hourlyRate: 35,
-    specialties: ['coffee-chat', 'professional-networking', 'sports'],
-    languages: ['English', 'Mandarin'],
-    availability: [],
-    isOnline: true,
-    responseTime: 'Usually responds within 1 hour',
-    completedBookings: 42,
-    badges: [],
-    gallery: [],
-    about: 'Tech professional who loves to meet new people',
-    interests: ['Technology', 'Sports', 'Coffee'],
-    verificationLevel: 'verified',
-  },
-  {
-    id: '3',
-    user: {
-      id: 'u3',
-      firstName: 'Emma',
-      lastName: 'Wilson',
-      email: 'emma@example.com',
-      avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=400',
-      isVerified: true,
-            isPremium: true,
-      createdAt: '2024-02-01',
-    },
-    rating: 4.8,
-    reviewCount: 89,
-    hourlyRate: 40,
-    specialties: ['concerts', 'movies', 'emotional-support'],
-    languages: ['English'],
-    availability: [],
-    isOnline: false,
-    responseTime: 'Usually responds within 30 min',
-    completedBookings: 56,
-    badges: [],
-    gallery: [],
-    about: 'Friendly and empathetic, great listener!',
-    interests: ['Music', 'Movies', 'Art'],
-    verificationLevel: 'premium',
-  },
-];
+function getGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning,';
+  if (hour < 18) return 'Good afternoon,';
+  return 'Good evening,';
+}
 
 export const HomeScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
+
+  const [companions, setCompanions] = useState<Companion[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const greeting = useMemo(() => getGreeting(), []);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const data = await fetchCompanions();
+        if (mounted) setCompanions(data);
+      } finally {
+        if (mounted) setIsLoading(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
+
+  const featuredCompanion = companions[0] || null;
+  const availableCompanions = companions.slice(1);
 
   const handleCompanionPress = async (companionId: string) => {
     await haptics.medium();
@@ -146,15 +89,14 @@ export const HomeScreen: React.FC = () => {
         {/* Header */}
         <View style={styles.header}>
           <View>
-            <Text style={styles.greeting}>Good evening,</Text>
-            <Text style={styles.name}>Alex 👋</Text>
+            <Text style={styles.greeting}>{greeting}</Text>
+            <Text style={styles.name}>{user?.firstName || 'there'} 👋</Text>
           </View>
           <TouchableOpacity
             onPress={handleNotificationsPress}
             style={styles.notificationButton}
           >
             <Ionicons name="notifications-outline" size={24} color={colors.text.primary} />
-            <View style={styles.notificationBadge} />
           </TouchableOpacity>
         </View>
 
@@ -207,20 +149,38 @@ export const HomeScreen: React.FC = () => {
           </LinearGradient>
         </TouchableOpacity>
 
-        {/* Featured Companion */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Featured Companion</Text>
-            <TouchableOpacity onPress={async () => await haptics.light()}>
-              <Text style={styles.seeAllText}>See all</Text>
-            </TouchableOpacity>
+        {/* Loading State */}
+        {isLoading && (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.primary.blue} />
           </View>
-          <CompanionCard
-            companion={mockFeaturedCompanion}
-            variant="featured"
-            onPress={() => handleCompanionPress(mockFeaturedCompanion.id)}
-          />
-        </View>
+        )}
+
+        {/* Empty State - No Companions */}
+        {!isLoading && companions.length === 0 && (
+          <View style={styles.emptyState}>
+            <Ionicons name="people-outline" size={48} color={colors.text.tertiary} />
+            <Text style={styles.emptyTitle}>No companions available yet</Text>
+            <Text style={styles.emptySubtitle}>Check back soon for new companions in your area</Text>
+          </View>
+        )}
+
+        {/* Featured Companion */}
+        {featuredCompanion && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Featured Companion</Text>
+              <TouchableOpacity onPress={async () => await haptics.light()}>
+                <Text style={styles.seeAllText}>See all</Text>
+              </TouchableOpacity>
+            </View>
+            <CompanionCard
+              companion={featuredCompanion}
+              variant="featured"
+              onPress={() => handleCompanionPress(featuredCompanion.id)}
+            />
+          </View>
+        )}
 
         {/* Safety Banner */}
         <View style={styles.section}>
@@ -228,23 +188,25 @@ export const HomeScreen: React.FC = () => {
         </View>
 
         {/* Available Now */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Available Now</Text>
-            <TouchableOpacity onPress={async () => await haptics.light()}>
-              <Text style={styles.seeAllText}>See all</Text>
-            </TouchableOpacity>
+        {availableCompanions.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Available Now</Text>
+              <TouchableOpacity onPress={async () => await haptics.light()}>
+                <Text style={styles.seeAllText}>See all</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.companionGrid}>
+              {availableCompanions.map((companion) => (
+                <CompanionCard
+                  key={companion.id}
+                  companion={companion}
+                  onPress={() => handleCompanionPress(companion.id)}
+                />
+              ))}
+            </View>
           </View>
-          <View style={styles.companionGrid}>
-            {mockCompanions.map((companion) => (
-              <CompanionCard
-                key={companion.id}
-                companion={companion}
-                onPress={() => handleCompanionPress(companion.id)}
-              />
-            ))}
-          </View>
-        </View>
+        )}
 
         {/* Categories */}
         <View style={styles.section}>
@@ -314,17 +276,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     position: 'relative',
   },
-  notificationBadge: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: colors.status.error,
-    borderWidth: 2,
-    borderColor: colors.background.card,
-  },
   quickActions: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -367,6 +318,24 @@ const styles = StyleSheet.create({
     ...typography.presets.caption,
     color: colors.primary.darkBlack,
     opacity: 0.8,
+  },
+  loadingContainer: {
+    paddingVertical: spacing.massive,
+    alignItems: 'center',
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: spacing.massive,
+    gap: spacing.sm,
+  },
+  emptyTitle: {
+    ...typography.presets.h4,
+    color: colors.text.primary,
+  },
+  emptySubtitle: {
+    ...typography.presets.bodySmall,
+    color: colors.text.tertiary,
+    textAlign: 'center',
   },
   section: {
     marginBottom: spacing.xl,

@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import type { User, SignupData } from '../types';
 import { defaultSignupData } from '../types';
 import { safeLog } from '../utils/sanitize';
@@ -8,6 +9,9 @@ import type { Session, User as SupabaseUser } from '@supabase/supabase-js';
 
 // Storage keys
 const AUTH_USER_KEY = '@wingman_user';
+const SIGNUP_DRAFT_KEY = '@wingman_signup_draft';
+const SIGNUP_PWD_KEY = 'wingman_signup_pwd';
+const SIGNUP_CONFIRM_PWD_KEY = 'wingman_signup_cpwd';
 
 /**
  * Signup consents that must be collected during registration
@@ -17,6 +21,12 @@ export interface SignupConsents {
   termsAccepted: boolean;
   privacyAccepted: boolean;
   marketingOptIn: boolean;
+}
+
+interface SignupDraft {
+  signupData: Omit<SignupData, 'password'>;
+  signupConsents: SignupConsents;
+  currentStep: number;
 }
 
 interface AuthContextType {
@@ -44,6 +54,17 @@ interface AuthContextType {
   resendEmailVerification: () => Promise<{ success: boolean; error?: string }>;
   setEmailVerified: () => void;
   setPhoneVerified: () => void;
+  signupDraftStep: number | null;
+  saveSignupDraft: (currentStep: number, confirmPassword: string) => Promise<void>;
+  clearSignupDraft: () => Promise<void>;
+  loadSignupDraftPassword: () => Promise<{ password: string; confirmPassword: string } | null>;
+  requestPasswordReset: (email: string) => Promise<{ success: boolean; error?: string }>;
+  confirmPasswordReset: (email: string, token: string, newPassword: string) => Promise<{ success: boolean; error?: string }>;
+  updateUserPassword: (currentPassword: string, newPassword: string) => Promise<{ success: boolean; error?: string }>;
+  updateUserEmail: (newEmail: string) => Promise<{ success: boolean; error?: string }>;
+  confirmEmailChange: (newEmail: string, token: string) => Promise<{ success: boolean; error?: string }>;
+  signInWithMagicLink: (email: string) => Promise<{ success: boolean; error?: string }>;
+  verifyMagicLinkOtp: (email: string, token: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 const defaultSignupConsents: SignupConsents = {
@@ -132,6 +153,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [needsPhoneVerification, setNeedsPhoneVerification] = useState(false);
   const [signupData, setSignupData] = useState<SignupData>(defaultSignupData);
   const [signupConsents, setSignupConsents] = useState<SignupConsents>(defaultSignupConsents);
+  const [signupDraftStep, setSignupDraftStep] = useState<number | null>(null);
 
   /**
    * Fetch user profile from Supabase
@@ -160,6 +182,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
    * Restore session on app launch using Supabase.
    */
   useEffect(() => {
+    let sessionRestored = false;
+    let isCancelled = false;
+    let authChangeSequence = 0;
+
+    const finishRestoring = () => {
+      if (!sessionRestored) {
+        sessionRestored = true;
+        setIsRestoringSession(false);
+      }
+    };
+
     const restoreSession = async () => {
       try {
         // Get current session from Supabase
@@ -167,7 +200,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         if (error) {
           console.error('Error getting session:', error);
-          setIsRestoringSession(false);
+          finishRestoring();
           return;
         }
 
@@ -192,42 +225,90 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           await storeUser(appUser);
 
           safeLog('Session restored successfully');
+        } else {
+          // No active session — check for a saved signup draft
+          try {
+            const draftJson = await AsyncStorage.getItem(SIGNUP_DRAFT_KEY);
+            if (draftJson) {
+              const draft: SignupDraft = JSON.parse(draftJson);
+              setSignupData(prev => ({
+                ...prev,
+                ...draft.signupData,
+                password: '', // loaded separately from SecureStore in SignupScreen
+              }));
+              setSignupConsents(draft.signupConsents);
+              setSignupDraftStep(draft.currentStep);
+            }
+          } catch (draftError) {
+            safeLog('Failed to restore signup draft', { error: String(draftError) });
+          }
         }
       } catch (error) {
         safeLog('Failed to restore session', { error: String(error) });
       } finally {
-        setIsRestoringSession(false);
+        finishRestoring();
       }
     };
 
     restoreSession();
 
+    // Safety timeout: never leave the user stuck on the loading screen
+    const safetyTimeout = setTimeout(() => {
+      if (!sessionRestored) {
+        safeLog('Session restore timed out — proceeding');
+        finishRestoring();
+      }
+    }, 6000);
+
     // Listen for auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, newSession) => {
+      authChangeSequence += 1;
+      const currentSequence = authChangeSequence;
       safeLog('Auth state changed', { event });
+
+      // INITIAL_SESSION from onAuthStateChange also means session loading is done
+      if (event === 'INITIAL_SESSION') {
+        finishRestoring();
+      }
 
       if (newSession?.user) {
         setSession(newSession);
         setSupabaseUser(newSession.user);
+        setIsNewUser(false);
 
-        const profile = await fetchUserProfile(newSession.user.id);
-        const appUser = transformSupabaseUser(newSession.user, profile);
-        setUser(appUser);
-        await storeUser(appUser);
+        // Supabase auth callbacks should not await async work, or OTP flows can stall.
+        void (async () => {
+          const profile = await fetchUserProfile(newSession.user.id);
+          if (isCancelled || currentSequence !== authChangeSequence) return;
 
-        // Check verification status
-        const emailVerified = newSession.user.email_confirmed_at !== null;
-        setNeedsEmailVerification(!emailVerified);
-        setNeedsPhoneVerification(!profile?.phone_verified);
-      } else {
+          const appUser = transformSupabaseUser(newSession.user, profile);
+          setUser(appUser);
+          await storeUser(appUser);
+          if (isCancelled || currentSequence !== authChangeSequence) return;
+
+          // Check verification status
+          const emailVerified = newSession.user.email_confirmed_at !== null;
+          setNeedsEmailVerification(!emailVerified);
+          setNeedsPhoneVerification(!profile?.phone_verified);
+        })();
+      } else if (event === 'SIGNED_OUT') {
+        // Only clear state on explicit sign-out, not on INITIAL_SESSION with null
+        // (which can happen before AsyncStorage session is fully loaded)
         setSession(null);
         setSupabaseUser(null);
         setUser(null);
-        await clearAuthStorage();
+        setIsNewUser(false);
+        setNeedsEmailVerification(false);
+        setNeedsPhoneVerification(false);
+        void clearAuthStorage();
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      isCancelled = true;
+      clearTimeout(safetyTimeout);
+      subscription.unsubscribe();
+    };
   }, [fetchUserProfile]);
 
   const updateSignupData = useCallback((data: Partial<SignupData>) => {
@@ -239,14 +320,67 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   /**
+   * Save signup draft to AsyncStorage (non-sensitive) and SecureStore (password)
+   */
+  const saveSignupDraft = useCallback(async (currentStep: number, confirmPassword: string) => {
+    try {
+      const { password: _pwd, ...dataWithoutPassword } = signupData;
+      const draft: SignupDraft = {
+        signupData: dataWithoutPassword,
+        signupConsents,
+        currentStep,
+      };
+      await AsyncStorage.setItem(SIGNUP_DRAFT_KEY, JSON.stringify(draft));
+
+      if (signupData.password) {
+        await SecureStore.setItemAsync(SIGNUP_PWD_KEY, signupData.password);
+      }
+      if (confirmPassword) {
+        await SecureStore.setItemAsync(SIGNUP_CONFIRM_PWD_KEY, confirmPassword);
+      }
+
+      setSignupDraftStep(currentStep);
+    } catch (error) {
+      safeLog('Failed to save signup draft', { error: String(error) });
+    }
+  }, [signupData, signupConsents]);
+
+  /**
+   * Clear signup draft from all storage
+   */
+  const clearSignupDraft = useCallback(async () => {
+    try {
+      await AsyncStorage.removeItem(SIGNUP_DRAFT_KEY);
+      await SecureStore.deleteItemAsync(SIGNUP_PWD_KEY);
+      await SecureStore.deleteItemAsync(SIGNUP_CONFIRM_PWD_KEY);
+      setSignupDraftStep(null);
+    } catch (error) {
+      safeLog('Failed to clear signup draft', { error: String(error) });
+    }
+  }, []);
+
+  /**
+   * Load password and confirmPassword from SecureStore for draft resume
+   */
+  const loadSignupDraftPassword = useCallback(async (): Promise<{ password: string; confirmPassword: string } | null> => {
+    try {
+      const password = await SecureStore.getItemAsync(SIGNUP_PWD_KEY);
+      const confirmPassword = await SecureStore.getItemAsync(SIGNUP_CONFIRM_PWD_KEY);
+      if (password) {
+        return { password, confirmPassword: confirmPassword || '' };
+      }
+      return null;
+    } catch (error) {
+      safeLog('Failed to load signup draft password', { error: String(error) });
+      return null;
+    }
+  }, []);
+
+  /**
    * Validates that all required consents have been provided
    */
   const validateSignupConsents = useCallback((): { valid: boolean; errors: string[] } => {
     const errors: string[] = [];
-
-    if (!signupConsents.ageConfirmed) {
-      errors.push('You must confirm that you are 18 years or older');
-    }
 
     if (!signupConsents.termsAccepted) {
       errors.push('You must accept the Terms of Service');
@@ -268,7 +402,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const validateAge = useCallback((dateOfBirth: string): boolean => {
     if (!dateOfBirth) return false;
 
-    const dob = new Date(dateOfBirth);
+    // Parse MM/DD/YYYY format explicitly to avoid Date constructor inconsistencies
+    const parts = dateOfBirth.split('/');
+    if (parts.length !== 3) return false;
+
+    const month = parseInt(parts[0], 10);
+    const day = parseInt(parts[1], 10);
+    const year = parseInt(parts[2], 10);
+
+    if (isNaN(month) || isNaN(day) || isNaN(year)) return false;
+
+    const dob = new Date(year, month - 1, day);
     const today = new Date();
     let age = today.getFullYear() - dob.getFullYear();
     const monthDiff = today.getMonth() - dob.getMonth();
@@ -340,11 +484,60 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         if (data.session) {
           setSession(data.session);
-          const profile = await fetchUserProfile(data.user.id);
+          let profile = await fetchUserProfile(data.user.id);
+
+          // If trigger didn't create a full profile, ensure it exists with all data
+          if (!profile || !profile.city) {
+            try {
+              const profileData: Record<string, unknown> = {
+                id: data.user.id,
+                first_name: signupData.firstName || '',
+                last_name: signupData.lastName || '',
+                email: signupData.email,
+                phone: signupData.phone || null,
+                bio: signupData.bio || null,
+                gender: signupData.gender || null,
+                city: signupData.city || null,
+                state: signupData.state || null,
+                country: signupData.country || null,
+                terms_accepted: signupConsents.termsAccepted,
+                terms_accepted_at: signupConsents.termsAccepted ? new Date().toISOString() : null,
+                privacy_accepted: signupConsents.privacyAccepted,
+                privacy_accepted_at: signupConsents.privacyAccepted ? new Date().toISOString() : null,
+                age_confirmed: signupConsents.ageConfirmed,
+                age_confirmed_at: signupConsents.ageConfirmed ? new Date().toISOString() : null,
+              };
+
+              // Parse date of birth
+              if (signupData.dateOfBirth) {
+                const parts = signupData.dateOfBirth.split('/');
+                if (parts.length === 3) {
+                  const [month, day, year] = parts;
+                  profileData.date_of_birth = `${year}-${month}-${day}`;
+                }
+              }
+
+              const { data: upsertedProfile } = await supabase
+                .from('profiles')
+                .upsert(profileData)
+                .select()
+                .single();
+
+              if (upsertedProfile) {
+                profile = upsertedProfile;
+              }
+            } catch (profileErr) {
+              safeLog('Profile upsert fallback failed', { error: String(profileErr) });
+            }
+          }
+
           const appUser = transformSupabaseUser(data.user, profile);
           setUser(appUser);
           await storeUser(appUser);
         }
+
+        // Clear signup draft after successful registration
+        await clearSignupDraft();
 
         return { success: true, needsVerification };
       }
@@ -482,6 +675,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await supabase.auth.signOut();
       await clearAuthStorage();
+      await clearSignupDraft();
 
       setUser(null);
       setSupabaseUser(null);
@@ -582,6 +776,194 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
+  /**
+   * Request a password reset OTP for the given email
+   */
+  const requestPasswordReset = useCallback(async (email: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email);
+      if (error) {
+        return { success: false, error: error.message };
+      }
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: 'Failed to send reset code. Please try again.' };
+    }
+  }, []);
+
+  /**
+   * Verify password reset OTP and set new password
+   */
+  const confirmPasswordReset = useCallback(async (
+    email: string,
+    token: string,
+    newPassword: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const { error: otpError } = await supabase.auth.verifyOtp({
+        email,
+        token,
+        type: 'recovery',
+      });
+
+      if (otpError) {
+        return { success: false, error: otpError.message };
+      }
+
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+
+      if (updateError) {
+        return { success: false, error: updateError.message };
+      }
+
+      // Sign out so user can sign in fresh with new password
+      await supabase.auth.signOut();
+      setUser(null);
+      setSupabaseUser(null);
+      setSession(null);
+
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: 'Failed to reset password. Please try again.' };
+    }
+  }, []);
+
+  /**
+   * Change password for an authenticated user (verifies current password first)
+   */
+  const updateUserPassword = useCallback(async (
+    currentPassword: string,
+    newPassword: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const userEmail = user?.email || supabaseUser?.email;
+      if (!userEmail) {
+        return { success: false, error: 'No email address found' };
+      }
+
+      // Verify current password
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: userEmail,
+        password: currentPassword,
+      });
+
+      if (signInError) {
+        return { success: false, error: 'Current password is incorrect' };
+      }
+
+      // Update to new password
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+
+      if (updateError) {
+        return { success: false, error: updateError.message };
+      }
+
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: 'Failed to update password. Please try again.' };
+    }
+  }, [user?.email, supabaseUser?.email]);
+
+  /**
+   * Request email change (sends OTP to new email)
+   */
+  const updateUserEmail = useCallback(async (newEmail: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const { error } = await supabase.auth.updateUser({ email: newEmail });
+      if (error) {
+        return { success: false, error: error.message };
+      }
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: 'Failed to send verification code. Please try again.' };
+    }
+  }, []);
+
+  /**
+   * Confirm email change with OTP
+   */
+  const confirmEmailChange = useCallback(async (
+    newEmail: string,
+    token: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const { error } = await supabase.auth.verifyOtp({
+        email: newEmail,
+        token,
+        type: 'email_change',
+      });
+
+      if (error) {
+        return { success: false, error: error.message };
+      }
+
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: 'Failed to verify email. Please try again.' };
+    }
+  }, []);
+
+  /**
+   * Send magic link OTP for passwordless sign in
+   */
+  const signInWithMagicLink = useCallback(async (email: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const { error } = await supabase.auth.signInWithOtp({ email });
+      if (error) {
+        return { success: false, error: error.message };
+      }
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: 'Failed to send login code. Please try again.' };
+    }
+  }, []);
+
+  /**
+   * Verify magic link OTP to complete sign in
+   */
+  const verifyMagicLinkOtp = useCallback(async (
+    email: string,
+    token: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const { data, error } = await supabase.auth.verifyOtp({
+        email,
+        token,
+        type: 'email',
+      });
+
+      if (error) {
+        return { success: false, error: error.message };
+      }
+
+      if (!data.user || !data.session) {
+        return {
+          success: false,
+          error: 'Could not complete sign in. Please request a new code and try again.',
+        };
+      }
+
+      setSession(data.session);
+      setSupabaseUser(data.user);
+      setIsNewUser(false);
+
+      const profile = await fetchUserProfile(data.user.id);
+      const appUser = transformSupabaseUser(data.user, profile);
+      setUser(appUser);
+      await storeUser(appUser);
+      setNeedsEmailVerification(!data.user.email_confirmed_at);
+      setNeedsPhoneVerification(!profile?.phone_verified);
+
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: 'Failed to verify code. Please try again.' };
+    }
+  }, [fetchUserProfile]);
+
   const completeTutorial = useCallback(() => {
     setIsNewUser(false);
   }, []);
@@ -613,6 +995,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         resendEmailVerification,
         setEmailVerified,
         setPhoneVerified,
+        signupDraftStep,
+        saveSignupDraft,
+        clearSignupDraft,
+        loadSignupDraftPassword,
+        requestPasswordReset,
+        confirmPasswordReset,
+        updateUserPassword,
+        updateUserEmail,
+        confirmEmailChange,
+        signInWithMagicLink,
+        verifyMagicLinkOtp,
       }}
     >
       {children}

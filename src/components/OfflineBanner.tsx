@@ -37,7 +37,7 @@ export const OfflineBanner: React.FC<OfflineBannerProps> = ({
       damping: 20,
       stiffness: 200,
     });
-  }, [isConnected, animation]);
+  }, [isConnected]);
 
   const containerStyle = useAnimatedStyle(() => {
     const translateY = interpolate(

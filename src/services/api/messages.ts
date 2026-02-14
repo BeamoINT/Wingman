@@ -46,8 +46,8 @@ export async function fetchConversations(): Promise<{ conversations: Conversatio
       .from('conversations')
       .select(`
         *,
-        participant_1_profile:profiles!participant_1(*),
-        participant_2_profile:profiles!participant_2(*)
+        participant_1_profile:profiles!conversations_participant_1_fkey(*),
+        participant_2_profile:profiles!conversations_participant_2_fkey(*)
       `)
       .or(`participant_1.eq.${user.id},participant_2.eq.${user.id}`)
       .order('last_message_at', { ascending: false, nullsFirst: false });
@@ -87,7 +87,7 @@ export async function fetchMessages(conversationId: string): Promise<{ messages:
       .from('messages')
       .select(`
         *,
-        sender:profiles!sender_id(*)
+        sender:profiles!messages_sender_id_fkey(*)
       `)
       .eq('conversation_id', conversationId)
       .order('created_at', { ascending: true });
@@ -125,7 +125,7 @@ export async function sendMessage(conversationId: string, content: string, type:
       })
       .select(`
         *,
-        sender:profiles!sender_id(*)
+        sender:profiles!messages_sender_id_fkey(*)
       `)
       .single();
 
@@ -241,7 +241,7 @@ export function subscribeToMessages(
           .from('messages')
           .select(`
             *,
-            sender:profiles!sender_id(*)
+            sender:profiles!messages_sender_id_fkey(*)
           `)
           .eq('id', payload.new.id)
           .single();

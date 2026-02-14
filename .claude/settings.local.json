@@ -22,7 +22,18 @@
       "Bash(export:*)",
       "Bash(npm run lint:*)",
       "Bash(npx tsc:*)",
-      "Bash(SUPABASE_ACCESS_TOKEN=sbp_589777e04c7e594a16883dc834e929c0b9c030d5 npx supabase:*)"
+      "Bash(SUPABASE_ACCESS_TOKEN=sbp_589777e04c7e594a16883dc834e929c0b9c030d5 npx supabase:*)",
+      "Bash(npx eslint:*)",
+      "Bash(supabase --version:*)",
+      "Bash(brew install:*)",
+      "Bash(/tmp/supabase:*)",
+      "Bash(SUPABASE_ACCESS_TOKEN=sbp_35ddebfe06daec4e56442365bcf5dc511236e135 /tmp/supabase projects list:*)",
+      "Bash(SUPABASE_ACCESS_TOKEN=sbp_35ddebfe06daec4e56442365bcf5dc511236e135 /tmp/supabase db push:*)",
+      "Bash(SUPABASE_ACCESS_TOKEN=sbp_35ddebfe06daec4e56442365bcf5dc511236e135 /tmp/supabase db execute:*)",
+      "Bash(SUPABASE_ACCESS_TOKEN=sbp_35ddebfe06daec4e56442365bcf5dc511236e135 /tmp/supabase:*)",
+      "Bash(find:*)",
+      "Bash(xargs:*)",
+      "Bash(\" ''{query: $q}''\\)\")"
     ]
   }
 }

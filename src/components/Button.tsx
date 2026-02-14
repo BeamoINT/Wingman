@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import {
   Pressable,
   Text,
@@ -66,6 +66,11 @@ export const Button: React.FC<ButtonProps> = ({
 }) => {
   const pressed = useSharedValue(0);
   const isDisabled = disabled || loading;
+  const disabledShared = useSharedValue(isDisabled ? 1 : 0);
+
+  useEffect(() => {
+    disabledShared.value = isDisabled ? 1 : 0;
+  }, [isDisabled]);
 
   const handlePressIn = useCallback(() => {
     pressed.value = withSpring(1, { damping: 15, stiffness: 300 });
@@ -86,7 +91,7 @@ export const Button: React.FC<ButtonProps> = ({
     const opacity = interpolate(pressed.value, [0, 1], [1, 0.9]);
     return {
       transform: [{ scale }],
-      opacity: isDisabled ? 0.5 : opacity,
+      opacity: disabledShared.value ? 0.5 : opacity,
     };
   });
 

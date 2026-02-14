@@ -1,8 +1,15 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { configureReanimatedLogger, ReanimatedLogLevel } from 'react-native-reanimated';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+
+// Disable strict mode warnings for shared value reads during render
+configureReanimatedLogger({
+  level: ReanimatedLogLevel.warn,
+  strict: false,
+});
 import { AuthProvider } from './src/context/AuthContext';
 import { VerificationProvider } from './src/context/VerificationContext';
 import { RequirementsProvider } from './src/context/RequirementsContext';

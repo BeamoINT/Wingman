@@ -40,39 +40,53 @@ export interface CompanionFilters {
  */
 export async function fetchCompanions(filters?: CompanionFilters): Promise<{ companions: CompanionData[]; error: Error | null }> {
   try {
-    let query = supabase
-      .from('companions')
-      .select(`
-        *,
-        user:profiles(*)
-      `)
-      .eq('is_active', true);
+    const runQuery = async (includeLanguageFilter: boolean) => {
+      let query = supabase
+        .from('companions')
+        .select(`
+          *,
+          user:profiles!companions_user_id_fkey(*)
+        `)
+        .eq('is_active', true);
 
-    if (filters?.specialty) {
-      query = query.contains('specialties', [filters.specialty]);
+      if (filters?.specialty) {
+        query = query.contains('specialties', [filters.specialty]);
+      }
+
+      if (filters?.minRating) {
+        query = query.gte('rating', filters.minRating);
+      }
+
+      if (filters?.maxRate) {
+        query = query.lte('hourly_rate', filters.maxRate);
+      }
+
+      if (filters?.minRate) {
+        query = query.gte('hourly_rate', filters.minRate);
+      }
+
+      if (filters?.isAvailable !== undefined) {
+        query = query.eq('is_available', filters.isAvailable);
+      }
+
+      if (includeLanguageFilter && filters?.languages && filters.languages.length > 0) {
+        query = query.overlaps('languages', filters.languages);
+      }
+
+      return query.order('rating', { ascending: false });
+    };
+
+    let { data, error } = await runQuery(true);
+
+    // Some legacy DBs may not have companions.languages yet.
+    if (
+      error &&
+      filters?.languages?.length &&
+      (error as any).code === '42703' &&
+      String((error as any).message || '').includes('companions.languages')
+    ) {
+      ({ data, error } = await runQuery(false));
     }
-
-    if (filters?.minRating) {
-      query = query.gte('rating', filters.minRating);
-    }
-
-    if (filters?.maxRate) {
-      query = query.lte('hourly_rate', filters.maxRate);
-    }
-
-    if (filters?.minRate) {
-      query = query.gte('hourly_rate', filters.minRate);
-    }
-
-    if (filters?.isAvailable !== undefined) {
-      query = query.eq('is_available', filters.isAvailable);
-    }
-
-    if (filters?.languages && filters.languages.length > 0) {
-      query = query.overlaps('languages', filters.languages);
-    }
-
-    const { data, error } = await query.order('rating', { ascending: false });
 
     if (error) {
       console.error('Error fetching companions:', error);
@@ -95,7 +109,7 @@ export async function fetchCompanionById(id: string): Promise<{ companion: Compa
       .from('companions')
       .select(`
         *,
-        user:profiles(*)
+        user:profiles!companions_user_id_fkey(*)
       `)
       .eq('id', id)
       .single();
@@ -121,7 +135,7 @@ export async function fetchFeaturedCompanions(limit: number = 5): Promise<{ comp
       .from('companions')
       .select(`
         *,
-        user:profiles(*)
+        user:profiles!companions_user_id_fkey(*)
       `)
       .eq('is_active', true)
       .eq('is_available', true)
@@ -150,7 +164,7 @@ export async function fetchNearbyCompanions(city: string, limit: number = 10): P
       .from('companions')
       .select(`
         *,
-        user:profiles!inner(*)
+        user:profiles!companions_user_id_fkey!inner(*)
       `)
       .eq('is_active', true)
       .eq('user.city', city)
@@ -178,7 +192,7 @@ export async function searchCompanions(query: string): Promise<{ companions: Com
       .from('companions')
       .select(`
         *,
-        user:profiles(*)
+        user:profiles!companions_user_id_fkey(*)
       `)
       .eq('is_active', true)
       .or(`about.ilike.%${query}%,user.first_name.ilike.%${query}%,user.last_name.ilike.%${query}%`)
@@ -216,7 +230,7 @@ export async function fetchCompanionReviews(companionId: string): Promise<{ revi
       .from('reviews')
       .select(`
         *,
-        reviewer:profiles!reviewer_id(first_name, last_name, avatar_url)
+        reviewer:profiles!reviews_reviewer_id_fkey(first_name, last_name, avatar_url)
       `)
       .eq('reviewee_id', companion.user_id)
       .order('created_at', { ascending: false });

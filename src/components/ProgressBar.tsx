@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import Animated, {
+  useSharedValue,
   useAnimatedStyle,
   withSpring,
 } from 'react-native-reanimated';
@@ -19,13 +20,17 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
   totalSteps,
   showLabel = true,
 }) => {
-  const progress = currentStep / totalSteps;
+  const progressValue = useSharedValue(currentStep / totalSteps);
 
-  const animatedStyle = useAnimatedStyle(() => ({
-    width: withSpring(`${progress * 100}%`, {
+  useEffect(() => {
+    progressValue.value = withSpring(currentStep / totalSteps, {
       damping: 20,
       stiffness: 90,
-    }),
+    });
+  }, [currentStep, totalSteps]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    width: `${progressValue.value * 100}%`,
   }));
 
   return (

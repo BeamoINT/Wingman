@@ -4,3 +4,4 @@
 
 export * from './verificationApi';
 export * from './locationApi';
+export * from './companionApplicationApi';

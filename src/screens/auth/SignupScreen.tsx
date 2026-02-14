@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -11,9 +11,12 @@ import {
   Dimensions,
   Image,
   Alert,
+  Modal,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RouteProp } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -30,6 +33,7 @@ const { width } = Dimensions.get('window');
 const TOTAL_STEPS = 7;
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Signup'>;
+type SignupRouteProp = RouteProp<RootStackParamList, 'Signup'>;
 
 const INTERESTS: { label: string; value: CompanionSpecialty; icon: keyof typeof Ionicons.glyphMap }[] = [
   { label: 'Social Events', value: 'social-events', icon: 'people' },
@@ -83,6 +87,7 @@ const LANGUAGES = [
 
 export const SignupScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
+  const route = useRoute<SignupRouteProp>();
   const insets = useSafeAreaInsets();
   const {
     signupData,
@@ -91,25 +96,62 @@ export const SignupScreen: React.FC = () => {
     signupConsents,
     updateSignupConsents,
     validateSignupConsents,
+    saveSignupDraft,
+    clearSignupDraft,
+    loadSignupDraftPassword,
+    signupDraftStep,
   } = useAuth();
   const scrollRef = useRef<ScrollView>(null);
 
-  const [currentStep, setCurrentStep] = useState(1);
+  const [currentStep, setCurrentStep] = useState(
+    route.params?.resumeStep ?? signupDraftStep ?? 1
+  );
   const [showPassword, setShowPassword] = useState(false);
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
 
+  // Restore password from SecureStore when resuming a draft
+  useEffect(() => {
+    if (signupDraftStep != null) {
+      loadSignupDraftPassword().then((passwords) => {
+        if (passwords) {
+          updateSignupData({ password: passwords.password });
+          setConfirmPassword(passwords.confirmPassword);
+        }
+      });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Use AuthContext consent state
-  const confirmedAge = signupConsents.ageConfirmed;
   const agreedToTerms = signupConsents.termsAccepted;
   const agreedToPrivacy = signupConsents.privacyAccepted;
   const optedInMarketing = signupConsents.marketingOptIn;
 
   // Helper functions to update consents via AuthContext
-  const setConfirmedAge = (value: boolean) => updateSignupConsents({ ageConfirmed: value });
   const setAgreedToTerms = (value: boolean) => updateSignupConsents({ termsAccepted: value });
   const setAgreedToPrivacy = (value: boolean) => updateSignupConsents({ privacyAccepted: value });
   const setOptedInMarketing = (value: boolean) => updateSignupConsents({ marketingOptIn: value });
+
+  // Date picker state
+  const [showDatePicker, setShowDatePicker] = useState(false);
+
+  // Parse the stored DOB string back to a Date for the picker
+  const datePickerValue = useMemo(() => {
+    if (signupData.dateOfBirth) {
+      const parts = signupData.dateOfBirth.split('/');
+      if (parts.length === 3) {
+        const d = new Date(parseInt(parts[2], 10), parseInt(parts[0], 10) - 1, parseInt(parts[1], 10));
+        if (!isNaN(d.getTime())) return d;
+      }
+    }
+    // Default: 18 years ago today
+    const d = new Date();
+    d.setFullYear(d.getFullYear() - 18);
+    return d;
+  }, [signupData.dateOfBirth]);
+
+  // Max date is today (can't be born in the future)
+  const maxDate = useMemo(() => new Date(), []);
 
   const handleBack = async () => {
     await haptics.light();
@@ -117,6 +159,8 @@ export const SignupScreen: React.FC = () => {
       setCurrentStep(currentStep - 1);
       setError('');
     } else {
+      // User is leaving signup from step 1 — clear any saved draft
+      await clearSignupDraft();
       navigation.goBack();
     }
   };
@@ -142,10 +186,6 @@ export const SignupScreen: React.FC = () => {
           setError('Passwords do not match');
           return false;
         }
-        if (!confirmedAge) {
-          setError('You must be 18 or older to use this service');
-          return false;
-        }
         if (!agreedToTerms) {
           setError('Please agree to the Terms of Service');
           return false;
@@ -164,6 +204,29 @@ export const SignupScreen: React.FC = () => {
         if (!signupData.lastName.trim()) {
           setError('Please enter your last name');
           return false;
+        }
+        if (!signupData.dateOfBirth) {
+          setError('Please select your date of birth');
+          return false;
+        }
+        {
+          // Validate age is 18+
+          const parts = signupData.dateOfBirth.split('/');
+          if (parts.length === 3) {
+            const dob = new Date(parseInt(parts[2], 10), parseInt(parts[0], 10) - 1, parseInt(parts[1], 10));
+            const today = new Date();
+            let age = today.getFullYear() - dob.getFullYear();
+            const monthDiff = today.getMonth() - dob.getMonth();
+            if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) {
+              age--;
+            }
+            if (age < 18) {
+              setError('You must be 18 or older to use Wingman');
+              return false;
+            }
+            // Auto-set the age consent since DOB confirms it
+            updateSignupConsents({ ageConfirmed: true });
+          }
         }
         return true;
 
@@ -205,8 +268,12 @@ export const SignupScreen: React.FC = () => {
     await haptics.medium();
 
     if (currentStep < TOTAL_STEPS) {
-      setCurrentStep(currentStep + 1);
+      const nextStep = currentStep + 1;
+      setCurrentStep(nextStep);
       scrollRef.current?.scrollTo({ y: 0, animated: true });
+
+      // Save draft after advancing so progress persists across app restarts
+      saveSignupDraft(nextStep, confirmPassword);
     } else {
       // SECURITY: Final validation of all consents before completing signup
       const consentValidation = validateSignupConsents();
@@ -355,21 +422,6 @@ export const SignupScreen: React.FC = () => {
               leftIcon="lock-closed-outline"
             />
 
-            {/* Age Confirmation */}
-            <TouchableOpacity
-              style={styles.termsRow}
-              onPress={() => setConfirmedAge(!confirmedAge)}
-            >
-              <View style={[styles.checkbox, confirmedAge && styles.checkboxChecked]}>
-                {confirmedAge && (
-                  <Ionicons name="checkmark" size={14} color={colors.primary.black} />
-                )}
-              </View>
-              <Text style={styles.termsText}>
-                I confirm that I am at least 18 years of age
-              </Text>
-            </TouchableOpacity>
-
             {/* Terms of Service */}
             <TouchableOpacity
               style={styles.termsRow}
@@ -466,17 +518,80 @@ export const SignupScreen: React.FC = () => {
               leftIcon="person-outline"
             />
 
-            <Input
-              label="Date of Birth"
-              placeholder="MM/DD/YYYY"
-              value={signupData.dateOfBirth || ''}
-              onChangeText={(text) => updateSignupData({ dateOfBirth: text })}
-              keyboardType="default"
-              autoCorrect={false}
-              autoComplete="off"
-              textContentType="none"
-              leftIcon="calendar-outline"
-            />
+            <Text style={styles.fieldLabel}>Date of Birth</Text>
+            <TouchableOpacity
+              style={styles.datePickerButton}
+              onPress={() => setShowDatePicker(true)}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="calendar-outline" size={20} color={signupData.dateOfBirth ? colors.text.primary : colors.text.tertiary} />
+              <Text style={signupData.dateOfBirth ? styles.datePickerValue : styles.datePickerPlaceholder}>
+                {signupData.dateOfBirth || 'Select your birthday'}
+              </Text>
+            </TouchableOpacity>
+            <View style={styles.dobNoteRow}>
+              <Ionicons name="shield-checkmark-outline" size={14} color={colors.text.muted} />
+              <Text style={styles.dobNoteText}>
+                Your birthday must match your government-issued ID
+              </Text>
+            </View>
+
+            {Platform.OS === 'ios' ? (
+              <Modal
+                visible={showDatePicker}
+                transparent
+                animationType="slide"
+              >
+                <View style={styles.datePickerOverlay}>
+                  <View style={styles.datePickerModal}>
+                    <View style={styles.datePickerHeader}>
+                      <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                        <Text style={styles.datePickerCancel}>Cancel</Text>
+                      </TouchableOpacity>
+                      <Text style={styles.datePickerTitle}>Date of Birth</Text>
+                      <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                        <Text style={styles.datePickerDone}>Done</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <DateTimePicker
+                      value={datePickerValue}
+                      mode="date"
+                      display="spinner"
+                      maximumDate={maxDate}
+                      onChange={(_event, selectedDate) => {
+                        if (selectedDate) {
+                          const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
+                          const day = String(selectedDate.getDate()).padStart(2, '0');
+                          const year = selectedDate.getFullYear();
+                          updateSignupData({ dateOfBirth: `${month}/${day}/${year}` });
+                        }
+                      }}
+                      textColor={colors.text.primary}
+                      themeVariant="dark"
+                      style={styles.datePicker}
+                    />
+                  </View>
+                </View>
+              </Modal>
+            ) : (
+              showDatePicker && (
+                <DateTimePicker
+                  value={datePickerValue}
+                  mode="date"
+                  display="spinner"
+                  maximumDate={maxDate}
+                  onChange={(_event, selectedDate) => {
+                    setShowDatePicker(false);
+                    if (selectedDate) {
+                      const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
+                      const day = String(selectedDate.getDate()).padStart(2, '0');
+                      const year = selectedDate.getFullYear();
+                      updateSignupData({ dateOfBirth: `${month}/${day}/${year}` });
+                    }
+                  }}
+                />
+              )
+            )}
 
             <Text style={styles.fieldLabel}>Gender</Text>
             <View style={styles.chipsContainer}>
@@ -966,5 +1081,75 @@ const styles = StyleSheet.create({
   skipText: {
     ...typography.presets.body,
     color: colors.text.tertiary,
+  },
+  datePickerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.background.tertiary,
+    borderRadius: spacing.radius.md,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.inputPadding,
+    gap: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  datePickerValue: {
+    ...typography.presets.body,
+    color: colors.text.primary,
+    flex: 1,
+  },
+  datePickerPlaceholder: {
+    ...typography.presets.body,
+    color: colors.text.tertiary,
+    flex: 1,
+  },
+  dobNoteRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginBottom: spacing.md,
+    paddingHorizontal: spacing.xs,
+  },
+  dobNoteText: {
+    ...typography.presets.caption,
+    color: colors.text.muted,
+    flex: 1,
+  },
+  datePickerOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+  },
+  datePickerModal: {
+    backgroundColor: colors.background.secondary,
+    borderTopLeftRadius: spacing.radius.xl,
+    borderTopRightRadius: spacing.radius.xl,
+    paddingBottom: spacing.xxl,
+  },
+  datePickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: spacing.screenPadding,
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border.subtle,
+  },
+  datePickerCancel: {
+    ...typography.presets.body,
+    color: colors.text.tertiary,
+  },
+  datePickerTitle: {
+    ...typography.presets.h4,
+    color: colors.text.primary,
+  },
+  datePickerDone: {
+    ...typography.presets.body,
+    color: colors.primary.blue,
+    fontWeight: '600' as const,
+  },
+  datePicker: {
+    height: 200,
   },
 });
