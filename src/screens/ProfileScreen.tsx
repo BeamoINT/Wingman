@@ -133,7 +133,7 @@ export const ProfileScreen: React.FC = () => {
       subtitle: 'Complete your profile',
       badge: '2/4',
       badgeVariant: 'info',
-      onPress: () => navigation.navigate('Verification'),
+      onPress: () => navigation.navigate('Verification', { source: 'profile' }),
     },
     {
       id: 'safety',

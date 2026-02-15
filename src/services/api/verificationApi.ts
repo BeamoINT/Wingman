@@ -73,34 +73,60 @@ export async function logVerificationEvent(
 
 /**
  * Get verification status from user profile
- * Returns default values if columns don't exist (for development)
+ * Returns default values if columns don't exist (for development).
  */
 export async function getVerificationStatus(userId: string): Promise<VerificationStatusResponse | null> {
   try {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select(`
-        id,
-        verification_level
-      `)
-      .eq('id', userId)
-      .single();
+    const {
+      data: { user: authUser },
+    } = await supabase.auth.getUser();
+    const authEmailVerified = !!authUser?.email_confirmed_at;
 
-    // Handle missing table/columns - return defaults
-    if (error) {
-      if (error.code === '42703' || error.code === '42P01' || error.code === 'PGRST116') {
-        return getDefaultVerificationStatus();
+    const selectCandidates = [
+      'verification_level,email_verified,phone_verified,id_verified',
+      'verification_level,phone_verified,id_verified',
+      'verification_level,email_verified,id_verified',
+      'verification_level,email_verified,phone_verified',
+      'verification_level,id_verified',
+      'verification_level',
+    ];
+
+    for (const columns of selectCandidates) {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select(columns)
+        .eq('id', userId)
+        .single();
+
+      if (error) {
+        if (error.code === '42703') {
+          continue;
+        }
+
+        if (error.code === '42P01' || error.code === 'PGRST116') {
+          return getDefaultVerificationStatus(authEmailVerified);
+        }
+
+        console.error('Error fetching verification status:', error);
+        return getDefaultVerificationStatus(authEmailVerified);
       }
-      console.error('Error fetching verification status:', error);
-      return getDefaultVerificationStatus();
+
+      const profile = (data || {}) as unknown as Record<string, unknown>;
+      const verificationLevel = (profile.verification_level as VerificationLevel) || 'basic';
+      const idVerified =
+        verificationLevel === 'verified'
+        || verificationLevel === 'premium'
+        || !!profile.id_verified;
+
+      return {
+        emailVerified: authEmailVerified || !!profile.email_verified,
+        phoneVerified: !!profile.phone_verified,
+        idVerified,
+        verificationLevel,
+      };
     }
 
-    return {
-      emailVerified: false, // Will be determined by auth provider
-      phoneVerified: false,
-      idVerified: false,
-      verificationLevel: (data?.verification_level as VerificationLevel) || 'basic',
-    };
+    return getDefaultVerificationStatus(authEmailVerified);
   } catch (err) {
     console.error('Error fetching verification status:', err);
     return getDefaultVerificationStatus();
@@ -110,9 +136,9 @@ export async function getVerificationStatus(userId: string): Promise<Verificatio
 /**
  * Get default verification status (used when DB not available)
  */
-function getDefaultVerificationStatus(): VerificationStatusResponse {
+function getDefaultVerificationStatus(emailVerified = false): VerificationStatusResponse {
   return {
-    emailVerified: false,
+    emailVerified,
     phoneVerified: false,
     idVerified: false,
     verificationLevel: 'basic',
@@ -128,7 +154,12 @@ function getDefaultVerificationStatus(): VerificationStatusResponse {
  */
 export function subscribeToVerificationUpdates(
   userId: string,
-  callback: (data: { verificationLevel: VerificationLevel }) => void
+  callback: (data: {
+    verificationLevel: VerificationLevel;
+    emailVerified?: boolean;
+    phoneVerified?: boolean;
+    idVerified?: boolean;
+  }) => void
 ) {
   const channel = supabase
     .channel(`verification:${userId}`)
@@ -144,6 +175,9 @@ export function subscribeToVerificationUpdates(
         const newData = payload.new;
         callback({
           verificationLevel: (newData.verification_level as VerificationLevel) || 'basic',
+          emailVerified: typeof newData.email_verified === 'boolean' ? newData.email_verified : undefined,
+          phoneVerified: typeof newData.phone_verified === 'boolean' ? newData.phone_verified : undefined,
+          idVerified: typeof newData.id_verified === 'boolean' ? newData.id_verified : undefined,
         });
       }
     )

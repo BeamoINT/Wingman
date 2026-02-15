@@ -38,7 +38,11 @@ function transformConversationData(data: ConversationData, currentUserId: string
     lastName: otherProfile?.last_name || '',
     email: otherProfile?.email || '',
     avatar: otherProfile?.avatar_url || undefined,
-    isVerified: !!otherProfile?.phone_verified,
+    isVerified: (
+      !!otherProfile?.id_verified
+      || otherProfile?.verification_level === 'verified'
+      || otherProfile?.verification_level === 'premium'
+    ),
     isPremium: (otherProfile?.subscription_tier || 'free') !== 'free',
     createdAt: otherProfile?.created_at || data.created_at,
   };
@@ -270,6 +274,10 @@ export const MessagesScreen: React.FC = () => {
             </TouchableOpacity>
           )}
         </View>
+        <View style={styles.trustNote}>
+          <Ionicons name="shield-checkmark" size={14} color={colors.status.success} />
+          <Text style={styles.trustNoteText}>Wingman conversations are only between ID and photo verified users.</Text>
+        </View>
       </View>
 
       <FlatList
@@ -323,6 +331,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     fontSize: typography.sizes.md,
     color: colors.text.primary,
+  },
+  trustNote: {
+    marginTop: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  trustNoteText: {
+    ...typography.presets.caption,
+    color: colors.status.success,
   },
   listContent: {
     paddingHorizontal: spacing.screenPadding,

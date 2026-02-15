@@ -130,11 +130,14 @@ function normalizeCompanion(rawCompanion: unknown): CompanionData {
 
 function isVerifiedCompanion(companion: CompanionData): boolean {
   const verificationLevel = companion.user?.verification_level;
-  if (verificationLevel === 'verified' || verificationLevel === 'premium') {
-    return true;
-  }
+  const hasIdVerification = (
+    verificationLevel === 'verified'
+    || verificationLevel === 'premium'
+    || Boolean(companion.user?.id_verified)
+  );
+  const hasProfilePhoto = Boolean(companion.user?.avatar_url?.trim());
 
-  return Boolean(companion.user?.id_verified || companion.user?.phone_verified);
+  return hasIdVerification && hasProfilePhoto;
 }
 
 function containsCaseInsensitive(haystack: string, needle: string): boolean {

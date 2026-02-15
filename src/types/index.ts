@@ -328,7 +328,10 @@ export type RootStackParamList = {
   EditProfile: undefined;
   Subscription: undefined;
   Safety: undefined;
-  Verification: undefined;
+  Verification: {
+    source?: 'profile' | 'requirements' | 'booking_final_step';
+    companionId?: string;
+  } | undefined;
   Notifications: undefined;
   // Verification sub-screens (accessible from verification tab)
   VerificationHistory: undefined;

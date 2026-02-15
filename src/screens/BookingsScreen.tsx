@@ -52,9 +52,10 @@ function normalizeBookingStatus(status: unknown): BookingStatus {
 function transformBookingData(data: BookingData): Booking {
   const companion = data.companion;
   const user = companion?.user;
+  const hasIdVerification = !!user?.id_verified;
   const verificationLevel: VerificationLevel = user?.verification_level === 'premium'
     ? 'premium'
-    : user?.verification_level === 'verified'
+    : user?.verification_level === 'verified' || hasIdVerification
       ? 'verified'
       : 'basic';
 
@@ -70,7 +71,11 @@ function transformBookingData(data: BookingData): Booking {
         lastName: user?.last_name || '',
         email: user?.email || '',
         avatar: user?.avatar_url || undefined,
-        isVerified: user?.phone_verified || false,
+        isVerified: (
+          verificationLevel === 'verified'
+          || verificationLevel === 'premium'
+          || !!user?.id_verified
+        ),
         isPremium: (user?.subscription_tier || 'free') !== 'free',
         createdAt: user?.created_at || data.created_at,
       },

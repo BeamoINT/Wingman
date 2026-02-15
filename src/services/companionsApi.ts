@@ -26,34 +26,53 @@ export async function fetchCompanions(): Promise<Companion[]> {
     return [];
   }
 
-  return data.map((row: any) => {
-    const profile = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles;
-    return {
-      id: row.id,
-      user: {
-        id: profile?.id || row.user_id || row.id,
-        firstName: profile?.first_name || '',
-        lastName: profile?.last_name || '',
-        email: profile?.email || '',
-        avatar: profile?.avatar_url || undefined,
-        isVerified: profile?.phone_verified || false,
-        isPremium: (profile?.subscription_tier || 'free') !== 'free',
-        createdAt: profile?.created_at || row.created_at || new Date().toISOString(),
-      },
-      rating: Number(row.rating) || 0,
-      reviewCount: row.review_count || 0,
-      hourlyRate: Number(row.hourly_rate),
-      specialties: row.specialties || [],
-      languages: Array.isArray(row.languages) ? row.languages : [],
-      availability: [],
-      isOnline: typeof row.is_available === 'boolean' ? row.is_available : true,
-      responseTime: row.response_time || 'Usually responds within 1 hour',
-      completedBookings: row.completed_bookings || 0,
-      badges: [],
-      gallery: row.gallery || [],
-      about: row.about || '',
-      interests: [],
-      verificationLevel: profile?.phone_verified ? 'verified' : 'basic',
-    } as Companion;
-  });
+  return data
+    .map((row: any) => {
+      const profile = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles;
+      const verificationLevel = profile?.verification_level === 'premium'
+        ? 'premium'
+        : (profile?.verification_level === 'verified' ? 'verified' : 'basic');
+      const idVerified = (
+        verificationLevel === 'verified'
+        || verificationLevel === 'premium'
+        || !!profile?.id_verified
+      );
+      const hasProfilePhoto = typeof profile?.avatar_url === 'string' && profile.avatar_url.trim().length > 0;
+
+      const companion: Companion = {
+        id: row.id,
+        user: {
+          id: profile?.id || row.user_id || row.id,
+          firstName: profile?.first_name || '',
+          lastName: profile?.last_name || '',
+          email: profile?.email || '',
+          avatar: profile?.avatar_url || undefined,
+          isVerified: idVerified,
+          isPremium: (profile?.subscription_tier || 'free') !== 'free',
+          createdAt: profile?.created_at || row.created_at || new Date().toISOString(),
+        },
+        rating: Number(row.rating) || 0,
+        reviewCount: row.review_count || 0,
+        hourlyRate: Number(row.hourly_rate),
+        specialties: row.specialties || [],
+        languages: Array.isArray(row.languages) ? row.languages : [],
+        availability: [],
+        isOnline: typeof row.is_available === 'boolean' ? row.is_available : true,
+        responseTime: row.response_time || 'Usually responds within 1 hour',
+        completedBookings: row.completed_bookings || 0,
+        badges: [],
+        gallery: row.gallery || [],
+        about: row.about || '',
+        interests: [],
+        verificationLevel,
+      };
+
+      return {
+        companion,
+        idVerified,
+        hasProfilePhoto,
+      };
+    })
+    .filter((item) => item.idVerified && item.hasProfilePhoto)
+    .map((item) => item.companion);
 }

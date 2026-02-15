@@ -1,13 +1,16 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
-    ScrollView, StyleSheet, Text, TouchableOpacity, View
+    Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button, Card } from '../components';
+import { useAuth } from '../context/AuthContext';
+import { useVerification } from '../context/VerificationContext';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 import { typography } from '../theme/typography';
@@ -15,6 +18,7 @@ import type { RootStackParamList } from '../types';
 import { haptics } from '../utils/haptics';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+type VerificationRouteProp = RouteProp<RootStackParamList, 'Verification'>;
 
 interface VerificationStep {
   id: string;
@@ -25,34 +29,52 @@ interface VerificationStep {
   action?: string;
 }
 
-const verificationSteps: VerificationStep[] = [
-  {
-    id: 'email',
-    title: 'Email Verification',
-    description: 'Verify your email address',
-    icon: 'mail',
-    status: 'completed',
-  },
-  {
-    id: 'phone',
-    title: 'Phone Verification',
-    description: 'Verify your phone number',
-    icon: 'call',
-    status: 'completed',
-  },
-  {
-    id: 'id',
-    title: 'ID Verification',
-    description: 'Upload a government-issued ID',
-    icon: 'card',
-    status: 'in_progress',
-    action: 'Continue',
-  },
-];
-
 export const VerificationScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
+  const route = useRoute<VerificationRouteProp>();
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
+  const { emailVerified, phoneVerified, idVerified } = useVerification();
+
+  const verificationSource = route.params?.source || 'profile';
+  const openedFromFinalBookingStep = verificationSource === 'booking_final_step';
+  const hasProfilePhoto = !!user?.avatar?.trim();
+
+  const verificationSteps = useMemo<VerificationStep[]>(
+    () => [
+      {
+        id: 'email',
+        title: 'Email Verification',
+        description: 'Verify your email address',
+        icon: 'mail',
+        status: emailVerified ? 'completed' : 'pending',
+      },
+      {
+        id: 'phone',
+        title: 'Phone Verification',
+        description: 'Verify your phone number',
+        icon: 'call',
+        status: phoneVerified ? 'completed' : 'pending',
+      },
+      {
+        id: 'photo',
+        title: 'Photo Verification',
+        description: 'Upload a clear profile photo',
+        icon: 'camera',
+        status: hasProfilePhoto ? 'completed' : 'pending',
+        action: !hasProfilePhoto && openedFromFinalBookingStep ? 'Add Photo' : undefined,
+      },
+      {
+        id: 'id',
+        title: 'ID Verification',
+        description: 'Upload a government-issued ID',
+        icon: 'card',
+        status: idVerified ? 'completed' : openedFromFinalBookingStep ? 'in_progress' : 'pending',
+        action: !idVerified && openedFromFinalBookingStep ? 'Start ID Verification' : undefined,
+      },
+    ],
+    [emailVerified, phoneVerified, hasProfilePhoto, idVerified, openedFromFinalBookingStep]
+  );
 
   const completedSteps = verificationSteps.filter((s) => s.status === 'completed').length;
   const totalSteps = verificationSteps.length;
@@ -82,6 +104,49 @@ export const VerificationScreen: React.FC = () => {
         return 'time';
       case 'pending':
         return 'ellipse-outline';
+    }
+  };
+
+  const handleStepAction = async (step: VerificationStep) => {
+    await haptics.medium();
+
+    if (step.id === 'photo') {
+      Alert.alert(
+        'Add Profile Photo',
+        'Upload a clear profile photo before confirming your booking.'
+      );
+      return;
+    }
+
+    if (step.id === 'id') {
+      if (!openedFromFinalBookingStep) {
+        Alert.alert(
+          'ID Verification Happens at Checkout',
+          'To control verification costs, ID checks only unlock at the final booking step right before payment.'
+        );
+        return;
+      }
+
+      Alert.alert(
+        'Complete Verification',
+        'Finish ID verification now, then return to complete your booking.'
+      );
+      return;
+    }
+
+    if (step.id === 'email' && !emailVerified) {
+      Alert.alert(
+        'Verify Your Email',
+        'Use your email code sign-in flow to verify this account before booking.'
+      );
+      return;
+    }
+
+    if (step.id === 'phone' && !phoneVerified) {
+      Alert.alert(
+        'Verify Your Phone',
+        'Complete phone verification from account settings before booking.'
+      );
     }
   };
 
@@ -125,6 +190,18 @@ export const VerificationScreen: React.FC = () => {
             </View>
           </Card>
         </View>
+
+        {(!openedFromFinalBookingStep && (!idVerified || !hasProfilePhoto)) && (
+          <View style={styles.section}>
+            <Card variant="outlined" style={styles.deferredNotice}>
+              <Ionicons name="information-circle" size={20} color={colors.primary.blue} />
+              <Text style={styles.deferredNoticeText}>
+                ID and photo verification only unlock at the final booking step so verification
+                costs are only incurred right before checkout.
+              </Text>
+            </Card>
+          </View>
+        )}
 
         {/* Benefits */}
         <View style={styles.section}>
@@ -195,7 +272,7 @@ export const VerificationScreen: React.FC = () => {
                   {step.action && (
                     <Button
                       title={step.action}
-                      onPress={() => haptics.medium()}
+                      onPress={() => handleStepAction(step)}
                       variant={step.status === 'in_progress' ? 'primary' : 'outline'}
                       size="small"
                       style={styles.stepButton}
@@ -307,6 +384,18 @@ const styles = StyleSheet.create({
   progressFill: {
     height: '100%',
     borderRadius: 4,
+  },
+  deferredNotice: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    padding: spacing.md,
+  },
+  deferredNoticeText: {
+    ...typography.presets.bodySmall,
+    color: colors.text.secondary,
+    flex: 1,
+    lineHeight: 20,
   },
   benefitsGrid: {
     flexDirection: 'row',

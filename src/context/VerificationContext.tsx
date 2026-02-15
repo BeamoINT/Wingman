@@ -165,6 +165,19 @@ export const VerificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       user.id,
       (data) => {
         setVerificationLevel(data.verificationLevel);
+        if (typeof data.emailVerified === 'boolean') {
+          setEmailVerified(data.emailVerified);
+        }
+        if (typeof data.phoneVerified === 'boolean') {
+          setPhoneVerified(data.phoneVerified);
+        }
+        if (typeof data.idVerified === 'boolean') {
+          setIdVerified(
+            data.idVerified
+            || data.verificationLevel === 'verified'
+            || data.verificationLevel === 'premium'
+          );
+        }
       }
     );
 

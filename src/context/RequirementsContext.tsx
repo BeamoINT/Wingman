@@ -7,7 +7,7 @@
  * - Privacy Policy acceptance
  * - Age verification (18+)
  * - Email verification
- * - ID verification (for booking)
+ * - ID and photo verification (required only at final booking confirmation)
  *
  * NEW BUSINESS MODEL:
  * - Companion booking is FREE for all users (no booking limits)
@@ -56,6 +56,7 @@ export interface BookingRequirements {
   privacyAccepted: RequirementCheck;
   emailVerified: RequirementCheck;
   idVerified: RequirementCheck;
+  photoVerified: RequirementCheck;
   profileComplete: RequirementCheck;
   allMet: boolean;
   unmetRequirements: RequirementCheck[];
@@ -64,6 +65,8 @@ export interface BookingRequirements {
 export interface CompanionRequirements extends BookingRequirements {
   companionAgreementAccepted: RequirementCheck;
 }
+
+export type BookingRequirementMode = 'entry' | 'finalize';
 
 /**
  * Friends feature limits based on subscription tier
@@ -96,7 +99,7 @@ interface RequirementsContextType {
   revokeAllConsents: () => Promise<void>;
 
   // Requirement checks
-  checkBookingRequirements: () => BookingRequirements;
+  checkBookingRequirements: (mode?: BookingRequirementMode) => BookingRequirements;
   checkCompanionRequirements: () => CompanionRequirements;
   canAccessFeature: (feature: AppFeature) => RequirementCheck;
 
@@ -554,7 +557,9 @@ export const RequirementsProvider: React.FC<{ children: React.ReactNode }> = ({ 
   // Requirement Checks
   // ===========================================
 
-  const checkBookingRequirements = useCallback((): BookingRequirements => {
+  const checkBookingRequirements = useCallback((mode: BookingRequirementMode = 'entry'): BookingRequirements => {
+    const hasProfilePhoto = !!user?.avatar?.trim();
+
     const checks: BookingRequirements = {
       isAuthenticated: {
         met: isAuthenticated,
@@ -591,9 +596,15 @@ export const RequirementsProvider: React.FC<{ children: React.ReactNode }> = ({ 
         action: 'Verify ID',
         navigateTo: 'Verification',
       },
+      photoVerified: {
+        met: hasProfilePhoto,
+        requirement: 'You must upload a profile photo',
+        action: 'Add Photo',
+        navigateTo: 'EditProfile',
+      },
       profileComplete: {
         met: profileCompletionData.isComplete,
-        requirement: 'You must complete your profile',
+        requirement: 'You must complete your profile details',
         action: 'Complete Profile',
         navigateTo: 'EditProfile',
       },
@@ -601,10 +612,31 @@ export const RequirementsProvider: React.FC<{ children: React.ReactNode }> = ({ 
       unmetRequirements: [],
     };
 
+    const requiredCheckKeys: Array<keyof Omit<BookingRequirements, 'allMet' | 'unmetRequirements'>> =
+      mode === 'finalize'
+        ? [
+            'isAuthenticated',
+            'ageConfirmed',
+            'termsAccepted',
+            'privacyAccepted',
+            'emailVerified',
+            'idVerified',
+            'photoVerified',
+            'profileComplete',
+          ]
+        : [
+            'isAuthenticated',
+            'ageConfirmed',
+            'termsAccepted',
+            'privacyAccepted',
+            'emailVerified',
+            'profileComplete',
+          ];
+
     // Calculate unmet requirements
-    const unmet = Object.entries(checks)
-      .filter(([key, value]) => key !== 'allMet' && key !== 'unmetRequirements' && !value.met)
-      .map(([_, value]) => value as RequirementCheck);
+    const unmet = requiredCheckKeys
+      .filter((key) => !checks[key].met)
+      .map((key) => checks[key]);
 
     checks.unmetRequirements = unmet;
     checks.allMet = unmet.length === 0;
@@ -615,11 +647,12 @@ export const RequirementsProvider: React.FC<{ children: React.ReactNode }> = ({ 
     consents,
     emailVerified,
     idVerified,
+    user?.avatar,
     profileCompletionData,
   ]);
 
   const checkCompanionRequirements = useCallback((): CompanionRequirements => {
-    const bookingReqs = checkBookingRequirements();
+    const bookingReqs = checkBookingRequirements('entry');
 
     return {
       ...bookingReqs,
@@ -663,7 +696,7 @@ export const RequirementsProvider: React.FC<{ children: React.ReactNode }> = ({ 
         case 'book_companion':
         case 'send_message':
         case 'leave_review':
-          const bookingReqs = checkBookingRequirements();
+          const bookingReqs = checkBookingRequirements('entry');
           if (!bookingReqs.allMet) {
             const firstUnmet = bookingReqs.unmetRequirements[0];
             return firstUnmet || { met: false, requirement: 'Requirements not met' };

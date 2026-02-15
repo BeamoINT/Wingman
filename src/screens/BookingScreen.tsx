@@ -117,6 +117,8 @@ function transformCompanionData(data: CompanionData): CompanionPreview {
   const firstName = data.user?.first_name?.trim() || 'Wingman';
   const lastName = data.user?.last_name?.trim() || '';
   const lastInitial = lastName ? `${lastName.charAt(0)}.` : '';
+  const hasIdVerification = !!data.user?.id_verified;
+  const normalizedLevel = normalizeVerificationLevel(data.user?.verification_level);
 
   return {
     id: data.id,
@@ -127,7 +129,9 @@ function transformCompanionData(data: CompanionData): CompanionPreview {
     rating: Math.max(0, toNumber(data.rating, 0)),
     reviewCount: Math.max(0, Math.round(toNumber(data.review_count, 0))),
     responseTime: data.response_time || 'Usually responds within 1 hour',
-    verificationLevel: normalizeVerificationLevel(data.user?.verification_level),
+    verificationLevel: normalizedLevel === 'premium'
+      ? 'premium'
+      : (normalizedLevel === 'verified' || hasIdVerification ? 'verified' : 'basic'),
     isAvailable: typeof data.is_available === 'boolean' ? data.is_available : true,
   };
 }
@@ -139,6 +143,32 @@ const BookingScreenContent: React.FC = () => {
   const insets = useSafeAreaInsets();
   const { checkBookingRequirements } = useRequirements();
   const { idVerified, emailVerified } = useVerification();
+  const bookingRequirements = useMemo(
+    () => checkBookingRequirements('finalize'),
+    [checkBookingRequirements]
+  );
+  const photoVerified = bookingRequirements.photoVerified.met;
+
+  const verificationWarningMessage = useMemo(() => {
+    const missing: string[] = [];
+    if (!emailVerified) missing.push('email');
+    if (!idVerified) missing.push('ID');
+    if (!photoVerified) missing.push('profile photo');
+
+    if (missing.length === 0) {
+      return '';
+    }
+
+    if (missing.length === 1) {
+      return `Complete ${missing[0]} verification to book.`;
+    }
+
+    if (missing.length === 2) {
+      return `Complete ${missing[0]} and ${missing[1]} verification to book.`;
+    }
+
+    return `Complete ${missing[0]}, ${missing[1]}, and ${missing[2]} verification to book.`;
+  }, [emailVerified, idVerified, photoVerified]);
 
   const dates = useMemo(() => {
     return Array.from({ length: 14 }, (_, index) => {
@@ -201,7 +231,7 @@ const BookingScreenContent: React.FC = () => {
   const grandTotal = totalPrice + serviceFee;
 
   const validateBeforeBooking = useCallback((): { valid: boolean; message?: string } => {
-    const requirements = checkBookingRequirements();
+    const requirements = checkBookingRequirements('finalize');
 
     if (!requirements.isAuthenticated.met) {
       return { valid: false, message: 'You must be signed in to book a wingman.' };
@@ -225,6 +255,10 @@ const BookingScreenContent: React.FC = () => {
 
     if (!requirements.idVerified.met) {
       return { valid: false, message: 'You must verify your identity before booking.' };
+    }
+
+    if (!requirements.photoVerified.met) {
+      return { valid: false, message: 'You must upload a profile photo before booking.' };
     }
 
     if (!requirements.profileComplete.met) {
@@ -261,10 +295,50 @@ const BookingScreenContent: React.FC = () => {
 
   const handleBookPress = async () => {
     const validation = validateBeforeBooking();
+    const companionIdForVerification = companion?.id;
 
     if (!validation.valid || !companion) {
       await haptics.warning();
-      Alert.alert('Cannot Complete Booking', validation.message || 'Please review your booking details.');
+
+      const needsEmailOrIdVerification =
+        !bookingRequirements.emailVerified.met || !bookingRequirements.idVerified.met;
+      const needsProfilePhoto = !bookingRequirements.photoVerified.met;
+
+      if (needsEmailOrIdVerification || needsProfilePhoto) {
+        Alert.alert(
+          'Complete Verification to Book',
+          validation.message || verificationWarningMessage || 'Complete verification to place your booking.',
+          [
+            {
+              text: 'Cancel',
+              style: 'cancel',
+            },
+            {
+              text: needsEmailOrIdVerification ? 'Complete Verification' : 'Add Profile Photo',
+              onPress: () => {
+                if (needsEmailOrIdVerification) {
+                  if (!companionIdForVerification) {
+                    return;
+                  }
+
+                  navigation.navigate('Verification', {
+                    source: 'booking_final_step',
+                    companionId: companionIdForVerification,
+                  });
+                  return;
+                }
+
+                Alert.alert(
+                  'Add Profile Photo',
+                  'Please upload a profile photo from your Profile tab before completing this booking.'
+                );
+              },
+            },
+          ]
+        );
+      } else {
+        Alert.alert('Cannot Complete Booking', validation.message || 'Please review your booking details.');
+      }
       return;
     }
 
@@ -534,28 +608,18 @@ const BookingScreenContent: React.FC = () => {
         <View style={styles.safetyReminder}>
           <Ionicons name="shield-checkmark" size={20} color={colors.primary.blue} />
           <Text style={styles.safetyText}>
-            Keep payment and communication in-app for support and protection. {companion.displayName} is profile-verified.
+            Keep payment and communication in-app for support and protection. Everyone on Wingman is ID and photo verified before booking.
           </Text>
         </View>
 
-        {(!idVerified || !emailVerified) && (
+        {(!idVerified || !emailVerified || !photoVerified) && (
           <View style={styles.verificationWarning}>
             <Ionicons name="warning" size={20} color={colors.status.warning} />
             <View style={styles.verificationWarningContent}>
               <Text style={styles.verificationWarningTitle}>Verification Required</Text>
               <Text style={styles.verificationWarningText}>
-                {!emailVerified && !idVerified
-                  ? 'Complete email and ID verification to book'
-                  : !emailVerified
-                    ? 'Verify your email to book'
-                    : 'Complete ID verification to book'}
+                {verificationWarningMessage}
               </Text>
-              <TouchableOpacity
-                style={styles.verifyButton}
-                onPress={() => navigation.navigate('Verification')}
-              >
-                <Text style={styles.verifyButtonText}>Complete Verification</Text>
-              </TouchableOpacity>
             </View>
           </View>
         )}
@@ -602,8 +666,6 @@ const BookingScreenContent: React.FC = () => {
           loading={isProcessing}
           disabled={
             isProcessing ||
-            !idVerified ||
-            !emailVerified ||
             !locationName.trim() ||
             !companion.isAvailable ||
             companion.hourlyRate <= 0

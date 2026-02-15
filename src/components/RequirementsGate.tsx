@@ -89,7 +89,7 @@ export const RequirementsGate: React.FC<RequirementsGateProps> = ({
     let met = false;
 
     if (feature === 'book_companion' || feature === 'send_message' || feature === 'leave_review') {
-      const bookingReqs = checkBookingRequirements();
+      const bookingReqs = checkBookingRequirements('entry');
       unmetReqs = bookingReqs.unmetRequirements;
       met = bookingReqs.allMet;
     } else if (feature === 'become_companion') {
@@ -138,7 +138,7 @@ export const RequirementsGate: React.FC<RequirementsGateProps> = ({
             navigation.navigate('SignIn');
             break;
           case 'Verification':
-            navigation.navigate('Verification');
+            navigation.navigate('Verification', { source: 'requirements' });
             break;
           case 'Subscription':
             navigation.navigate('Subscription');
@@ -274,7 +274,7 @@ export const useFeatureGate = () => {
   );
 
   const checkBooking = useCallback(() => {
-    const reqs = checkBookingRequirements();
+    const reqs = checkBookingRequirements('entry');
     return {
       allowed: reqs.allMet,
       unmetRequirements: reqs.unmetRequirements,

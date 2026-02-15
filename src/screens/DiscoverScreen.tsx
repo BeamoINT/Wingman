@@ -59,9 +59,10 @@ function toStringArray(value: unknown): string[] {
  * Transform API companion data to app Companion type
  */
 function transformCompanionData(data: CompanionData): Companion {
+  const hasIdVerification = !!data.user?.id_verified;
   const verificationLevel: VerificationLevel = data.user?.verification_level === 'premium'
     ? 'premium'
-    : data.user?.verification_level === 'verified'
+    : data.user?.verification_level === 'verified' || hasIdVerification
       ? 'verified'
       : 'basic';
 
@@ -73,7 +74,11 @@ function transformCompanionData(data: CompanionData): Companion {
       lastName: data.user?.last_name || '',
       email: data.user?.email || '',
       avatar: data.user?.avatar_url || undefined,
-      isVerified: data.user?.phone_verified || false,
+      isVerified: (
+        verificationLevel === 'verified'
+        || verificationLevel === 'premium'
+        || !!data.user?.id_verified
+      ),
       isPremium: (data.user?.subscription_tier || 'free') !== 'free',
       createdAt: data.user?.created_at || data.created_at,
       location: data.user?.city ? {
@@ -394,6 +399,10 @@ export const DiscoverScreen: React.FC = () => {
             </TouchableOpacity>
           )}
         </View>
+        <View style={styles.trustNote}>
+          <Ionicons name="shield-checkmark" size={14} color={colors.status.success} />
+          <Text style={styles.trustNoteText}>All wingmen shown are ID and photo verified.</Text>
+        </View>
       </View>
 
       <FlatList
@@ -459,6 +468,16 @@ const styles = StyleSheet.create({
   },
   clearSearchButton: {
     padding: spacing.xs,
+  },
+  trustNote: {
+    marginTop: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  trustNoteText: {
+    ...typography.presets.caption,
+    color: colors.status.success,
   },
   listContent: {
     paddingHorizontal: spacing.screenPadding,

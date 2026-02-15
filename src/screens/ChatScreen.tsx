@@ -39,7 +39,11 @@ function transformConversationData(data: ConversationData, currentUserId: string
     lastName: otherProfile?.last_name || '',
     email: otherProfile?.email || '',
     avatar: otherProfile?.avatar_url || undefined,
-    isVerified: !!otherProfile?.phone_verified,
+    isVerified: (
+      !!otherProfile?.id_verified
+      || otherProfile?.verification_level === 'verified'
+      || otherProfile?.verification_level === 'premium'
+    ),
     isPremium: (otherProfile?.subscription_tier || 'free') !== 'free',
     createdAt: otherProfile?.created_at || data.created_at,
   };
@@ -91,7 +95,11 @@ function transformMessageData(
       lastName: senderProfile.last_name || '',
       email: senderProfile.email || '',
       avatar: senderProfile.avatar_url || undefined,
-      isVerified: !!senderProfile.phone_verified,
+      isVerified: (
+        !!senderProfile.id_verified
+        || senderProfile.verification_level === 'verified'
+        || senderProfile.verification_level === 'premium'
+      ),
       isPremium: (senderProfile.subscription_tier || 'free') !== 'free',
       createdAt: senderProfile.created_at,
     };
@@ -390,7 +398,7 @@ const ChatScreenContent: React.FC = () => {
           <View style={styles.headerInfo}>
             <Text style={styles.headerName} numberOfLines={1}>{participantName || 'Wingman'}</Text>
             <Text style={styles.headerStatus}>
-              {otherParticipant?.isVerified ? 'Verified profile' : 'In-app conversation'}
+              {otherParticipant?.isVerified ? 'ID & photo verified' : 'In-app conversation'}
             </Text>
           </View>
         </View>
@@ -398,7 +406,7 @@ const ChatScreenContent: React.FC = () => {
 
       <View style={styles.safetyTip}>
         <Ionicons name="shield-checkmark" size={14} color={colors.primary.blue} />
-        <Text style={styles.safetyTipText}>Keep communication in-app for trust and support coverage.</Text>
+        <Text style={styles.safetyTipText}>Keep communication in-app for trust and support coverage. Wingman users are ID and photo verified.</Text>
       </View>
 
       <FlatList

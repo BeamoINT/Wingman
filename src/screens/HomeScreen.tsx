@@ -123,6 +123,13 @@ export const HomeScreen: React.FC = () => {
           </TouchableOpacity>
         </View>
 
+        <View style={styles.verificationNotice}>
+          <Ionicons name="shield-checkmark" size={16} color={colors.status.success} />
+          <Text style={styles.verificationNoticeText}>
+            Wingman verifies every member with ID and photo checks before bookings.
+          </Text>
+        </View>
+
         {/* Premium Banner */}
         <TouchableOpacity onPress={handleSubscriptionPress} activeOpacity={0.9}>
           <LinearGradient
@@ -298,6 +305,21 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     borderRadius: spacing.radius.xl,
     marginBottom: spacing.xl,
+  },
+  verificationNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.status.successLight,
+    borderRadius: spacing.radius.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    gap: spacing.xs,
+    marginBottom: spacing.lg,
+  },
+  verificationNoticeText: {
+    ...typography.presets.bodySmall,
+    color: colors.status.success,
+    flex: 1,
   },
   premiumContent: {
     flexDirection: 'row',

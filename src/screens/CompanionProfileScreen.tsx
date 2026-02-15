@@ -52,9 +52,10 @@ function toStringArray(value: unknown): string[] {
 }
 
 function transformCompanionData(data: CompanionData): Companion {
+  const hasIdVerification = !!data.user?.id_verified;
   const verificationLevel: VerificationLevel = data.user?.verification_level === 'premium'
     ? 'premium'
-    : data.user?.verification_level === 'verified'
+    : data.user?.verification_level === 'verified' || hasIdVerification
       ? 'verified'
       : 'basic';
 
@@ -67,7 +68,11 @@ function transformCompanionData(data: CompanionData): Companion {
       email: data.user?.email || '',
       avatar: data.user?.avatar_url || undefined,
       bio: data.user?.bio || undefined,
-      isVerified: data.user?.phone_verified || false,
+      isVerified: (
+        verificationLevel === 'verified'
+        || verificationLevel === 'premium'
+        || !!data.user?.id_verified
+      ),
       isPremium: (data.user?.subscription_tier || 'free') !== 'free',
       createdAt: data.user?.created_at || data.created_at,
       location: data.user?.city ? {
@@ -193,7 +198,7 @@ export const CompanionProfileScreen: React.FC = () => {
             onPress: () => {
               // Navigate to the appropriate screen to complete the requirement
               if (firstUnmet.navigateTo === 'Verification') {
-                navigation.navigate('Verification');
+                navigation.navigate('Verification', { source: 'requirements' });
               } else if (firstUnmet.navigateTo === 'Subscription') {
                 navigation.navigate('Subscription');
               } else if (firstUnmet.navigateTo === 'SignIn') {
@@ -375,10 +380,12 @@ export const CompanionProfileScreen: React.FC = () => {
           {/* Verification Badges */}
           <View style={styles.verificationRow}>
             <Badge label="ID Verified" variant="verified" icon="checkmark-circle" />
+            <Badge label="Photo Verified" variant="verified" icon="camera" />
             {companion.verificationLevel === 'premium' && (
               <Badge label="Premium" variant="premium" icon="star" />
             )}
           </View>
+          <Text style={styles.verificationNote}>Wingman verifies identity and profile photos before bookings.</Text>
 
           {/* Specialties */}
           {companion.specialties.length > 0 && (
@@ -655,6 +662,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  verificationNote: {
+    ...typography.presets.bodySmall,
+    color: colors.status.success,
     marginBottom: spacing.xl,
   },
   section: {
