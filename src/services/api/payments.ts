@@ -64,17 +64,48 @@ async function extractFunctionError(
   }
 }
 
+async function invokeCreatePortalSession(accessToken: string | null) {
+  const headers = accessToken
+    ? { 'x-session-token': accessToken }
+    : undefined;
+
+  return supabase.functions.invoke<CustomerPortalSessionResponse>(
+    'create-customer-portal-session',
+    {
+      body: accessToken ? { accessToken } : {},
+      headers,
+    }
+  );
+}
+
+async function getCurrentAccessToken(): Promise<string | null> {
+  try {
+    const { data } = await supabase.auth.getSession();
+    return data.session?.access_token || null;
+  } catch {
+    return null;
+  }
+}
+
+async function refreshAccessToken(): Promise<string | null> {
+  try {
+    const { data, error } = await supabase.auth.refreshSession();
+    if (error) {
+      return null;
+    }
+    return data.session?.access_token || null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Create a Stripe customer portal session URL for the current user.
  */
 export async function createPaymentPortalSession(): Promise<PaymentPortalResult> {
   const fallbackUrl = getStripePortalFallbackUrl();
-  const { data, error } = await supabase.functions.invoke<CustomerPortalSessionResponse>(
-    'create-customer-portal-session',
-    {
-      body: {},
-    }
-  );
+  const accessToken = await getCurrentAccessToken();
+  let { data, error } = await invokeCreatePortalSession(accessToken);
 
   if (!error && data?.url) {
     return { url: data.url, error: null };
@@ -84,7 +115,29 @@ export async function createPaymentPortalSession(): Promise<PaymentPortalResult>
     return { url: null, error: data.error };
   }
 
-  const { status, message } = await extractFunctionError(error as FunctionsErrorLike | null);
+  let { status, message } = await extractFunctionError(error as FunctionsErrorLike | null);
+
+  if (status === 401) {
+    const refreshedAccessToken = await refreshAccessToken();
+
+    if (refreshedAccessToken) {
+      const retryResult = await invokeCreatePortalSession(refreshedAccessToken);
+      data = retryResult.data;
+      error = retryResult.error;
+
+      if (!error && data?.url) {
+        return { url: data.url, error: null };
+      }
+
+      if (data?.error) {
+        return { url: null, error: data.error };
+      }
+
+      const retryError = await extractFunctionError(error as FunctionsErrorLike | null);
+      status = retryError.status;
+      message = retryError.message;
+    }
+  }
 
   if (fallbackUrl) {
     return { url: fallbackUrl, error: null };

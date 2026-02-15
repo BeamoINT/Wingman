@@ -63,11 +63,6 @@ serve(async (req) => {
     return jsonResponse({ error: 'Method not allowed' }, 405);
   }
 
-  const authHeader = req.headers.get('Authorization');
-  if (!authHeader) {
-    return jsonResponse({ error: 'Authentication required' }, 401);
-  }
-
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const supabaseServiceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
   const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY');
@@ -85,8 +80,30 @@ serve(async (req) => {
   }
 
   try {
+    const requestBody = await req.json().catch(() => ({})) as Record<string, unknown>;
+    const sessionTokenHeader = req.headers.get('x-session-token');
+    const authHeader = req.headers.get('Authorization');
+
+    const bearerMatch = authHeader?.trim().match(/^Bearer\s+(.+)$/i);
+    const authorizationToken = bearerMatch?.[1]?.trim();
+
+    const possibleTokens = [
+      typeof sessionTokenHeader === 'string' ? sessionTokenHeader.trim() : '',
+      typeof requestBody.accessToken === 'string' ? requestBody.accessToken.trim() : '',
+      typeof authorizationToken === 'string' ? authorizationToken : '',
+    ];
+
+    const token = possibleTokens.find(candidate => {
+      if (!candidate) return false;
+      // Access tokens are JWTs (three dot-separated segments).
+      return candidate.split('.').length === 3;
+    }) || null;
+
+    if (!token) {
+      return jsonResponse({ error: 'Authentication required' }, 401);
+    }
+
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
-    const token = authHeader.replace('Bearer ', '').trim();
 
     const { data: authData, error: authError } = await supabaseAdmin.auth.getUser(token);
     const user = authData?.user;
