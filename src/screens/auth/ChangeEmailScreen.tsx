@@ -1,29 +1,23 @@
-import React, { useState, useRef, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  TextInput,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  Alert,
-} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+    Alert, KeyboardAvoidingView,
+    Platform,
+    ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View
+} from 'react-native';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button, Input } from '../../components';
+import { useAuth } from '../../context/AuthContext';
 import { colors } from '../../theme/colors';
 import { spacing } from '../../theme/spacing';
 import { typography } from '../../theme/typography';
-import { haptics } from '../../utils/haptics';
-import { useAuth } from '../../context/AuthContext';
-import { email as emailValidator } from '../../utils/validation';
 import type { RootStackParamList } from '../../types';
+import { haptics } from '../../utils/haptics';
+import { email as emailValidator } from '../../utils/validation';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'ChangeEmail'>;
 

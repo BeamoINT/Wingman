@@ -1,12 +1,7 @@
 import React, { useEffect } from 'react';
-import { StyleSheet, ViewStyle, StyleProp } from 'react-native';
+import { StyleProp, StyleSheet, ViewStyle } from 'react-native';
 import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-  withDelay,
-  interpolate,
-  Extrapolation,
+    Extrapolation, interpolate, useAnimatedStyle, useSharedValue, withDelay, withSpring
 } from 'react-native-reanimated';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';

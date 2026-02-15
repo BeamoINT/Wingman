@@ -1,35 +1,27 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ActivityIndicator,
-  RefreshControl,
-  Alert,
-  FlatList,
-  Linking,
-  Platform,
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+    ActivityIndicator, Alert,
+    FlatList,
+    Linking,
+    Platform, RefreshControl, StyleSheet, Text, TouchableOpacity, View
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Avatar, Badge, Card, EmptyState } from '../components';
+import type { BookingData } from '../services/api/bookingsApi';
+import { cancelBooking, fetchUserBookings } from '../services/api/bookingsApi';
+import { getOrCreateConversation } from '../services/api/messages';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 import { typography } from '../theme/typography';
-import { haptics } from '../utils/haptics';
-import { Card, Badge, Avatar, EmptyState } from '../components';
-import { fetchUserBookings, cancelBooking } from '../services/api/bookingsApi';
-import type { BookingData } from '../services/api/bookingsApi';
-import { getOrCreateConversation } from '../services/api/messages';
 import type {
-  RootStackParamList,
-  Booking,
-  BookingStatus,
-  CompanionSpecialty,
-  VerificationLevel,
+    Booking,
+    BookingStatus,
+    CompanionSpecialty, RootStackParamList, VerificationLevel
 } from '../types';
+import { haptics } from '../utils/haptics';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 type TabType = 'upcoming' | 'completed' | 'cancelled';

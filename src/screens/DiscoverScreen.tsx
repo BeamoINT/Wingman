@@ -1,27 +1,19 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  TextInput,
-  FlatList,
-  ScrollView,
-  RefreshControl,
-  ActivityIndicator,
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+    ActivityIndicator, FlatList, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { CompanionCard, EmptySearchResults, EmptyState } from '../components';
+import type { CompanionData } from '../services/api/companions';
+import { fetchCompanions } from '../services/api/companions';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 import { typography } from '../theme/typography';
+import type { Companion, CompanionSpecialty, RootStackParamList, VerificationLevel } from '../types';
 import { haptics } from '../utils/haptics';
-import { CompanionCard, EmptySearchResults, EmptyState } from '../components';
-import { fetchCompanions } from '../services/api/companions';
-import type { CompanionData } from '../services/api/companions';
-import type { RootStackParamList, Companion, CompanionSpecialty, VerificationLevel } from '../types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 type SpecialtyFilter = 'all' | CompanionSpecialty;

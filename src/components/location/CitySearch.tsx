@@ -3,26 +3,21 @@
  * City search with Google Places Autocomplete
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  FlatList,
-  StyleSheet,
-  ActivityIndicator,
-  Keyboard,
-} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+    ActivityIndicator, FlatList, Keyboard, StyleSheet, Text,
+    TextInput,
+    TouchableOpacity, View
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BottomSheet } from '../BottomSheet';
+import { usePlacesAutocomplete } from '../../hooks/usePlacesAutocomplete';
 import { colors } from '../../theme/colors';
 import { spacing } from '../../theme/spacing';
 import { typography } from '../../theme/typography';
+import type { CitySearchProps, PlacePrediction } from '../../types/location';
 import { haptics } from '../../utils/haptics';
-import { usePlacesAutocomplete } from '../../hooks/usePlacesAutocomplete';
-import type { PlacePrediction, PlaceDetails, CitySearchProps } from '../../types/location';
+import { BottomSheet } from '../BottomSheet';
 
 export const CitySearch: React.FC<CitySearchProps> = ({
   visible,

@@ -5,28 +5,22 @@
  * Displayed after submission or when re-tapping "Become a Companion" with an active application.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  ActivityIndicator,
-  RefreshControl,
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+    ActivityIndicator,
+    RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Badge, Button, Card } from '../../components';
+import { getCompanionApplication } from '../../services/api/companionApplicationApi';
 import { colors } from '../../theme/colors';
 import { spacing } from '../../theme/spacing';
 import { typography } from '../../theme/typography';
+import type { CompanionApplication, CompanionApplicationStatus, RootStackParamList } from '../../types';
 import { haptics } from '../../utils/haptics';
-import { Card, Badge, Button } from '../../components';
-import { getCompanionApplication } from '../../services/api/companionApplicationApi';
-import type { RootStackParamList, CompanionApplication, CompanionApplicationStatus } from '../../types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 

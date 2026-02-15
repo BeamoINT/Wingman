@@ -1,32 +1,21 @@
-import React, { useState, useRef } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  Dimensions,
-  TouchableOpacity,
-} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import Animated, {
-  useAnimatedStyle,
-  withSpring,
-  useSharedValue,
-  interpolate,
-} from 'react-native-reanimated';
+import React, { useRef, useState } from 'react';
+import {
+    Dimensions, FlatList, StyleSheet, Text, TouchableOpacity, View
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button } from '../../components';
+import { useAuth } from '../../context/AuthContext';
 import { colors } from '../../theme/colors';
 import { spacing } from '../../theme/spacing';
 import { typography } from '../../theme/typography';
-import { haptics } from '../../utils/haptics';
-import { useAuth } from '../../context/AuthContext';
 import type { RootStackParamList } from '../../types';
+import { haptics } from '../../utils/haptics';
 
-const { width, height } = Dimensions.get('window');
+const { width } = Dimensions.get('window');
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Tutorial'>;
 
@@ -101,7 +90,6 @@ export const TutorialScreen: React.FC = () => {
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const flatListRef = useRef<FlatList>(null);
-  const scrollX = useSharedValue(0);
 
   const handleNext = async () => {
     await haptics.light();
@@ -139,7 +127,7 @@ export const TutorialScreen: React.FC = () => {
     itemVisiblePercentThreshold: 50,
   }).current;
 
-  const renderSlide = ({ item, index }: { item: TutorialSlide; index: number }) => (
+  const renderSlide = ({ item }: { item: TutorialSlide }) => (
     <View style={styles.slide}>
       <View style={styles.slideContent}>
         <View style={[styles.iconContainer, { backgroundColor: `${item.iconColor}20` }]}>

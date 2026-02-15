@@ -4,28 +4,22 @@
  * Allows users to configure their verification-based matching preferences.
  */
 
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Switch,
-  ActivityIndicator,
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
+import React, { useEffect, useState } from 'react';
+import {
+    ActivityIndicator, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Card } from '../../components';
+import { useVerification } from '../../context/VerificationContext';
 import { colors } from '../../theme/colors';
 import { spacing } from '../../theme/spacing';
 import { typography } from '../../theme/typography';
-import { haptics } from '../../utils/haptics';
-import { Card } from '../../components';
-import { useVerification } from '../../context/VerificationContext';
-import { defaultVerificationPreferences } from '../../types/verification';
 import type { RootStackParamList } from '../../types';
+import { defaultVerificationPreferences } from '../../types/verification';
+import { haptics } from '../../utils/haptics';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -69,7 +63,7 @@ const DISPLAY_PREFERENCES: PreferenceItem[] = [
 export const VerificationPreferencesScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
-  const { preferences, updatePreferences, isLoading } = useVerification();
+  const { preferences, updatePreferences } = useVerification();
 
   const [localPrefs, setLocalPrefs] = useState(defaultVerificationPreferences);
   const [isSaving, setIsSaving] = useState(false);

@@ -1,31 +1,22 @@
-import React, { useState, useCallback, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Image,
-  Dimensions,
-  Alert,
-  ActivityIndicator,
-} from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+    ActivityIndicator, Alert, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Badge, Button, Card, Rating, SafetyBanner } from '../components';
+import { useFeatureGate } from '../components/RequirementsGate';
+import type { CompanionData } from '../services/api/companions';
+import { fetchCompanionById, fetchCompanionReviews } from '../services/api/companions';
+import { getOrCreateConversation } from '../services/api/messages';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 import { typography } from '../theme/typography';
+import type { Companion, LegalDocumentType, RootStackParamList, VerificationLevel } from '../types';
 import { haptics } from '../utils/haptics';
-import { Button, Badge, Rating, Card, SafetyBanner } from '../components';
-import { useFeatureGate } from '../components/RequirementsGate';
-import { fetchCompanionById, fetchCompanionReviews } from '../services/api/companions';
-import type { CompanionData } from '../services/api/companions';
-import type { RootStackParamList, Companion, LegalDocumentType, VerificationLevel } from '../types';
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CompanionProfile'>;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -228,8 +219,20 @@ export const CompanionProfileScreen: React.FC = () => {
       return;
     }
 
+    if (!companion.user.id) {
+      Alert.alert('Unavailable', 'Messaging is unavailable for this companion right now.');
+      return;
+    }
+
+    const { conversation, error } = await getOrCreateConversation(companion.user.id);
+    if (error || !conversation?.id) {
+      console.error('Error creating/opening conversation:', error);
+      Alert.alert('Message Failed', error?.message || 'Unable to open chat right now.');
+      return;
+    }
+
     await haptics.light();
-    navigation.navigate('Chat', { conversationId: companion.id });
+    navigation.navigate('Chat', { conversationId: conversation.id });
   };
 
   const handleFavoritePress = async () => {

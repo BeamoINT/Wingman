@@ -1,16 +1,9 @@
 import React, { useEffect } from 'react';
-import { ViewStyle, StyleProp } from 'react-native';
+import { StyleProp, ViewStyle } from 'react-native';
 import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-  withDelay,
-  withTiming,
-  interpolate,
-  Extrapolation,
-  Easing,
+    Easing, Extrapolation, interpolate, useAnimatedStyle, useSharedValue, withDelay, withSpring, withTiming
 } from 'react-native-reanimated';
-import { springConfigs, timingConfigs } from '../utils/animations';
+import { springConfigs } from '../utils/animations';
 
 type Direction = 'up' | 'down' | 'left' | 'right' | 'none';
 

@@ -1,31 +1,18 @@
-import React, { useEffect, useCallback } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import {
-  View,
-  StyleSheet,
-  Dimensions,
-  TouchableWithoutFeedback,
-  ViewStyle,
-  StyleProp,
+    Dimensions, StyleProp, StyleSheet, TouchableWithoutFeedback, View, ViewStyle
 } from 'react-native';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-  withTiming,
-  interpolate,
-  Extrapolation,
-  runOnJS,
-} from 'react-native-reanimated';
 import {
-  GestureDetector,
-  Gesture,
-  GestureHandlerRootView,
+    Gesture, GestureDetector
 } from 'react-native-gesture-handler';
+import Animated, {
+    Extrapolation, interpolate, runOnJS, useAnimatedStyle, useSharedValue, withSpring
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
-import { haptics } from '../utils/haptics';
 import { springConfigs } from '../utils/animations';
+import { haptics } from '../utils/haptics';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 

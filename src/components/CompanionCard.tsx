@@ -1,21 +1,17 @@
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import React from 'react';
 import {
-  View,
-  Text,
-  Image,
-  StyleSheet,
-  Dimensions,
-  TouchableOpacity,
+    Dimensions, Image,
+    StyleSheet, Text, TouchableOpacity, View
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 import { typography } from '../theme/typography';
+import type { Companion } from '../types';
 import { haptics } from '../utils/haptics';
 import { Badge } from './Badge';
 import { Rating } from './Rating';
-import type { Companion } from '../types';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 

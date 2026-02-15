@@ -15,19 +15,14 @@
  * - "Find New Friends" feature is subscription-gated
  */
 
-import React, {
-  createContext,
-  useContext,
-  useState,
-  useEffect,
-  useCallback,
-  useMemo,
-  useRef,
-} from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import React, {
+    createContext, useCallback, useContext, useEffect, useMemo,
+    useRef, useState
+} from 'react';
+import type { SubscriptionTier } from '../types';
 import { useAuth } from './AuthContext';
 import { useVerification } from './VerificationContext';
-import type { SubscriptionTier } from '../types';
 
 // ===========================================
 // Types

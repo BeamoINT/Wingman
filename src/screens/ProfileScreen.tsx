@@ -1,25 +1,20 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Alert,
-} from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation, useFocusEffect, CommonActions } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
+import { CommonActions, useFocusEffect, useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { LinearGradient } from 'expo-linear-gradient';
+import React, { useCallback, useState } from 'react';
+import {
+    Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Avatar, Badge, Card } from '../components';
+import { useAuth } from '../context/AuthContext';
+import { checkExistingCompanionProfile, getCompanionApplication } from '../services/api/companionApplicationApi';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 import { typography } from '../theme/typography';
+import type { CompanionApplicationStatus, RootStackParamList } from '../types';
 import { haptics } from '../utils/haptics';
-import { Avatar, Badge, Card } from '../components';
-import { useAuth } from '../context/AuthContext';
-import { getCompanionApplication, checkExistingCompanionProfile } from '../services/api/companionApplicationApi';
-import type { RootStackParamList, CompanionApplicationStatus } from '../types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 

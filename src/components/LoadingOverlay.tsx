@@ -1,6 +1,6 @@
-import React from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, Modal } from 'react-native';
 import { BlurView } from 'expo-blur';
+import React from 'react';
+import { ActivityIndicator, Modal, StyleSheet, Text, View } from 'react-native';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 import { typography } from '../theme/typography';

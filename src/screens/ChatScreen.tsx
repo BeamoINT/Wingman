@@ -1,123 +1,323 @@
-import React, { useState, useRef } from 'react';
+import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
+import type { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TextInput,
-  TouchableOpacity,
-  KeyboardAvoidingView,
-  Platform,
+    ActivityIndicator, Alert, FlatList, KeyboardAvoidingView,
+    Platform, RefreshControl, StyleSheet, Text, TextInput,
+    TouchableOpacity, View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
+import { Avatar, EmptyChat, EmptyState, RequirementsGate } from '../components';
+import { useAuth } from '../context/AuthContext';
+import type { ConversationData, MessageData } from '../services/api/messages';
+import {
+    fetchConversationById,
+    fetchMessages, markMessagesAsRead, sendMessage, subscribeToMessages
+} from '../services/api/messages';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 import { typography } from '../theme/typography';
+import type { Conversation, Message, RootStackParamList, User } from '../types';
 import { haptics } from '../utils/haptics';
-import { Avatar, RequirementsGate, EmptyChat } from '../components';
-import type { RootStackParamList, Message } from '../types';
 
+type Props = NativeStackScreenProps<RootStackParamList, 'Chat'>;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
-// Mock messages
-const mockMessages: Message[] = [
-  {
-    id: '1',
-    conversationId: '1',
-    sender: { id: 'u1', firstName: 'Sarah', lastName: 'J', email: '', isVerified: true, isPremium: true, createdAt: '' },
-    content: 'Hey! I saw you booked me for dinner on Friday. Looking forward to it! 🎉',
-    type: 'text',
-    isRead: true,
-    createdAt: new Date(Date.now() - 1000 * 60 * 60).toISOString(),
-  },
-  {
-    id: '2',
-    conversationId: '1',
-    sender: { id: 'me', firstName: 'Me', lastName: '', email: '', isVerified: true, isPremium: false, createdAt: '' },
-    content: 'Hi Sarah! Yes, I\'m excited too. I was thinking we could try that new Italian place downtown?',
-    type: 'text',
-    isRead: true,
-    createdAt: new Date(Date.now() - 1000 * 60 * 55).toISOString(),
-  },
-  {
-    id: '3',
-    conversationId: '1',
-    sender: { id: 'u1', firstName: 'Sarah', lastName: 'J', email: '', isVerified: true, isPremium: true, createdAt: '' },
-    content: 'Oh I love Italian food! That sounds perfect. Do they take reservations?',
-    type: 'text',
-    isRead: true,
-    createdAt: new Date(Date.now() - 1000 * 60 * 50).toISOString(),
-  },
-  {
-    id: '4',
-    conversationId: '1',
-    sender: { id: 'me', firstName: 'Me', lastName: '', email: '', isVerified: true, isPremium: false, createdAt: '' },
-    content: 'Yes! I already made a reservation for 7pm. Is that time good for you?',
-    type: 'text',
-    isRead: true,
-    createdAt: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
-  },
-  {
-    id: '5',
-    conversationId: '1',
-    sender: { id: 'u1', firstName: 'Sarah', lastName: 'J', email: '', isVerified: true, isPremium: true, createdAt: '' },
-    content: '7pm works great! See you then 😊',
-    type: 'text',
-    isRead: true,
-    createdAt: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
-  },
-];
+function transformConversationData(data: ConversationData, currentUserId: string): Conversation {
+  const isParticipantOneCurrent = data.participant_1 === currentUserId;
+  const otherProfile = isParticipantOneCurrent
+    ? data.participant_2_profile
+    : data.participant_1_profile;
+  const otherParticipantId = isParticipantOneCurrent
+    ? data.participant_2
+    : data.participant_1;
+
+  const participant: User = {
+    id: otherProfile?.id || otherParticipantId || '',
+    firstName: otherProfile?.first_name || 'Companion',
+    lastName: otherProfile?.last_name || '',
+    email: otherProfile?.email || '',
+    avatar: otherProfile?.avatar_url || undefined,
+    isVerified: !!otherProfile?.phone_verified,
+    isPremium: (otherProfile?.subscription_tier || 'free') !== 'free',
+    createdAt: otherProfile?.created_at || data.created_at,
+  };
+
+  return {
+    id: data.id,
+    participants: [participant],
+    lastMessage: data.last_message_preview
+      ? {
+        id: `${data.id}-preview`,
+        conversationId: data.id,
+        sender: participant,
+        content: data.last_message_preview,
+        type: 'text',
+        isRead: (data.unread_count || 0) === 0,
+        createdAt: data.last_message_at || data.created_at,
+      }
+      : undefined,
+    unreadCount: data.unread_count || 0,
+    createdAt: data.created_at,
+    updatedAt: data.last_message_at || data.created_at,
+  };
+}
+
+function transformMessageData(
+  data: MessageData,
+  currentUserId: string,
+  fallbackParticipant?: User
+): Message {
+  const senderProfile = data.sender;
+  const isCurrentUser = data.sender_id === currentUserId;
+
+  let sender: User;
+
+  if (isCurrentUser) {
+    sender = {
+      id: currentUserId,
+      firstName: 'You',
+      lastName: '',
+      email: '',
+      isVerified: true,
+      isPremium: false,
+      createdAt: data.created_at,
+    };
+  } else if (senderProfile?.id) {
+    sender = {
+      id: senderProfile.id,
+      firstName: senderProfile.first_name || 'Companion',
+      lastName: senderProfile.last_name || '',
+      email: senderProfile.email || '',
+      avatar: senderProfile.avatar_url || undefined,
+      isVerified: !!senderProfile.phone_verified,
+      isPremium: (senderProfile.subscription_tier || 'free') !== 'free',
+      createdAt: senderProfile.created_at,
+    };
+  } else if (fallbackParticipant) {
+    sender = fallbackParticipant;
+  } else {
+    sender = {
+      id: data.sender_id || 'unknown',
+      firstName: 'User',
+      lastName: '',
+      email: '',
+      isVerified: false,
+      isPremium: false,
+      createdAt: data.created_at,
+    };
+  }
+
+  return {
+    id: data.id,
+    conversationId: data.conversation_id,
+    sender,
+    content: data.content,
+    type: data.type === 'booking_request' ? 'booking-request' : data.type,
+    isRead: data.is_read,
+    createdAt: data.created_at,
+  };
+}
+
+function formatTime(dateStr: string): string {
+  const date = new Date(dateStr);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+
+function sortMessagesByTime(messages: Message[]): Message[] {
+  return [...messages].sort(
+    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+  );
+}
 
 /**
  * Inner content component for the Chat screen
  */
 const ChatScreenContent: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
+  const route = useRoute<Props['route']>();
   const insets = useSafeAreaInsets();
-  const flatListRef = useRef<FlatList>(null);
+  const { user } = useAuth();
 
-  const [messages, setMessages] = useState<Message[]>(mockMessages);
+  const flatListRef = useRef<FlatList<Message>>(null);
+
+  const [conversation, setConversation] = useState<Conversation | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleBackPress = async () => {
+  const conversationId = route.params.conversationId;
+
+  const otherParticipant = useMemo(() => {
+    if (!conversation) return null;
+    return conversation.participants[0] || null;
+  }, [conversation]);
+
+  const scrollToBottom = useCallback((animated = true) => {
+    setTimeout(() => {
+      flatListRef.current?.scrollToEnd({ animated });
+    }, 60);
+  }, []);
+
+  const loadChatData = useCallback(async (showRefresh = false) => {
+    if (showRefresh) {
+      setIsRefreshing(true);
+    } else {
+      setIsLoading(true);
+    }
+    setError(null);
+
+    try {
+      const [conversationResult, messagesResult] = await Promise.all([
+        fetchConversationById(conversationId),
+        fetchMessages(conversationId),
+      ]);
+
+      if (conversationResult.error || !conversationResult.conversation) {
+        setError(conversationResult.error?.message || 'Conversation not found.');
+        setConversation(null);
+        setMessages([]);
+        return;
+      }
+
+      const transformedConversation = transformConversationData(
+        conversationResult.conversation,
+        user?.id || ''
+      );
+      setConversation(transformedConversation);
+
+      if (messagesResult.error) {
+        setError(messagesResult.error.message || 'Unable to load messages.');
+        setMessages([]);
+        return;
+      }
+
+      const transformedMessages = messagesResult.messages.map((message) =>
+        transformMessageData(message, user?.id || '', transformedConversation.participants[0])
+      );
+      setMessages(sortMessagesByTime(transformedMessages));
+
+      await markMessagesAsRead(conversationId);
+      scrollToBottom(false);
+    } catch (err) {
+      setError('Something went wrong while loading this chat.');
+      console.error('Error loading chat:', err);
+      setConversation(null);
+      setMessages([]);
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, [conversationId, scrollToBottom, user?.id]);
+
+  useEffect(() => {
+    loadChatData();
+  }, [loadChatData]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void markMessagesAsRead(conversationId);
+    }, [conversationId])
+  );
+
+  useEffect(() => {
+    const unsubscribe = subscribeToMessages(conversationId, async (incomingMessage) => {
+      const transformed = transformMessageData(
+        incomingMessage,
+        user?.id || '',
+        otherParticipant || undefined
+      );
+
+      setMessages((prev) => {
+        if (prev.some((message) => message.id === transformed.id)) {
+          return prev;
+        }
+        return sortMessagesByTime([...prev, transformed]);
+      });
+
+      setConversation((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          lastMessage: transformed,
+          updatedAt: transformed.createdAt,
+        };
+      });
+
+      if (incomingMessage.sender_id !== (user?.id || '')) {
+        await markMessagesAsRead(conversationId);
+      }
+
+      scrollToBottom();
+    });
+
+    return unsubscribe;
+  }, [conversationId, otherParticipant, scrollToBottom, user?.id]);
+
+  const handleBackPress = useCallback(async () => {
     await haptics.light();
     navigation.goBack();
-  };
+  }, [navigation]);
 
-  const handleSend = async () => {
-    if (!inputText.trim()) return;
+  const handleRefresh = useCallback(() => {
+    loadChatData(true);
+  }, [loadChatData]);
 
-    await haptics.light();
+  const handleSend = useCallback(async () => {
+    const content = inputText.trim();
+    if (!content || isSending) return;
 
-    const newMessage: Message = {
-      id: Date.now().toString(),
-      conversationId: '1',
-      sender: { id: 'me', firstName: 'Me', lastName: '', email: '', isVerified: true, isPremium: false, createdAt: '' },
-      content: inputText.trim(),
-      type: 'text',
-      isRead: false,
-      createdAt: new Date().toISOString(),
-    };
-
-    setMessages([...messages, newMessage]);
+    setIsSending(true);
     setInputText('');
 
-    setTimeout(() => {
-      flatListRef.current?.scrollToEnd({ animated: true });
-    }, 100);
-  };
+    try {
+      await haptics.light();
 
-  const formatTime = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-  };
+      const { message, error: sendError } = await sendMessage(conversationId, content, 'text');
+      if (sendError || !message) {
+        console.error('Error sending message:', sendError);
+        setInputText(content);
+        Alert.alert('Message Failed', sendError?.message || 'Unable to send message right now.');
+        return;
+      }
+
+      const transformed = transformMessageData(
+        message,
+        user?.id || '',
+        otherParticipant || undefined
+      );
+
+      setMessages((prev) => {
+        if (prev.some((existing) => existing.id === transformed.id)) {
+          return prev;
+        }
+        return sortMessagesByTime([...prev, transformed]);
+      });
+
+      setConversation((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          lastMessage: transformed,
+          updatedAt: transformed.createdAt,
+        };
+      });
+
+      scrollToBottom();
+    } finally {
+      setIsSending(false);
+    }
+  }, [conversationId, inputText, isSending, otherParticipant, scrollToBottom, user?.id]);
 
   const renderMessage = ({ item, index }: { item: Message; index: number }) => {
-    const isMe = item.sender.id === 'me';
-    const showAvatar = !isMe && (index === 0 || messages[index - 1]?.sender.id !== item.sender.id);
+    const isMe = item.sender.id === (user?.id || '');
+    const previous = index > 0 ? messages[index - 1] : null;
+    const showAvatar = !isMe && (!previous || previous.sender.id !== item.sender.id);
 
     return (
       <View style={[styles.messageRow, isMe && styles.messageRowMe]}>
@@ -125,24 +325,48 @@ const ChatScreenContent: React.FC = () => {
           <View style={styles.avatarSpace}>
             {showAvatar && (
               <Avatar
-                source="https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100"
-                name={item.sender.firstName}
+                source={item.sender.avatar}
+                name={`${item.sender.firstName} ${item.sender.lastName}`.trim()}
                 size="small"
               />
             )}
           </View>
         )}
+
         <View style={[styles.messageBubble, isMe ? styles.messageBubbleMe : styles.messageBubbleOther]}>
-          <Text style={[styles.messageText, isMe && styles.messageTextMe]}>
-            {item.content}
-          </Text>
-          <Text style={[styles.messageTime, isMe && styles.messageTimeMe]}>
-            {formatTime(item.createdAt)}
-          </Text>
+          <Text style={[styles.messageText, isMe && styles.messageTextMe]}>{item.content}</Text>
+          <Text style={[styles.messageTime, isMe && styles.messageTimeMe]}>{formatTime(item.createdAt)}</Text>
         </View>
       </View>
     );
   };
+
+  if (isLoading && !isRefreshing) {
+    return (
+      <View style={styles.stateScreen}>
+        <ActivityIndicator size="large" color={colors.primary.blue} />
+        <Text style={styles.stateText}>Loading conversation...</Text>
+      </View>
+    );
+  }
+
+  if (error || !conversation) {
+    return (
+      <View style={styles.stateScreen}>
+        <EmptyState
+          icon="alert-circle-outline"
+          title="Conversation Unavailable"
+          message={error || 'Unable to load this conversation.'}
+          actionLabel="Try Again"
+          onAction={() => loadChatData()}
+          secondaryActionLabel="Back"
+          onSecondaryAction={handleBackPress}
+        />
+      </View>
+    );
+  }
+
+  const participantName = `${otherParticipant?.firstName || 'Companion'} ${otherParticipant?.lastName || ''}`.trim();
 
   return (
     <KeyboardAvoidingView
@@ -150,65 +374,59 @@ const ChatScreenContent: React.FC = () => {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={0}
     >
-      {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
         <TouchableOpacity style={styles.backButton} onPress={handleBackPress}>
           <Ionicons name="chevron-back" size={24} color={colors.text.primary} />
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.headerProfile} onPress={() => haptics.light()}>
+        <View style={styles.headerProfile}>
           <Avatar
-            source="https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100"
-            name="Sarah Johnson"
+            source={otherParticipant?.avatar}
+            name={participantName}
             size="small"
-            showOnlineStatus
-            isOnline={true}
+            showVerified
+            verificationLevel={otherParticipant?.isPremium ? 'premium' : otherParticipant?.isVerified ? 'verified' : 'basic'}
           />
           <View style={styles.headerInfo}>
-            <Text style={styles.headerName}>Sarah J.</Text>
-            <Text style={styles.headerStatus}>Online</Text>
+            <Text style={styles.headerName} numberOfLines={1}>{participantName || 'Companion'}</Text>
+            <Text style={styles.headerStatus}>
+              {otherParticipant?.isVerified ? 'Verified profile' : 'In-app conversation'}
+            </Text>
           </View>
-        </TouchableOpacity>
-
-        <View style={styles.headerActions}>
-          <TouchableOpacity style={styles.headerButton} onPress={() => haptics.light()}>
-            <Ionicons name="call-outline" size={22} color={colors.text.primary} />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.headerButton} onPress={() => haptics.light()}>
-            <Ionicons name="ellipsis-vertical" size={22} color={colors.text.primary} />
-          </TouchableOpacity>
         </View>
       </View>
 
-      {/* Safety Tip */}
       <View style={styles.safetyTip}>
         <Ionicons name="shield-checkmark" size={14} color={colors.primary.blue} />
-        <Text style={styles.safetyTipText}>
-          Sarah is ID-verified
-        </Text>
+        <Text style={styles.safetyTipText}>Keep communication in-app for trust and support coverage.</Text>
       </View>
 
-      {/* Messages */}
       <FlatList
         ref={flatListRef}
         data={messages}
-        renderItem={renderMessage}
         keyExtractor={(item) => item.id}
+        renderItem={renderMessage}
         contentContainerStyle={[
           styles.messagesList,
           messages.length === 0 && styles.emptyMessagesList,
         ]}
+        ListEmptyComponent={<EmptyChat companionName={otherParticipant?.firstName || 'Companion'} />}
+        refreshControl={(
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.primary.blue}
+          />
+        )}
+        onContentSizeChange={() => {
+          if (messages.length > 0) {
+            scrollToBottom(false);
+          }
+        }}
         showsVerticalScrollIndicator={false}
-        onContentSizeChange={() => messages.length > 0 && flatListRef.current?.scrollToEnd({ animated: false })}
-        ListEmptyComponent={<EmptyChat companionName="Sarah" />}
       />
 
-      {/* Input */}
       <View style={[styles.inputContainer, { paddingBottom: insets.bottom + spacing.sm }]}>
-        <TouchableOpacity style={styles.attachButton} onPress={() => haptics.light()}>
-          <Ionicons name="add-circle-outline" size={26} color={colors.text.tertiary} />
-        </TouchableOpacity>
-
         <View style={styles.inputWrapper}>
           <TextInput
             style={styles.input}
@@ -217,23 +435,28 @@ const ChatScreenContent: React.FC = () => {
             value={inputText}
             onChangeText={setInputText}
             multiline
-            maxLength={1000}
+            maxLength={2000}
+            editable={!isSending}
           />
-          <TouchableOpacity style={styles.emojiButton} onPress={() => haptics.light()}>
-            <Ionicons name="happy-outline" size={22} color={colors.text.tertiary} />
-          </TouchableOpacity>
         </View>
 
         <TouchableOpacity
-          style={[styles.sendButton, inputText.trim() && styles.sendButtonActive]}
+          style={[
+            styles.sendButton,
+            inputText.trim() && !isSending && styles.sendButtonActive,
+          ]}
           onPress={handleSend}
-          disabled={!inputText.trim()}
+          disabled={!inputText.trim() || isSending}
         >
-          <Ionicons
-            name="send"
-            size={20}
-            color={inputText.trim() ? colors.text.primary : colors.text.tertiary}
-          />
+          {isSending ? (
+            <ActivityIndicator size="small" color={colors.text.primary} />
+          ) : (
+            <Ionicons
+              name="send"
+              size={20}
+              color={inputText.trim() ? colors.text.primary : colors.text.tertiary}
+            />
+          )}
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
@@ -241,14 +464,7 @@ const ChatScreenContent: React.FC = () => {
 };
 
 /**
- * ChatScreen - Wrapped with RequirementsGate to enforce messaging requirements
- *
- * Requirements checked:
- * - User is authenticated
- * - Age confirmed (18+)
- * - Terms and Privacy accepted
- * - Email verified
- * - ID verified
+ * ChatScreen - Wrapped with RequirementsGate to enforce messaging requirements.
  */
 export const ChatScreen: React.FC = () => {
   return (
@@ -265,6 +481,18 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background.primary,
+  },
+  stateScreen: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+    backgroundColor: colors.background.primary,
+  },
+  stateText: {
+    ...typography.presets.body,
+    color: colors.text.secondary,
+    marginTop: spacing.md,
   },
   header: {
     flexDirection: 'row',
@@ -286,9 +514,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginLeft: spacing.sm,
+    gap: spacing.sm,
   },
   headerInfo: {
-    marginLeft: spacing.sm,
+    flex: 1,
   },
   headerName: {
     ...typography.presets.h4,
@@ -296,17 +525,8 @@ const styles = StyleSheet.create({
   },
   headerStatus: {
     ...typography.presets.caption,
-    color: colors.status.success,
-  },
-  headerActions: {
-    flexDirection: 'row',
-    gap: spacing.xs,
-  },
-  headerButton: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
+    color: colors.text.tertiary,
+    marginTop: 2,
   },
   safetyTip: {
     flexDirection: 'row',
@@ -314,7 +534,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.xs,
     paddingVertical: spacing.sm,
-    backgroundColor: 'rgba(78, 205, 196, 0.1)',
+    backgroundColor: 'rgba(0, 212, 255, 0.1)',
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border.light,
   },
   safetyTipText: {
     ...typography.presets.caption,
@@ -341,8 +563,9 @@ const styles = StyleSheet.create({
     marginRight: spacing.sm,
   },
   messageBubble: {
-    maxWidth: '75%',
-    padding: spacing.md,
+    maxWidth: '78%',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     borderRadius: spacing.radius.lg,
   },
   messageBubbleMe: {
@@ -368,7 +591,7 @@ const styles = StyleSheet.create({
     fontSize: 10,
   },
   messageTimeMe: {
-    color: 'rgba(255, 255, 255, 0.7)',
+    color: 'rgba(255, 255, 255, 0.75)',
   },
   inputContainer: {
     flexDirection: 'row',
@@ -380,16 +603,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background.primary,
     gap: spacing.sm,
   },
-  attachButton: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   inputWrapper: {
     flex: 1,
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'center',
     backgroundColor: colors.background.tertiary,
     borderRadius: spacing.radius.xl,
     paddingHorizontal: spacing.md,
@@ -402,10 +619,6 @@ const styles = StyleSheet.create({
     color: colors.text.primary,
     paddingVertical: spacing.sm,
     maxHeight: 100,
-  },
-  emojiButton: {
-    padding: spacing.sm,
-    marginRight: -spacing.sm,
   },
   sendButton: {
     width: 40,

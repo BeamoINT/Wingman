@@ -1,22 +1,21 @@
-import React from 'react';
-import { View, StyleSheet } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { configureReanimatedLogger, ReanimatedLogLevel } from 'react-native-reanimated';
+import React from 'react';
+import { StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { configureReanimatedLogger, ReanimatedLogLevel } from 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { ErrorBoundary, LoadingScreen, OfflineBanner } from './src/components';
+import { AuthProvider, useAuth } from './src/context/AuthContext';
+import { NetworkProvider } from './src/context/NetworkContext';
+import { RequirementsProvider } from './src/context/RequirementsContext';
+import { VerificationProvider } from './src/context/VerificationContext';
+import { RootNavigator } from './src/navigation';
 
 // Disable strict mode warnings for shared value reads during render
 configureReanimatedLogger({
   level: ReanimatedLogLevel.warn,
   strict: false,
 });
-import { AuthProvider } from './src/context/AuthContext';
-import { VerificationProvider } from './src/context/VerificationContext';
-import { RequirementsProvider } from './src/context/RequirementsContext';
-import { NetworkProvider } from './src/context/NetworkContext';
-import { ErrorBoundary, OfflineBanner, LoadingScreen } from './src/components';
-import { RootNavigator } from './src/navigation';
-import { useAuth } from './src/context/AuthContext';
 
 /**
  * Inner app component that has access to auth context.

@@ -10,30 +10,16 @@
  */
 
 import React, {
-  createContext,
-  useContext,
-  useState,
-  useEffect,
-  useCallback,
-  useMemo,
+    createContext, useCallback, useContext, useEffect, useMemo, useState
 } from 'react';
-import { useAuth } from './AuthContext';
 import {
-  getVerificationStatus,
-  getVerificationPreferences,
-  getVerificationEvents,
-  upsertVerificationPreferences,
-  subscribeToVerificationUpdates,
+    getVerificationEvents, getVerificationPreferences, getVerificationStatus, subscribeToVerificationUpdates, upsertVerificationPreferences
 } from '../services/api/verificationApi';
 import type {
-  VerificationPreferences,
-  VerificationEvent,
-  VerificationLevel,
-  OverallVerificationStatus,
-  VerificationStep,
-  VerificationState,
+    OverallVerificationStatus, VerificationEvent,
+    VerificationLevel, VerificationPreferences, VerificationState, VerificationStep
 } from '../types/verification';
-import { defaultVerificationState, defaultVerificationPreferences } from '../types/verification';
+import { useAuth } from './AuthContext';
 
 // ===========================================
 // Context Type Definition

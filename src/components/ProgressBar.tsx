@@ -1,9 +1,7 @@
 import React, { useEffect } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
+    useAnimatedStyle, useSharedValue, withSpring
 } from 'react-native-reanimated';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';

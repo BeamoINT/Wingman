@@ -1,26 +1,20 @@
-import React, { useState, useRef } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  Dimensions,
-  Animated,
-  PanResponder,
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
+import React, { useRef, useState } from 'react';
+import {
+    Animated, Dimensions, PanResponder, StyleSheet, Text, TouchableOpacity, View
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Avatar } from '../../components';
+import { RequirementsGate } from '../../components/RequirementsGate';
+import { useRequirements } from '../../context/RequirementsContext';
 import { colors } from '../../theme/colors';
 import { spacing } from '../../theme/spacing';
 import { typography } from '../../theme/typography';
-import { haptics } from '../../utils/haptics';
-import { Avatar } from '../../components';
-import { useRequirements } from '../../context/RequirementsContext';
-import { RequirementsGate } from '../../components/RequirementsGate';
 import type { RootStackParamList } from '../../types';
 import type { FriendProfile } from '../../types/friends';
+import { haptics } from '../../utils/haptics';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -99,7 +93,6 @@ const FriendMatchingContent: React.FC = () => {
   const [showMatch, setShowMatch] = useState(false);
 
   const pan = useRef(new Animated.ValueXY()).current;
-  const cardOpacity = useRef(new Animated.Value(1)).current;
 
   const currentProfile = profiles[currentIndex];
   const matchesRemaining = friendsLimits.matchesPerMonth - friendsUsage.matchesThisMonth;

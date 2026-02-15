@@ -3,8 +3,8 @@
  * Handles location search and geocoding via Supabase Edge Functions
  */
 
+import type { PlaceDetails, PlacePrediction } from '../../types/location';
 import { supabase } from '../supabase';
-import type { PlacePrediction, PlaceDetails } from '../../types/location';
 
 /**
  * Search result from places autocomplete

@@ -317,7 +317,6 @@ export type RootStackParamList = {
   ForgotPassword: { email?: string } | undefined;
   MagicLinkLogin: { email?: string } | undefined;
   Tutorial: undefined;
-  Onboarding: undefined;
   Main: undefined;
   CompanionProfile: { companionId: string };
   Booking: { companionId: string };
@@ -336,8 +335,6 @@ export type RootStackParamList = {
   VerificationPreferences: undefined;
   // Legal screens
   LegalDocument: { documentType: LegalDocumentType };
-  TermsOfService: undefined;
-  PrivacyPolicy: undefined;
   // Companion onboarding screens
   CompanionOnboarding: { resumeStep?: number } | undefined;
   CompanionApplicationStatus: undefined;
@@ -347,9 +344,7 @@ export type RootStackParamList = {
   FriendMatching: undefined;
   SocialFeed: undefined;
   Groups: undefined;
-  GroupDetail: { groupId: string };
   Events: undefined;
-  EventDetail: { eventId: string };
 };
 
 export type MainTabParamList = {
@@ -369,7 +364,6 @@ export type VerificationStackParamList = {
 };
 
 // Re-export verification types
-export * from './verification';
-
 // Re-export location types
 export * from './location';
+export * from './verification';

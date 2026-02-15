@@ -3,9 +3,9 @@
  * Handles device location detection and permission management
  */
 
-import { useState, useCallback } from 'react';
 import * as Location from 'expo-location';
-import { Linking, Platform, Alert } from 'react-native';
+import { useCallback, useState } from 'react';
+import { Alert, Linking, Platform } from 'react-native';
 import type { LocationData, LocationPermissionStatus } from '../types/location';
 
 interface UseLocationState {

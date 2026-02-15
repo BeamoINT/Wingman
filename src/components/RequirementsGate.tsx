@@ -5,28 +5,23 @@
  * Shows a modal with unmet requirements and actions to fulfill them.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  Modal,
-  ScrollView,
-  TouchableOpacity,
-  ActivityIndicator,
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+    ActivityIndicator, Modal,
+    ScrollView, StyleSheet, Text, TouchableOpacity, View
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRequirements, type AppFeature, type RequirementCheck } from '../context/RequirementsContext';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 import { typography } from '../theme/typography';
+import type { LegalDocumentType, RootStackParamList } from '../types';
 import { haptics } from '../utils/haptics';
 import { Button } from './Button';
 import { Card } from './Card';
-import { useRequirements, type AppFeature, type RequirementCheck } from '../context/RequirementsContext';
-import type { RootStackParamList, LegalDocumentType } from '../types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 

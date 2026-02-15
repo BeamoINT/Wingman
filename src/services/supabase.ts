@@ -4,8 +4,8 @@
  * Initialize and export the Supabase client for use throughout the app.
  */
 
-import { createClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { createClient } from '@supabase/supabase-js';
 import Constants from 'expo-constants';
 
 // Get Supabase credentials from environment

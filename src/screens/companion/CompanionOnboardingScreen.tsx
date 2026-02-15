@@ -11,51 +11,36 @@
  * 7. Review & Submit
  */
 
-import React, { useState, useCallback, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  TextInput,
-  Alert,
-  Image,
-  KeyboardAvoidingView,
-  Platform,
-  ActivityIndicator,
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import type { RouteProp } from '@react-navigation/native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import type { RouteProp } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
+import { LinearGradient } from 'expo-linear-gradient';
+import React, { useEffect, useState } from 'react';
+import {
+    ActivityIndicator, Alert,
+    Image,
+    KeyboardAvoidingView,
+    Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Button, Card, ProgressBar, SelectableChip } from '../../components';
+import { useAuth } from '../../context/AuthContext';
+import { useRequirements } from '../../context/RequirementsContext';
+import { useVerification } from '../../context/VerificationContext';
+import {
+    createCompanionApplication, getCompanionApplication, submitCompanionApplication, updateCompanionApplication, uploadGalleryPhoto, uploadIdDocument,
+    uploadSelfie
+} from '../../services/api/companionApplicationApi';
 import { colors } from '../../theme/colors';
 import { spacing } from '../../theme/spacing';
 import { typography } from '../../theme/typography';
-import { haptics } from '../../utils/haptics';
-import { Button, ProgressBar, SelectableChip, Card, Badge } from '../../components';
-import { useAuth } from '../../context/AuthContext';
-import { useVerification } from '../../context/VerificationContext';
-import { useRequirements } from '../../context/RequirementsContext';
-import {
-  getCompanionApplication,
-  createCompanionApplication,
-  updateCompanionApplication,
-  uploadIdDocument,
-  uploadSelfie,
-  uploadGalleryPhoto,
-  submitCompanionApplication,
-} from '../../services/api/companionApplicationApi';
 import type {
-  RootStackParamList,
-  CompanionSpecialty,
-  CompanionOnboardingData,
-  IdDocumentType,
+    CompanionOnboardingData, CompanionSpecialty, IdDocumentType, RootStackParamList
 } from '../../types';
 import { defaultCompanionOnboardingData } from '../../types';
+import { haptics } from '../../utils/haptics';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'CompanionOnboarding'>;
 type ScreenRouteProp = RouteProp<RootStackParamList, 'CompanionOnboarding'>;
@@ -97,8 +82,8 @@ export const CompanionOnboardingScreen: React.FC = () => {
   const route = useRoute<ScreenRouteProp>();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const { emailVerified, phoneVerified, idVerified } = useVerification();
-  const { checkCompanionRequirements, acceptCompanionAgreement, isProfileComplete } = useRequirements();
+  const { phoneVerified } = useVerification();
+  const { checkCompanionRequirements, acceptCompanionAgreement } = useRequirements();
 
   const [currentStep, setCurrentStep] = useState(route.params?.resumeStep ?? 1);
   const [data, setData] = useState<CompanionOnboardingData>(defaultCompanionOnboardingData);

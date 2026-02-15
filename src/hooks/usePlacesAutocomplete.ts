@@ -3,9 +3,9 @@
  * Handles city search with Google Places Autocomplete via Supabase Edge Functions
  */
 
-import { useState, useCallback, useRef, useEffect } from 'react';
-import { searchPlaces, getPlaceDetails } from '../services/api/locationApi';
-import type { PlacePrediction, PlaceDetails } from '../types/location';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { getPlaceDetails, searchPlaces } from '../services/api/locationApi';
+import type { PlaceDetails, PlacePrediction } from '../types/location';
 
 interface UsePlacesAutocompleteState {
   predictions: PlacePrediction[];

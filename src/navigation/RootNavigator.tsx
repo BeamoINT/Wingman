@@ -1,52 +1,47 @@
-import React, { useEffect, useState } from 'react';
-import { NavigationContainer, useNavigation, useNavigationContainerRef, CommonActions } from '@react-navigation/native';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { CommonActions, NavigationContainer, useNavigation, useNavigationContainerRef } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { colors } from '../theme/colors';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { colors } from '../theme/colors';
 import type { RootStackParamList } from '../types';
 
 // Auth Screens
-import { WelcomeScreen } from '../screens/auth/WelcomeScreen';
+import { ChangeEmailScreen } from '../screens/auth/ChangeEmailScreen';
+import { ChangePasswordScreen } from '../screens/auth/ChangePasswordScreen';
+import { ForgotPasswordScreen } from '../screens/auth/ForgotPasswordScreen';
+import { MagicLinkLoginScreen } from '../screens/auth/MagicLinkLoginScreen';
 import { SignInScreen } from '../screens/auth/SignInScreen';
 import { SignupScreen } from '../screens/auth/SignupScreen';
 import { VerifyEmailScreen } from '../screens/auth/VerifyEmailScreen';
 import { VerifyPhoneScreen } from '../screens/auth/VerifyPhoneScreen';
-import { ForgotPasswordScreen } from '../screens/auth/ForgotPasswordScreen';
-import { MagicLinkLoginScreen } from '../screens/auth/MagicLinkLoginScreen';
-import { ChangePasswordScreen } from '../screens/auth/ChangePasswordScreen';
-import { ChangeEmailScreen } from '../screens/auth/ChangeEmailScreen';
+import { WelcomeScreen } from '../screens/auth/WelcomeScreen';
 import { TutorialScreen } from '../screens/tutorial/TutorialScreen';
 
 // Main App Screens
-import { MainTabNavigator } from './MainTabNavigator';
-import { CompanionProfileScreen } from '../screens/CompanionProfileScreen';
-import { BookingScreen } from '../screens/BookingScreen';
 import { BookingConfirmationScreen } from '../screens/BookingConfirmationScreen';
+import { BookingScreen } from '../screens/BookingScreen';
 import { ChatScreen } from '../screens/ChatScreen';
-import { SettingsScreen } from '../screens/SettingsScreen';
+import { CompanionProfileScreen } from '../screens/CompanionProfileScreen';
 import { NotificationsScreen } from '../screens/NotificationsScreen';
-import { SubscriptionScreen } from '../screens/SubscriptionScreen';
 import { SafetyScreen } from '../screens/SafetyScreen';
-import { VerificationScreen } from '../screens/VerificationScreen';
+import { SettingsScreen } from '../screens/SettingsScreen';
+import { SubscriptionScreen } from '../screens/SubscriptionScreen';
 import {
-  VerificationHistoryScreen,
-  VerificationPreferencesScreen,
+    VerificationHistoryScreen,
+    VerificationPreferencesScreen
 } from '../screens/verification';
+import { VerificationScreen } from '../screens/VerificationScreen';
+import { MainTabNavigator } from './MainTabNavigator';
 
 // Friends Feature Screens
 import {
-  FriendsScreen,
-  FriendMatchingScreen,
-  SocialFeedScreen,
-  GroupsScreen,
-  EventsScreen,
+    EventsScreen, FriendMatchingScreen, FriendsScreen, GroupsScreen, SocialFeedScreen
 } from '../screens/friends';
 
 // Companion Screens
 import {
-  CompanionOnboardingScreen,
-  CompanionApplicationStatusScreen,
+    CompanionApplicationStatusScreen, CompanionOnboardingScreen
 } from '../screens/companion';
 import { CompanionDashboardScreen } from '../screens/CompanionDashboardScreen';
 

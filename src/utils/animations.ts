@@ -1,16 +1,6 @@
-import Animated, {
-  withSpring,
-  withTiming,
-  withDelay,
-  withSequence,
-  withRepeat,
-  Easing,
-  interpolate,
-  Extrapolation,
-  useAnimatedStyle,
-  useSharedValue,
-  runOnJS,
-  SharedValue,
+import {
+    Easing, Extrapolation, interpolate, SharedValue, withDelay, withRepeat, withSequence, withSpring,
+    withTiming
 } from 'react-native-reanimated';
 
 // Spring configurations for different use cases

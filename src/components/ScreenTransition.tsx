@@ -1,13 +1,7 @@
 import React, { useEffect } from 'react';
-import { StyleSheet, ViewStyle, StyleProp } from 'react-native';
+import { StyleProp, StyleSheet, ViewStyle } from 'react-native';
 import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-  withSpring,
-  interpolate,
-  Extrapolation,
-  Easing,
+    Easing, Extrapolation, interpolate, useAnimatedStyle, useSharedValue, withTiming
 } from 'react-native-reanimated';
 import { colors } from '../theme/colors';
 

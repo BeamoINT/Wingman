@@ -4,27 +4,22 @@
  * Generic screen for displaying legal documents with markdown-style content.
  */
 
-import React, { useCallback, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  ActivityIndicator,
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import type { RouteProp } from '@react-navigation/native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import type { RouteProp } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
+import React, { useState } from 'react';
+import {
+    ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { getLegalDocument, LEGAL_DOCUMENT_META } from '../../legal';
+import type { LegalDocumentType, LegalSection } from '../../legal/types';
 import { colors } from '../../theme/colors';
 import { spacing } from '../../theme/spacing';
 import { typography } from '../../theme/typography';
-import { haptics } from '../../utils/haptics';
 import type { RootStackParamList } from '../../types';
-import { getLegalDocument, LEGAL_DOCUMENT_META } from '../../legal';
-import type { LegalDocument, LegalSection, LegalDocumentType } from '../../legal/types';
+import { haptics } from '../../utils/haptics';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 type LegalDocumentRouteProp = RouteProp<RootStackParamList, 'LegalDocument'>;

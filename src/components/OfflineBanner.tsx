@@ -1,14 +1,10 @@
+import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-  withSpring,
-  interpolate,
+    interpolate, useAnimatedStyle, useSharedValue, withSpring
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
 import { useIsConnected } from '../context/NetworkContext';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';

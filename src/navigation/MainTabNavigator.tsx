@@ -1,20 +1,20 @@
-import React from 'react';
-import { View, StyleSheet, Platform } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { BlurView } from 'expo-blur';
-import { Ionicons } from '@expo/vector-icons';
+import React from 'react';
+import { Platform, StyleSheet, View } from 'react-native';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
-import { haptics } from '../utils/haptics';
 import type { MainTabParamList } from '../types';
+import { haptics } from '../utils/haptics';
 
 // Screens
-import { HomeScreen } from '../screens/HomeScreen';
-import { DiscoverScreen } from '../screens/DiscoverScreen';
-import { VerificationTabScreen } from '../screens/verification/VerificationTabScreen';
 import { BookingsScreen } from '../screens/BookingsScreen';
+import { DiscoverScreen } from '../screens/DiscoverScreen';
+import { HomeScreen } from '../screens/HomeScreen';
 import { MessagesScreen } from '../screens/MessagesScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
+import { VerificationTabScreen } from '../screens/verification/VerificationTabScreen';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
@@ -33,7 +33,7 @@ export const MainTabNavigator: React.FC = () => {
         tabBarStyle: styles.tabBar,
         tabBarBackground: TabBarBackground,
         tabBarLabelStyle: styles.tabBarLabel,
-        tabBarIcon: ({ focused, color, size }) => {
+        tabBarIcon: ({ focused, color }) => {
           let iconName: keyof typeof Ionicons.glyphMap;
 
           switch (route.name) {

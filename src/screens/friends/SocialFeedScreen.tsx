@@ -1,25 +1,20 @@
-import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  FlatList,
-  TextInput,
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
+import React, { useState } from 'react';
+import {
+    FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Avatar, EmptyFeed } from '../../components';
+import { RequirementsGate } from '../../components/RequirementsGate';
+import { useRequirements } from '../../context/RequirementsContext';
 import { colors } from '../../theme/colors';
 import { spacing } from '../../theme/spacing';
 import { typography } from '../../theme/typography';
-import { haptics } from '../../utils/haptics';
-import { Avatar, EmptyFeed } from '../../components';
-import { useRequirements } from '../../context/RequirementsContext';
-import { RequirementsGate } from '../../components/RequirementsGate';
 import type { RootStackParamList } from '../../types';
-import type { Post, FriendProfile } from '../../types/friends';
+import type { Post } from '../../types/friends';
+import { haptics } from '../../utils/haptics';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -122,14 +117,13 @@ const mockPosts: Post[] = [
 const SocialFeedContent: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
-  const { friendsLimits, canUseFriendsFeature } = useRequirements();
+  const { friendsLimits } = useRequirements();
 
   const [posts, setPosts] = useState<Post[]>(mockPosts);
   const [newPostText, setNewPostText] = useState('');
   const [showComposer, setShowComposer] = useState(false);
 
   const canPost = friendsLimits.canPost;
-  const postCheck = canUseFriendsFeature('post');
 
   const handleBackPress = async () => {
     await haptics.light();

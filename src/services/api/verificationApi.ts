@@ -8,13 +8,11 @@
  * NOTE: Background checks have been removed from the platform.
  */
 
-import { supabase } from '../supabase';
 import type {
-  VerificationPreferences,
-  VerificationEvent,
-  VerificationLevel,
-  VerificationStatusResponse,
+    VerificationEvent,
+    VerificationLevel, VerificationPreferences, VerificationStatusResponse
 } from '../../types/verification';
+import { supabase } from '../supabase';
 
 // ===========================================
 // Verification Preferences Operations

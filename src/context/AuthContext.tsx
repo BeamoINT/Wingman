@@ -1,11 +1,11 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import type { Session, User as SupabaseUser } from '@supabase/supabase-js';
 import * as SecureStore from 'expo-secure-store';
-import type { User, SignupData } from '../types';
+import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { supabase } from '../services/supabase';
+import type { SignupData, User } from '../types';
 import { defaultSignupData } from '../types';
 import { safeLog } from '../utils/sanitize';
-import { supabase } from '../services/supabase';
-import type { Session, User as SupabaseUser } from '@supabase/supabase-js';
 
 // Storage keys
 const AUTH_USER_KEY = '@wingman_user';

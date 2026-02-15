@@ -6,33 +6,33 @@
  */
 
 // Types
-export * from './types';
-
-// Legal Documents
-export { TERMS_OF_SERVICE } from './termsOfService';
-export { PRIVACY_POLICY } from './privacyPolicy';
-export { COMMUNITY_GUIDELINES } from './communityGuidelines';
-export { COOKIE_POLICY } from './cookiePolicy';
 export { ACCEPTABLE_USE_POLICY } from './acceptableUsePolicy';
+export { CALIFORNIA_PRIVACY_NOTICE } from './californiaPrivacyNotice';
+export { COMMUNITY_GUIDELINES } from './communityGuidelines';
+export { COMPANION_AGREEMENT } from './companionAgreement';
+export { COOKIE_POLICY } from './cookiePolicy';
+export { COPYRIGHT_POLICY } from './copyrightPolicy';
+export { ELECTRONIC_SIGNATURE_CONSENT } from './electronicSignatureConsent';
+export { PRIVACY_POLICY } from './privacyPolicy';
 export { REFUND_POLICY } from './refundPolicy';
 export { SAFETY_DISCLAIMER } from './safetyDisclaimer';
-export { COPYRIGHT_POLICY } from './copyrightPolicy';
-export { CALIFORNIA_PRIVACY_NOTICE } from './californiaPrivacyNotice';
-export { ELECTRONIC_SIGNATURE_CONSENT } from './electronicSignatureConsent';
-export { COMPANION_AGREEMENT } from './companionAgreement';
+// Legal Documents
+export { TERMS_OF_SERVICE } from './termsOfService';
+export * from './types';
+
 
 // Import all documents for the collection
-import { TERMS_OF_SERVICE } from './termsOfService';
-import { PRIVACY_POLICY } from './privacyPolicy';
-import { COMMUNITY_GUIDELINES } from './communityGuidelines';
-import { COOKIE_POLICY } from './cookiePolicy';
 import { ACCEPTABLE_USE_POLICY } from './acceptableUsePolicy';
+import { CALIFORNIA_PRIVACY_NOTICE } from './californiaPrivacyNotice';
+import { COMMUNITY_GUIDELINES } from './communityGuidelines';
+import { COMPANION_AGREEMENT } from './companionAgreement';
+import { COOKIE_POLICY } from './cookiePolicy';
+import { COPYRIGHT_POLICY } from './copyrightPolicy';
+import { ELECTRONIC_SIGNATURE_CONSENT } from './electronicSignatureConsent';
+import { PRIVACY_POLICY } from './privacyPolicy';
 import { REFUND_POLICY } from './refundPolicy';
 import { SAFETY_DISCLAIMER } from './safetyDisclaimer';
-import { COPYRIGHT_POLICY } from './copyrightPolicy';
-import { CALIFORNIA_PRIVACY_NOTICE } from './californiaPrivacyNotice';
-import { ELECTRONIC_SIGNATURE_CONSENT } from './electronicSignatureConsent';
-import { COMPANION_AGREEMENT } from './companionAgreement';
+import { TERMS_OF_SERVICE } from './termsOfService';
 import type { LegalDocument, LegalDocumentType } from './types';
 
 /**

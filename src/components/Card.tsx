@@ -1,13 +1,8 @@
+import { LinearGradient } from 'expo-linear-gradient';
 import React from 'react';
 import {
-  View,
-  StyleSheet,
-  ViewStyle,
-  StyleProp,
-  TouchableOpacity,
-  Pressable,
+    Pressable, StyleProp, StyleSheet, TouchableOpacity, View, ViewStyle
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 import { haptics } from '../utils/haptics';

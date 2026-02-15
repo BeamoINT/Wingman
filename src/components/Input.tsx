@@ -1,14 +1,9 @@
+import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import {
-  View,
-  TextInput,
-  Text,
-  StyleSheet,
-  ViewStyle,
-  TextInputProps,
-  TouchableOpacity,
+    StyleSheet, Text, TextInput, TextInputProps,
+    TouchableOpacity, View, ViewStyle
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 import { typography } from '../theme/typography';

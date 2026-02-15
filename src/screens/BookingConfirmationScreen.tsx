@@ -1,35 +1,28 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  ActivityIndicator,
-  Alert,
-  Linking,
-  Platform,
-} from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+    ActivityIndicator,
+    Alert,
+    Linking,
+    Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Avatar, Badge, Button, Card, EmptyState } from '../components';
+import type { BookingData } from '../services/api/bookingsApi';
+import { cancelBooking, fetchBookingById } from '../services/api/bookingsApi';
+import { getOrCreateConversation } from '../services/api/messages';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 import { typography } from '../theme/typography';
-import { haptics } from '../utils/haptics';
-import { Button, Card, Avatar, Badge, EmptyState } from '../components';
-import { fetchBookingById, cancelBooking } from '../services/api/bookingsApi';
-import type { BookingData } from '../services/api/bookingsApi';
-import { getOrCreateConversation } from '../services/api/messages';
 import type {
-  RootStackParamList,
-  Booking,
-  BookingStatus,
-  CompanionSpecialty,
-  VerificationLevel,
+    Booking,
+    BookingStatus,
+    CompanionSpecialty, RootStackParamList, VerificationLevel
 } from '../types';
+import { haptics } from '../utils/haptics';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'BookingConfirmation'>;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;

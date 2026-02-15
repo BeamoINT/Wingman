@@ -8,8 +8,8 @@
  * - ELITE: All Premium + create events + priority matching
  */
 
-export { FriendsScreen } from './FriendsScreen';
-export { FriendMatchingScreen } from './FriendMatchingScreen';
-export { SocialFeedScreen } from './SocialFeedScreen';
-export { GroupsScreen } from './GroupsScreen';
 export { EventsScreen } from './EventsScreen';
+export { FriendMatchingScreen } from './FriendMatchingScreen';
+export { FriendsScreen } from './FriendsScreen';
+export { GroupsScreen } from './GroupsScreen';
+export { SocialFeedScreen } from './SocialFeedScreen';

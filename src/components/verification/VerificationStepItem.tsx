@@ -4,14 +4,14 @@
  * Displays a single verification step with status indicator and optional action.
  */
 
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import React from 'react';
+import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { colors } from '../../theme/colors';
 import { spacing } from '../../theme/spacing';
 import { typography } from '../../theme/typography';
-import { haptics } from '../../utils/haptics';
 import type { VerificationStep, VerificationStepStatus } from '../../types/verification';
+import { haptics } from '../../utils/haptics';
 
 interface VerificationStepItemProps {
   step: VerificationStep;

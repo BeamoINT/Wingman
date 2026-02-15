@@ -1,5 +1,5 @@
-import React, { createContext, useContext, ReactNode, useCallback, useRef, useEffect } from 'react';
-import { useNetworkStatus, NetworkStatus } from '../hooks/useNetworkStatus';
+import React, { createContext, ReactNode, useCallback, useContext, useEffect, useRef } from 'react';
+import { NetworkStatus, useNetworkStatus } from '../hooks/useNetworkStatus';
 
 interface NetworkContextValue extends NetworkStatus {
   /**

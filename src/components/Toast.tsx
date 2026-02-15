@@ -1,26 +1,17 @@
-import React, { useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, Dimensions, Platform } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
+import React, { useCallback, useEffect } from 'react';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-  withDelay,
-  withTiming,
-  interpolate,
-  Extrapolation,
-  runOnJS,
+    runOnJS, useAnimatedStyle, useSharedValue, withSpring, withTiming
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BlurView } from 'expo-blur';
-import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 import { typography } from '../theme/typography';
-import { haptics } from '../utils/haptics';
 import { springConfigs } from '../utils/animations';
+import { haptics } from '../utils/haptics';
 import { AnimatedPressable } from './AnimatedPressable';
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 type ToastType = 'success' | 'error' | 'warning' | 'info';
 

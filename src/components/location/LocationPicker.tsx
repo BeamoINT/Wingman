@@ -3,30 +3,24 @@
  * Main location selection component combining country picker, city search, and auto-detect
  */
 
-import React, { useState, useCallback, useEffect } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  Alert,
-} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import React, { useCallback, useState } from 'react';
+import {
+    StyleSheet, Text,
+    TouchableOpacity, View
+} from 'react-native';
+import { getCountryByCode } from '../../data/countries';
+import { useLocation } from '../../hooks/useLocation';
 import { colors } from '../../theme/colors';
 import { spacing } from '../../theme/spacing';
 import { typography } from '../../theme/typography';
-import { haptics } from '../../utils/haptics';
-import { getCountryByCode } from '../../data/countries';
-import { useLocation } from '../../hooks/useLocation';
-import { LocationDetectButton } from './LocationDetectButton';
-import { CountryPicker } from './CountryPicker';
-import { CitySearch } from './CitySearch';
 import type {
-  LocationData,
-  Country,
-  PlaceDetails,
-  LocationPickerProps,
+    Country, LocationPickerProps, PlaceDetails
 } from '../../types/location';
+import { haptics } from '../../utils/haptics';
+import { CitySearch } from './CitySearch';
+import { CountryPicker } from './CountryPicker';
+import { LocationDetectButton } from './LocationDetectButton';
 
 export const LocationPicker: React.FC<LocationPickerProps> = ({
   value,
@@ -37,7 +31,7 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({
   const [showCountryPicker, setShowCountryPicker] = useState(false);
   const [showCitySearch, setShowCitySearch] = useState(false);
 
-  const { isDetecting, detectLocation, error: locationError } = useLocation();
+  const { isDetecting, detectLocation } = useLocation();
 
   // Get the selected country data
   const selectedCountry = value.countryCode

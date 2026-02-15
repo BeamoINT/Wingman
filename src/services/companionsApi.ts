@@ -4,8 +4,8 @@
  * Fetches companion data from Supabase.
  */
 
-import { supabase } from './supabase';
 import type { Companion } from '../types';
+import { supabase } from './supabase';
 
 /**
  * Fetch active companions from the database, joined with their profile data.

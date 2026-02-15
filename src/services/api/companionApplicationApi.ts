@@ -3,12 +3,12 @@
  * Handles companion onboarding: application CRUD, file uploads, submission
  */
 
-import { supabase } from '../supabase';
 import type {
-  CompanionApplication,
-  CompanionApplicationStatus,
-  IdDocumentType,
+    CompanionApplication,
+    CompanionApplicationStatus,
+    IdDocumentType
 } from '../../types';
+import { supabase } from '../supabase';
 
 // ===========================================
 // Transform

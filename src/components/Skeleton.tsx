@@ -1,14 +1,10 @@
-import React, { useEffect } from 'react';
-import { View, StyleSheet, ViewStyle, StyleProp, Dimensions, DimensionValue } from 'react-native';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withRepeat,
-  withTiming,
-  interpolate,
-  Easing,
-} from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
+import React, { useEffect } from 'react';
+import { Dimensions, DimensionValue, StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
+import Animated, {
+    Easing, interpolate, useAnimatedStyle, useSharedValue, withRepeat,
+    withTiming
+} from 'react-native-reanimated';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 

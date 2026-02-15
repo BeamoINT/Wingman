@@ -1,13 +1,10 @@
 import React, { useCallback, useEffect } from 'react';
 import { Pressable, PressableProps, StyleProp, ViewStyle } from 'react-native';
 import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-  interpolate,
+    interpolate, useAnimatedStyle, useSharedValue, withSpring
 } from 'react-native-reanimated';
-import { haptics } from '../utils/haptics';
 import { springConfigs } from '../utils/animations';
+import { haptics } from '../utils/haptics';
 
 const AnimatedPressableComponent = Animated.createAnimatedComponent(Pressable);
 

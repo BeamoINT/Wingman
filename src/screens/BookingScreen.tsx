@@ -1,30 +1,24 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Alert,
-  ActivityIndicator,
-} from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../theme/colors';
-import { spacing } from '../theme/spacing';
-import { typography } from '../theme/typography';
-import { haptics } from '../utils/haptics';
-import { Button, Card, Avatar, Badge, Input, EmptyState } from '../components';
+import { LinearGradient } from 'expo-linear-gradient';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+    ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Avatar, Badge, Button, Card, EmptyState, Input } from '../components';
 import { RequirementsGate } from '../components/RequirementsGate';
 import { useRequirements } from '../context/RequirementsContext';
 import { useVerification } from '../context/VerificationContext';
 import { createBooking } from '../services/api/bookingsApi';
-import { fetchCompanionById } from '../services/api/companions';
 import type { CompanionData } from '../services/api/companions';
-import type { RootStackParamList, CompanionSpecialty, VerificationLevel } from '../types';
+import { fetchCompanionById } from '../services/api/companions';
+import { colors } from '../theme/colors';
+import { spacing } from '../theme/spacing';
+import { typography } from '../theme/typography';
+import type { CompanionSpecialty, RootStackParamList, VerificationLevel } from '../types';
+import { haptics } from '../utils/haptics';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Booking'>;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;

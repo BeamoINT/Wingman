@@ -1,35 +1,25 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  TouchableOpacity,
-  TextInput,
-  Dimensions,
-  Image,
-  Alert,
-  Modal,
-} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import type { RouteProp } from '@react-navigation/native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import type { RouteProp } from '@react-navigation/native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
-import { Button, Input, ProgressBar, SelectableChip, LocationPicker } from '../../components';
+import { LinearGradient } from 'expo-linear-gradient';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+    Alert,
+    Image, KeyboardAvoidingView, Modal, Platform,
+    ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Button, Input, LocationPicker, ProgressBar, SelectableChip } from '../../components';
+import { useAuth } from '../../context/AuthContext';
 import { colors } from '../../theme/colors';
 import { spacing } from '../../theme/spacing';
 import { typography } from '../../theme/typography';
+import type { CompanionSpecialty, Gender, LocationData, RootStackParamList } from '../../types';
 import { haptics } from '../../utils/haptics';
-import { useAuth } from '../../context/AuthContext';
-import type { RootStackParamList, CompanionSpecialty, Gender, LocationData } from '../../types';
 
-const { width } = Dimensions.get('window');
 const TOTAL_STEPS = 7;
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Signup'>;

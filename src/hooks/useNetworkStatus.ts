@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
 import NetInfo, { NetInfoState, NetInfoSubscription } from '@react-native-community/netinfo';
+import { useCallback, useEffect, useState } from 'react';
 
 export interface NetworkStatus {
   isConnected: boolean;

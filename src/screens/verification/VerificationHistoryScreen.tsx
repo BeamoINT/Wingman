@@ -4,28 +4,22 @@
  * Shows all verification events for the user.
  */
 
-import React, { useEffect, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
-  RefreshControl,
-  ViewStyle,
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
+import React, { useEffect, useState } from 'react';
+import {
+    FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View, ViewStyle
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Card, Skeleton } from '../../components';
+import { useVerification } from '../../context/VerificationContext';
 import { colors } from '../../theme/colors';
 import { spacing } from '../../theme/spacing';
 import { typography } from '../../theme/typography';
-import { haptics } from '../../utils/haptics';
-import { Card, Skeleton } from '../../components';
-import { useVerification } from '../../context/VerificationContext';
-import type { VerificationEvent, VerificationEventType, VerificationEventStatus } from '../../types/verification';
 import type { RootStackParamList } from '../../types';
+import type { VerificationEvent, VerificationEventStatus, VerificationEventType } from '../../types/verification';
+import { haptics } from '../../utils/haptics';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 

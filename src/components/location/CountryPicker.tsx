@@ -3,30 +3,24 @@
  * Searchable country picker with flags, grouped by region
  */
 
-import React, { useState, useMemo, useCallback } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  SectionList,
-  StyleSheet,
-  Keyboard,
-} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import React, { useCallback, useMemo, useState } from 'react';
+import {
+    Keyboard, SectionList,
+    StyleSheet, Text,
+    TextInput,
+    TouchableOpacity, View
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BottomSheet } from '../BottomSheet';
+import {
+    getCountriesByRegion, regionOrder, searchCountries
+} from '../../data/countries';
 import { colors } from '../../theme/colors';
 import { spacing } from '../../theme/spacing';
 import { typography } from '../../theme/typography';
+import type { Country, CountryPickerProps, CountryRegion } from '../../types/location';
 import { haptics } from '../../utils/haptics';
-import {
-  countries,
-  getCountriesByRegion,
-  searchCountries,
-  regionOrder,
-} from '../../data/countries';
-import type { Country, CountryRegion, CountryPickerProps } from '../../types/location';
+import { BottomSheet } from '../BottomSheet';
 
 interface SectionData {
   title: CountryRegion;
