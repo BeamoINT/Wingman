@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   Image,
   Dimensions,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,83 +21,154 @@ import { typography } from '../theme/typography';
 import { haptics } from '../utils/haptics';
 import { Button, Badge, Rating, Card, SafetyBanner } from '../components';
 import { useFeatureGate } from '../components/RequirementsGate';
-import { useRequirements } from '../context/RequirementsContext';
-import type { RootStackParamList, Companion, LegalDocumentType } from '../types';
+import { fetchCompanionById, fetchCompanionReviews } from '../services/api/companions';
+import type { CompanionData } from '../services/api/companions';
+import type { RootStackParamList, Companion, LegalDocumentType, VerificationLevel } from '../types';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CompanionProfile'>;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
-// Mock data
-const mockCompanion: Companion = {
-  id: '1',
-  user: {
-    id: 'u1',
-    firstName: 'Sarah',
-    lastName: 'Johnson',
-    email: 'sarah@example.com',
-    avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=800',
-    bio: 'Outgoing and friendly, I love making new connections!',
-    isVerified: true,
-    isPremium: true,
-    createdAt: '2024-01-01',
-    location: {
-      city: 'San Francisco',
-      state: 'CA',
-      country: 'USA',
-    },
-  },
-  rating: 4.9,
-  reviewCount: 127,
-  hourlyRate: 45,
-  specialties: ['dining', 'social-events', 'nightlife', 'concerts'],
-  languages: ['English', 'Spanish', 'French'],
-  availability: [],
-  isOnline: true,
-  responseTime: 'Usually responds within 15 minutes',
-  completedBookings: 89,
-  badges: [
-    { id: '1', name: 'Top Rated', icon: 'star', description: 'Maintained 4.8+ rating', earnedAt: '' },
-    { id: '2', name: 'Super Host', icon: 'trophy', description: '50+ successful bookings', earnedAt: '' },
-    { id: '3', name: 'Quick Reply', icon: 'flash', description: 'Responds within 15 min', earnedAt: '' },
-  ],
-  gallery: [
-    'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400',
-    'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=400',
-    'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=400',
-  ],
-  about: 'Hey there! I\'m Sarah, a social butterfly who genuinely enjoys meeting new people and making everyone feel welcome. Whether you need a dining companion, someone to hit up a concert with, or just want company for a night out, I\'m your girl!\n\nI\'ve lived in San Francisco for 5 years and know all the best spots. I speak three languages fluently and love learning about different cultures. Let\'s make some great memories together!',
-  interests: ['Travel', 'Food & Wine', 'Live Music', 'Art Galleries', 'Hiking', 'Photography'],
-  verificationLevel: 'premium',
-};
+interface CompanionReview {
+  id: string;
+  name: string;
+  rating: number;
+  date: string;
+  comment: string;
+}
 
-const mockReviews = [
-  {
-    id: '1',
-    name: 'Michael T.',
-    rating: 5,
-    date: '2 weeks ago',
-    comment: 'Sarah was absolutely wonderful! She made me feel so comfortable at a business dinner. Highly recommend!',
-  },
-  {
-    id: '2',
-    name: 'Emily R.',
-    rating: 5,
-    date: '1 month ago',
-    comment: 'Had a great time at the concert. Sarah is super fun and easy to talk to!',
-  },
-];
+function formatReviewDate(dateString?: string): string {
+  if (!dateString) return '';
+  const parsed = new Date(dateString);
+  if (Number.isNaN(parsed.getTime())) return '';
+
+  return parsed.toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+function toNumber(value: unknown, fallback = 0): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function toStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((entry): entry is string => typeof entry === 'string');
+}
+
+function transformCompanionData(data: CompanionData): Companion {
+  const verificationLevel: VerificationLevel = data.user?.verification_level === 'premium'
+    ? 'premium'
+    : data.user?.verification_level === 'verified'
+      ? 'verified'
+      : 'basic';
+
+  return {
+    id: data.id,
+    user: {
+      id: data.user_id,
+      firstName: data.user?.first_name || '',
+      lastName: data.user?.last_name || '',
+      email: data.user?.email || '',
+      avatar: data.user?.avatar_url || undefined,
+      bio: data.user?.bio || undefined,
+      isVerified: data.user?.phone_verified || false,
+      isPremium: (data.user?.subscription_tier || 'free') !== 'free',
+      createdAt: data.user?.created_at || data.created_at,
+      location: data.user?.city ? {
+        city: data.user.city,
+        state: data.user?.state || undefined,
+        country: data.user?.country || 'USA',
+      } : undefined,
+    },
+    rating: toNumber(data.rating, 0),
+    reviewCount: Math.max(0, Math.round(toNumber(data.review_count, 0))),
+    hourlyRate: Math.max(0, toNumber(data.hourly_rate, 0)),
+    specialties: toStringArray(data.specialties) as Companion['specialties'],
+    languages: toStringArray(data.languages),
+    availability: [],
+    isOnline: typeof data.is_available === 'boolean' ? data.is_available : true,
+    responseTime: data.response_time || 'Usually responds within 1 hour',
+    completedBookings: Math.max(0, Math.round(toNumber(data.completed_bookings, 0))),
+    badges: [],
+    gallery: toStringArray(data.gallery),
+    about: data.about || '',
+    interests: [],
+    verificationLevel,
+  };
+}
+
+function transformReviewData(rawReview: any): CompanionReview | null {
+  if (!rawReview || typeof rawReview !== 'object') return null;
+
+  const reviewer = rawReview.reviewer || {};
+  const reviewerName = `${reviewer.first_name || ''} ${reviewer.last_name || ''}`.trim() || 'Verified User';
+  const fallbackReviewId = `${reviewerName}-${rawReview.created_at || ''}-${rawReview.rating || ''}`;
+
+  return {
+    id: String(rawReview.id || fallbackReviewId),
+    name: reviewerName,
+    rating: Math.max(1, Math.min(5, toNumber(rawReview.rating, 5))),
+    date: formatReviewDate(rawReview.created_at) || 'Recent',
+    comment: typeof rawReview.comment === 'string' ? rawReview.comment : '',
+  };
+}
 
 export const CompanionProfileScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute<Props['route']>();
   const insets = useSafeAreaInsets();
   const [isFavorite, setIsFavorite] = useState(false);
+  const [companion, setCompanion] = useState<Companion | null>(null);
+  const [reviews, setReviews] = useState<CompanionReview[]>([]);
+  const [isLoadingCompanion, setIsLoadingCompanion] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const { checkBooking } = useFeatureGate();
-  const { checkBookingRequirements } = useRequirements();
 
-  const companion = mockCompanion;
+  const loadCompanion = useCallback(async () => {
+    setIsLoadingCompanion(true);
+    setLoadError(null);
+
+    try {
+      const { companion: companionData, error } = await fetchCompanionById(route.params.companionId);
+
+      if (error || !companionData) {
+        console.error('Error fetching companion profile:', error);
+        setLoadError('Unable to load this companion right now.');
+        setCompanion(null);
+        setReviews([]);
+        return;
+      }
+
+      setCompanion(transformCompanionData(companionData));
+
+      const { reviews: reviewData, error: reviewError } = await fetchCompanionReviews(route.params.companionId);
+      if (reviewError) {
+        console.error('Error fetching companion reviews:', reviewError);
+      }
+
+      const transformedReviews = (reviewData || [])
+        .map(transformReviewData)
+        .filter((review): review is CompanionReview => review !== null && !!review.comment);
+
+      setReviews(transformedReviews);
+    } catch (error) {
+      console.error('Unexpected error loading companion profile:', error);
+      setLoadError('Unable to load this companion right now.');
+      setCompanion(null);
+      setReviews([]);
+    } finally {
+      setIsLoadingCompanion(false);
+    }
+  }, [route.params.companionId]);
+
+  useEffect(() => {
+    loadCompanion();
+  }, [loadCompanion]);
 
   /**
    * Handle book press with requirement validation
@@ -104,6 +176,10 @@ export const CompanionProfileScreen: React.FC = () => {
    */
   const handleBookPress = useCallback(async () => {
     await haptics.medium();
+
+    if (!companion) {
+      return;
+    }
 
     // Check if all booking requirements are met
     const { allowed, unmetRequirements } = checkBooking();
@@ -145,9 +221,13 @@ export const CompanionProfileScreen: React.FC = () => {
 
     // All requirements met, proceed to booking
     navigation.navigate('Booking', { companionId: companion.id });
-  }, [navigation, companion.id, checkBooking]);
+  }, [navigation, companion?.id, checkBooking]);
 
   const handleMessagePress = async () => {
+    if (!companion) {
+      return;
+    }
+
     await haptics.light();
     navigation.navigate('Chat', { conversationId: companion.id });
   };
@@ -182,6 +262,32 @@ export const CompanionProfileScreen: React.FC = () => {
     return labels[specialty] || specialty;
   };
 
+  if (isLoadingCompanion) {
+    return (
+      <View style={styles.loadingScreen}>
+        <ActivityIndicator size="large" color={colors.primary.blue} />
+        <Text style={styles.loadingText}>Loading companion profile...</Text>
+      </View>
+    );
+  }
+
+  if (loadError || !companion) {
+    return (
+      <View style={styles.loadingScreen}>
+        <Ionicons name="alert-circle" size={36} color={colors.status.error} />
+        <Text style={styles.errorTextCentered}>
+          {loadError || 'Companion profile is unavailable.'}
+        </Text>
+        <TouchableOpacity
+          style={styles.retryButton}
+          onPress={() => loadCompanion()}
+        >
+          <Text style={styles.retryText}>Try Again</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <ScrollView
@@ -191,10 +297,16 @@ export const CompanionProfileScreen: React.FC = () => {
       >
         {/* Hero Image */}
         <View style={styles.heroContainer}>
-          <Image
-            source={{ uri: companion.user.avatar }}
-            style={styles.heroImage}
-          />
+          {companion.user.avatar ? (
+            <Image
+              source={{ uri: companion.user.avatar }}
+              style={styles.heroImage}
+            />
+          ) : (
+            <View style={styles.heroImageFallback}>
+              <Ionicons name="person" size={80} color={colors.text.tertiary} />
+            </View>
+          )}
           <LinearGradient
             colors={['transparent', 'rgba(0,0,0,0.8)']}
             style={styles.heroGradient}
@@ -244,7 +356,10 @@ export const CompanionProfileScreen: React.FC = () => {
             </View>
             <Text style={styles.location}>
               <Ionicons name="location" size={14} color={colors.text.tertiary} />
-              {' '}{companion.user.location?.city}, {companion.user.location?.state}
+              {' '}
+              {companion.user.location?.city
+                ? `${companion.user.location.city}${companion.user.location?.state ? `, ${companion.user.location.state}` : ''}`
+                : 'Location unavailable'}
             </Text>
             <View style={styles.ratingRow}>
               <Rating rating={companion.rating} reviewCount={companion.reviewCount} />
@@ -263,63 +378,73 @@ export const CompanionProfileScreen: React.FC = () => {
           </View>
 
           {/* Specialties */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Specialties</Text>
-            <View style={styles.tagsContainer}>
-              {companion.specialties.map((specialty, index) => (
-                <View key={index} style={styles.tag}>
-                  <Text style={styles.tagText}>{getSpecialtyLabel(specialty)}</Text>
-                </View>
-              ))}
+          {companion.specialties.length > 0 && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Specialties</Text>
+              <View style={styles.tagsContainer}>
+                {companion.specialties.map((specialty, index) => (
+                  <View key={index} style={styles.tag}>
+                    <Text style={styles.tagText}>{getSpecialtyLabel(specialty)}</Text>
+                  </View>
+                ))}
+              </View>
             </View>
-          </View>
+          )}
 
           {/* About */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>About</Text>
-            <Text style={styles.aboutText}>{companion.about}</Text>
-          </View>
+          {!!companion.about.trim() && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>About</Text>
+              <Text style={styles.aboutText}>{companion.about}</Text>
+            </View>
+          )}
 
           {/* Languages */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Languages</Text>
-            <View style={styles.languagesRow}>
-              {companion.languages.map((lang, index) => (
-                <View key={index} style={styles.languageBadge}>
-                  <Ionicons name="globe-outline" size={14} color={colors.primary.blue} />
-                  <Text style={styles.languageText}>{lang}</Text>
-                </View>
-              ))}
+          {companion.languages.length > 0 && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Languages</Text>
+              <View style={styles.languagesRow}>
+                {companion.languages.map((lang, index) => (
+                  <View key={index} style={styles.languageBadge}>
+                    <Ionicons name="globe-outline" size={14} color={colors.primary.blue} />
+                    <Text style={styles.languageText}>{lang}</Text>
+                  </View>
+                ))}
+              </View>
             </View>
-          </View>
+          )}
 
           {/* Interests */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Interests</Text>
-            <View style={styles.tagsContainer}>
-              {companion.interests.map((interest, index) => (
-                <View key={index} style={styles.interestTag}>
-                  <Text style={styles.interestText}>{interest}</Text>
-                </View>
-              ))}
+          {companion.interests.length > 0 && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Interests</Text>
+              <View style={styles.tagsContainer}>
+                {companion.interests.map((interest, index) => (
+                  <View key={index} style={styles.interestTag}>
+                    <Text style={styles.interestText}>{interest}</Text>
+                  </View>
+                ))}
+              </View>
             </View>
-          </View>
+          )}
 
           {/* Badges */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Achievements</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              {companion.badges.map((badge) => (
-                <Card key={badge.id} style={styles.badgeCard}>
-                  <View style={styles.badgeIcon}>
-                    <Ionicons name={badge.icon as any} size={24} color={colors.primary.gold} />
-                  </View>
-                  <Text style={styles.badgeName}>{badge.name}</Text>
-                  <Text style={styles.badgeDescription}>{badge.description}</Text>
-                </Card>
-              ))}
-            </ScrollView>
-          </View>
+          {companion.badges.length > 0 && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Achievements</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                {companion.badges.map((badge) => (
+                  <Card key={badge.id} style={styles.badgeCard}>
+                    <View style={styles.badgeIcon}>
+                      <Ionicons name={badge.icon as any} size={24} color={colors.primary.gold} />
+                    </View>
+                    <Text style={styles.badgeName}>{badge.name}</Text>
+                    <Text style={styles.badgeDescription}>{badge.description}</Text>
+                  </Card>
+                ))}
+              </ScrollView>
+            </View>
+          )}
 
           {/* Safety */}
           <View style={styles.section}>
@@ -330,20 +455,21 @@ export const CompanionProfileScreen: React.FC = () => {
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Reviews</Text>
-              <TouchableOpacity onPress={() => haptics.light()}>
-                <Text style={styles.seeAllText}>See all</Text>
-              </TouchableOpacity>
             </View>
-            {mockReviews.map((review) => (
-              <Card key={review.id} variant="outlined" style={styles.reviewCard}>
-                <View style={styles.reviewHeader}>
-                  <Text style={styles.reviewerName}>{review.name}</Text>
-                  <Text style={styles.reviewDate}>{review.date}</Text>
-                </View>
-                <Rating rating={review.rating} showCount={false} size="small" />
-                <Text style={styles.reviewComment}>{review.comment}</Text>
-              </Card>
-            ))}
+            {reviews.length > 0 ? (
+              reviews.map((review) => (
+                <Card key={review.id} variant="outlined" style={styles.reviewCard}>
+                  <View style={styles.reviewHeader}>
+                    <Text style={styles.reviewerName}>{review.name}</Text>
+                    <Text style={styles.reviewDate}>{review.date}</Text>
+                  </View>
+                  <Rating rating={review.rating} showCount={false} size="small" />
+                  <Text style={styles.reviewComment}>{review.comment}</Text>
+                </Card>
+              ))
+            ) : (
+              <Text style={styles.noReviewsText}>No reviews yet.</Text>
+            )}
           </View>
 
           {/* Response Time */}
@@ -386,6 +512,34 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background.primary,
   },
+  loadingScreen: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+  },
+  loadingText: {
+    ...typography.presets.body,
+    color: colors.text.secondary,
+    marginTop: spacing.md,
+  },
+  errorTextCentered: {
+    ...typography.presets.body,
+    color: colors.text.secondary,
+    textAlign: 'center',
+    marginTop: spacing.md,
+  },
+  retryButton: {
+    marginTop: spacing.lg,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.md,
+    backgroundColor: colors.primary.blue,
+    borderRadius: spacing.radius.md,
+  },
+  retryText: {
+    ...typography.presets.button,
+    color: colors.text.primary,
+  },
   scrollView: {
     flex: 1,
   },
@@ -397,6 +551,13 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     backgroundColor: colors.background.tertiary,
+  },
+  heroImageFallback: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: colors.background.tertiary,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   heroGradient: {
     position: 'absolute',
@@ -507,10 +668,6 @@ const styles = StyleSheet.create({
     color: colors.text.primary,
     marginBottom: spacing.md,
   },
-  seeAllText: {
-    ...typography.presets.bodySmall,
-    color: colors.primary.blue,
-  },
   tagsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -607,6 +764,10 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
     marginTop: spacing.sm,
     lineHeight: 20,
+  },
+  noReviewsText: {
+    ...typography.presets.bodySmall,
+    color: colors.text.tertiary,
   },
   responseInfo: {
     flexDirection: 'row',

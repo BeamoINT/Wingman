@@ -46,7 +46,7 @@ export async function fetchCompanions(): Promise<Companion[]> {
       specialties: row.specialties || [],
       languages: Array.isArray(row.languages) ? row.languages : [],
       availability: [],
-      isOnline: row.is_available || false,
+      isOnline: typeof row.is_available === 'boolean' ? row.is_available : true,
       responseTime: row.response_time || 'Usually responds within 1 hour',
       completedBookings: row.completed_bookings || 0,
       badges: [],

@@ -55,6 +55,9 @@ export const CompanionCard: React.FC<CompanionCardProps> = ({
     return labels[specialty] || specialty;
   };
 
+  const initials = `${companion.user.firstName?.charAt(0) || ''}${companion.user.lastName?.charAt(0) || ''}`
+    .toUpperCase() || 'W';
+
   if (variant === 'compact') {
     return (
       <TouchableOpacity
@@ -62,10 +65,16 @@ export const CompanionCard: React.FC<CompanionCardProps> = ({
         activeOpacity={0.8}
         style={styles.compactCard}
       >
-        <Image
-          source={{ uri: companion.user.avatar || 'https://via.placeholder.com/80' }}
-          style={styles.compactImage}
-        />
+        {companion.user.avatar ? (
+          <Image
+            source={{ uri: companion.user.avatar }}
+            style={styles.compactImage}
+          />
+        ) : (
+          <View style={[styles.compactImage, styles.avatarFallback]}>
+            <Text style={styles.compactFallbackInitials}>{initials}</Text>
+          </View>
+        )}
         <View style={styles.compactInfo}>
           <View style={styles.compactHeader}>
             <Text style={styles.compactName}>{companion.user.firstName}</Text>
@@ -90,10 +99,16 @@ export const CompanionCard: React.FC<CompanionCardProps> = ({
         activeOpacity={0.9}
         style={styles.featuredCard}
       >
-        <Image
-          source={{ uri: companion.user.avatar || 'https://via.placeholder.com/300' }}
-          style={styles.featuredImage}
-        />
+        {companion.user.avatar ? (
+          <Image
+            source={{ uri: companion.user.avatar }}
+            style={styles.featuredImage}
+          />
+        ) : (
+          <View style={[styles.featuredImage, styles.avatarFallback]}>
+            <Text style={styles.featuredFallbackInitials}>{initials}</Text>
+          </View>
+        )}
         <LinearGradient
           colors={['transparent', 'rgba(0,0,0,0.8)']}
           style={styles.featuredGradient}
@@ -141,10 +156,16 @@ export const CompanionCard: React.FC<CompanionCardProps> = ({
       style={styles.card}
     >
       <View style={styles.imageContainer}>
-        <Image
-          source={{ uri: companion.user.avatar || 'https://via.placeholder.com/200' }}
-          style={styles.image}
-        />
+        {companion.user.avatar ? (
+          <Image
+            source={{ uri: companion.user.avatar }}
+            style={styles.image}
+          />
+        ) : (
+          <View style={[styles.image, styles.avatarFallback]}>
+            <Text style={styles.defaultFallbackInitials}>{initials}</Text>
+          </View>
+        )}
         {companion.isOnline && (
           <View style={styles.onlineIndicator}>
             <View style={styles.onlineIndicatorDot} />
@@ -199,6 +220,15 @@ const styles = StyleSheet.create({
     width: '100%',
     aspectRatio: 1,
     backgroundColor: colors.background.tertiary,
+  },
+  avatarFallback: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.background.tertiary,
+  },
+  defaultFallbackInitials: {
+    ...typography.presets.h2,
+    color: colors.text.secondary,
   },
   onlineIndicator: {
     position: 'absolute',
@@ -275,6 +305,10 @@ const styles = StyleSheet.create({
     borderRadius: 30,
     backgroundColor: colors.background.tertiary,
   },
+  compactFallbackInitials: {
+    ...typography.presets.h4,
+    color: colors.text.secondary,
+  },
   compactInfo: {
     flex: 1,
     marginLeft: spacing.md,
@@ -316,6 +350,10 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     backgroundColor: colors.background.tertiary,
+  },
+  featuredFallbackInitials: {
+    ...typography.presets.h1,
+    color: colors.text.secondary,
   },
   featuredGradient: {
     position: 'absolute',

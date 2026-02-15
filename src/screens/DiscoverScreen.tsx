@@ -1,14 +1,14 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
   TextInput,
-  Dimensions,
-  ActivityIndicator,
+  FlatList,
+  ScrollView,
   RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -18,29 +18,61 @@ import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 import { typography } from '../theme/typography';
 import { haptics } from '../utils/haptics';
-import { CompanionCard, EmptySearchResults } from '../components';
-import { fetchCompanions, searchCompanions } from '../services/api/companions';
+import { CompanionCard, EmptySearchResults, EmptyState } from '../components';
+import { fetchCompanions } from '../services/api/companions';
 import type { CompanionData } from '../services/api/companions';
-import type { RootStackParamList, Companion, CompanionSpecialty } from '../types';
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+import type { RootStackParamList, Companion, CompanionSpecialty, VerificationLevel } from '../types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+type SpecialtyFilter = 'all' | CompanionSpecialty;
+type SortOption = 'top-rated' | 'most-reviewed' | 'price-low' | 'price-high';
 
-const filters = [
+const specialtyFilters: Array<{
+  id: SpecialtyFilter;
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+}> = [
   { id: 'all', label: 'All', icon: 'apps' },
   { id: 'dining', label: 'Dining', icon: 'restaurant' },
-  { id: 'nightlife', label: 'Nightlife', icon: 'wine' },
+  { id: 'social-events', label: 'Social', icon: 'people' },
   { id: 'coffee-chat', label: 'Coffee', icon: 'cafe' },
-  { id: 'sports', label: 'Sports', icon: 'fitness' },
+  { id: 'nightlife', label: 'Nightlife', icon: 'wine' },
   { id: 'movies', label: 'Movies', icon: 'film' },
+  { id: 'concerts', label: 'Concerts', icon: 'musical-notes' },
+  { id: 'sports', label: 'Sports', icon: 'football' },
   { id: 'safety-companion', label: 'Safety', icon: 'shield' },
 ];
 
+const sortOptions: Array<{
+  id: SortOption;
+  label: string;
+}> = [
+  { id: 'top-rated', label: 'Top Rated' },
+  { id: 'most-reviewed', label: 'Most Reviewed' },
+  { id: 'price-low', label: 'Price: Low to High' },
+  { id: 'price-high', label: 'Price: High to Low' },
+];
+
+function toNumber(value: unknown, fallback = 0): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function toStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((entry): entry is string => typeof entry === 'string');
+}
+
 /**
- * Transform API companion data to our Companion type
+ * Transform API companion data to app Companion type
  */
 function transformCompanionData(data: CompanionData): Companion {
+  const verificationLevel: VerificationLevel = data.user?.verification_level === 'premium'
+    ? 'premium'
+    : data.user?.verification_level === 'verified'
+      ? 'verified'
+      : 'basic';
+
   return {
     id: data.id,
     user: {
@@ -48,37 +80,71 @@ function transformCompanionData(data: CompanionData): Companion {
       firstName: data.user?.first_name || '',
       lastName: data.user?.last_name || '',
       email: data.user?.email || '',
-      avatar: data.user?.avatar_url,
+      avatar: data.user?.avatar_url || undefined,
       isVerified: data.user?.phone_verified || false,
-      isPremium: data.user?.subscription_tier !== 'free',
+      isPremium: (data.user?.subscription_tier || 'free') !== 'free',
       createdAt: data.user?.created_at || data.created_at,
+      location: data.user?.city ? {
+        city: data.user.city,
+        state: data.user?.state || undefined,
+        country: data.user?.country || 'USA',
+      } : undefined,
     },
-    rating: data.rating || 0,
-    reviewCount: data.review_count || 0,
-    hourlyRate: data.hourly_rate,
-    specialties: (data.specialties || []) as CompanionSpecialty[],
-    languages: data.languages || [],
+    rating: toNumber(data.rating, 0),
+    reviewCount: Math.max(0, Math.round(toNumber(data.review_count, 0))),
+    hourlyRate: Math.max(0, toNumber(data.hourly_rate, 0)),
+    specialties: toStringArray(data.specialties) as CompanionSpecialty[],
+    languages: toStringArray(data.languages),
     availability: [],
-    isOnline: data.is_available,
+    isOnline: typeof data.is_available === 'boolean' ? data.is_available : true,
     responseTime: data.response_time || 'Usually responds within 1 hour',
-    completedBookings: data.completed_bookings || 0,
+    completedBookings: Math.max(0, Math.round(toNumber(data.completed_bookings, 0))),
     badges: [],
-    gallery: data.gallery || [],
+    gallery: toStringArray(data.gallery),
     about: data.about || '',
     interests: [],
-    verificationLevel: data.user?.verification_level as any || 'basic',
+    verificationLevel,
   };
+}
+
+function normalizeForSearch(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function sortCompanions(companions: Companion[], sortOption: SortOption): Companion[] {
+  const sorted = [...companions];
+
+  switch (sortOption) {
+    case 'most-reviewed':
+      sorted.sort((a, b) => b.reviewCount - a.reviewCount || b.rating - a.rating);
+      return sorted;
+    case 'price-low':
+      sorted.sort((a, b) => a.hourlyRate - b.hourlyRate || b.rating - a.rating);
+      return sorted;
+    case 'price-high':
+      sorted.sort((a, b) => b.hourlyRate - a.hourlyRate || b.rating - a.rating);
+      return sorted;
+    case 'top-rated':
+    default:
+      sorted.sort((a, b) => b.rating - a.rating || b.reviewCount - a.reviewCount);
+      return sorted;
+  }
 }
 
 export const DiscoverScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
-  const [searchQuery, setSearchQuery] = useState('');
-  const [activeFilter, setActiveFilter] = useState('all');
-  const [companions, setCompanions] = useState<Companion[]>([]);
+
+  const [allCompanions, setAllCompanions] = useState<Companion[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeSpecialty, setActiveSpecialty] = useState<SpecialtyFilter>('all');
+  const [sortOption, setSortOption] = useState<SortOption>('top-rated');
+  const [availableOnly, setAvailableOnly] = useState(false);
+  const [verifiedOnly, setVerifiedOnly] = useState(false);
 
   const loadCompanions = useCallback(async (showRefresh = false) => {
     if (showRefresh) {
@@ -86,199 +152,301 @@ export const DiscoverScreen: React.FC = () => {
     } else {
       setIsLoading(true);
     }
+
     setError(null);
 
     try {
-      const filters: any = { isAvailable: true };
-
-      if (activeFilter !== 'all') {
-        filters.specialty = activeFilter;
-      }
-
-      const { companions: data, error: apiError } = await fetchCompanions(filters);
+      const { companions, error: apiError } = await fetchCompanions();
 
       if (apiError) {
-        setError('Failed to load companions');
         console.error('Error loading companions:', apiError);
+        setError('Unable to load companions right now.');
+        setAllCompanions([]);
       } else {
-        setCompanions(data.map(transformCompanionData));
+        setAllCompanions(companions.map(transformCompanionData));
       }
     } catch (err) {
-      setError('Something went wrong');
       console.error('Error in loadCompanions:', err);
+      setError('Something went wrong while loading companions.');
+      setAllCompanions([]);
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [activeFilter]);
-
-  const handleSearch = useCallback(async () => {
-    if (!searchQuery.trim()) {
-      loadCompanions();
-      return;
-    }
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const { companions: data, error: apiError } = await searchCompanions(searchQuery);
-
-      if (apiError) {
-        setError('Search failed');
-      } else {
-        setCompanions(data.map(transformCompanionData));
-      }
-    } catch (err) {
-      setError('Search failed');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [searchQuery, loadCompanions]);
+  }, []);
 
   useEffect(() => {
     loadCompanions();
   }, [loadCompanions]);
 
-  useEffect(() => {
-    const debounceTimer = setTimeout(() => {
-      if (searchQuery) {
-        handleSearch();
-      }
-    }, 500);
+  const filteredCompanions = useMemo(() => {
+    const normalizedSearch = normalizeForSearch(searchQuery);
 
-    return () => clearTimeout(debounceTimer);
-  }, [searchQuery, handleSearch]);
+    let result = [...allCompanions];
 
-  const handleCompanionPress = async (companionId: string) => {
-    await haptics.medium();
-    navigation.navigate('CompanionProfile', { companionId });
-  };
+    if (activeSpecialty !== 'all') {
+      result = result.filter(companion => companion.specialties.includes(activeSpecialty));
+    }
 
-  const handleFilterPress = async (filterId: string) => {
-    await haptics.selection();
-    setActiveFilter(filterId);
-  };
+    if (availableOnly) {
+      result = result.filter(companion => companion.isOnline);
+    }
 
-  const handleRefresh = () => {
+    if (verifiedOnly) {
+      result = result.filter(
+        companion =>
+          companion.verificationLevel === 'verified' ||
+          companion.verificationLevel === 'premium'
+      );
+    }
+
+    if (normalizedSearch) {
+      result = result.filter(companion => {
+        const searchable = [
+          companion.user.firstName,
+          companion.user.lastName,
+          `${companion.user.firstName} ${companion.user.lastName}`.trim(),
+          companion.user.location?.city || '',
+          companion.user.location?.state || '',
+          companion.about,
+          companion.specialties.join(' '),
+          companion.languages.join(' '),
+        ]
+          .join(' ')
+          .toLowerCase();
+
+        return searchable.includes(normalizedSearch);
+      });
+    }
+
+    return sortCompanions(result, sortOption);
+  }, [allCompanions, activeSpecialty, availableOnly, verifiedOnly, searchQuery, sortOption]);
+
+  const hasActiveFilters = useMemo(() => {
+    return (
+      activeSpecialty !== 'all' ||
+      availableOnly ||
+      verifiedOnly ||
+      !!searchQuery.trim() ||
+      sortOption !== 'top-rated'
+    );
+  }, [activeSpecialty, availableOnly, verifiedOnly, searchQuery, sortOption]);
+
+  const handleCompanionPress = useCallback(
+    (companionId: string) => {
+      navigation.navigate('CompanionProfile', { companionId });
+    },
+    [navigation]
+  );
+
+  const handleRefresh = useCallback(() => {
     loadCompanions(true);
-  };
+  }, [loadCompanions]);
 
-  const renderContent = () => {
-    if (isLoading && !isRefreshing) {
+  const resetFilters = useCallback(async () => {
+    await haptics.selection();
+    setSearchQuery('');
+    setActiveSpecialty('all');
+    setSortOption('top-rated');
+    setAvailableOnly(false);
+    setVerifiedOnly(false);
+  }, []);
+
+  const renderEmptyState = useCallback(() => {
+    if (isLoading) {
       return (
-        <View style={styles.loadingContainer}>
+        <View style={styles.centerState}>
           <ActivityIndicator size="large" color={colors.primary.blue} />
-          <Text style={styles.loadingText}>Finding companions...</Text>
+          <Text style={styles.centerStateText}>Loading companions...</Text>
         </View>
       );
     }
 
     if (error) {
       return (
-        <View style={styles.errorContainer}>
-          <Ionicons name="alert-circle" size={48} color={colors.status.error} />
-          <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={() => loadCompanions()}>
-            <Text style={styles.retryText}>Try Again</Text>
+        <View style={styles.centerState}>
+          <Ionicons name="alert-circle" size={42} color={colors.status.error} />
+          <Text style={styles.errorTitle}>Couldn’t Load Discover</Text>
+          <Text style={styles.errorSubtitle}>{error}</Text>
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={() => loadCompanions()}
+          >
+            <Text style={styles.retryButtonText}>Try Again</Text>
           </TouchableOpacity>
         </View>
       );
     }
 
-    if (companions.length === 0) {
+    if (searchQuery.trim()) {
       return (
         <EmptySearchResults
-          query={searchQuery}
-          onClearSearch={() => {
-            setSearchQuery('');
-            setActiveFilter('all');
-          }}
+          query={searchQuery.trim()}
+          onClearSearch={() => setSearchQuery('')}
         />
       );
     }
 
     return (
-      <>
-        <View style={styles.companionGrid}>
-          {companions.map((companion) => (
-            <CompanionCard
-              key={companion.id}
-              companion={companion}
-              onPress={() => handleCompanionPress(companion.id)}
-            />
-          ))}
-        </View>
-      </>
+      <EmptyState
+        icon="people-outline"
+        title="No companions available"
+        message="There are currently no active companions matching your filters."
+        actionLabel={hasActiveFilters ? 'Clear Filters' : undefined}
+        onAction={hasActiveFilters ? resetFilters : undefined}
+      />
     );
-  };
+  }, [isLoading, error, loadCompanions, searchQuery, hasActiveFilters, resetFilters]);
+
+  const listHeader = (
+    <View style={styles.controls}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.chipRow}
+      >
+        {specialtyFilters.map((filter) => {
+          const isActive = activeSpecialty === filter.id;
+
+          return (
+            <TouchableOpacity
+              key={filter.id}
+              style={[styles.filterChip, isActive && styles.filterChipActive]}
+              onPress={async () => {
+                await haptics.selection();
+                setActiveSpecialty(filter.id);
+              }}
+            >
+              <Ionicons
+                name={filter.icon}
+                size={15}
+                color={isActive ? colors.text.primary : colors.text.tertiary}
+              />
+              <Text style={[styles.filterChipLabel, isActive && styles.filterChipLabelActive]}>
+                {filter.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+
+      <View style={styles.toggleRow}>
+        <TouchableOpacity
+          style={[styles.toggleChip, availableOnly && styles.toggleChipActive]}
+          onPress={async () => {
+            await haptics.selection();
+            setAvailableOnly(prev => !prev);
+          }}
+        >
+          <Ionicons
+            name={availableOnly ? 'checkmark-circle' : 'ellipse-outline'}
+            size={16}
+            color={availableOnly ? colors.primary.blue : colors.text.tertiary}
+          />
+          <Text style={styles.toggleChipLabel}>Available now</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.toggleChip, verifiedOnly && styles.toggleChipActive]}
+          onPress={async () => {
+            await haptics.selection();
+            setVerifiedOnly(prev => !prev);
+          }}
+        >
+          <Ionicons
+            name={verifiedOnly ? 'shield-checkmark' : 'shield-outline'}
+            size={16}
+            color={verifiedOnly ? colors.primary.blue : colors.text.tertiary}
+          />
+          <Text style={styles.toggleChipLabel}>Verified only</Text>
+        </TouchableOpacity>
+      </View>
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.sortRow}
+      >
+        {sortOptions.map((option) => {
+          const isActive = sortOption === option.id;
+
+          return (
+            <TouchableOpacity
+              key={option.id}
+              style={[styles.sortChip, isActive && styles.sortChipActive]}
+              onPress={async () => {
+                await haptics.selection();
+                setSortOption(option.id);
+              }}
+            >
+              <Text style={[styles.sortChipLabel, isActive && styles.sortChipLabelActive]}>
+                {option.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+
+      {!isLoading && !error && (
+        <View style={styles.resultsHeader}>
+          <Text style={styles.resultsText}>
+            {filteredCompanions.length} companion{filteredCompanions.length !== 1 ? 's' : ''}
+          </Text>
+          {hasActiveFilters && (
+            <TouchableOpacity onPress={resetFilters}>
+              <Text style={styles.clearFiltersText}>Clear filters</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+    </View>
+  );
 
   return (
     <View style={styles.container}>
       <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}>
         <Text style={styles.title}>Discover</Text>
-
-        {/* Search Bar */}
         <View style={styles.searchContainer}>
           <Ionicons name="search" size={20} color={colors.text.tertiary} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search companions..."
+            placeholder="Search companions by name, city, language..."
             placeholderTextColor={colors.text.tertiary}
             value={searchQuery}
             onChangeText={setSearchQuery}
+            autoCorrect={false}
           />
-          {searchQuery ? (
+          {!!searchQuery && (
             <TouchableOpacity
-              style={styles.clearButton}
-              onPress={() => setSearchQuery('')}
+              style={styles.clearSearchButton}
+              onPress={async () => {
+                await haptics.light();
+                setSearchQuery('');
+              }}
             >
-              <Ionicons name="close-circle" size={20} color={colors.text.tertiary} />
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity style={styles.filterButton} onPress={async () => await haptics.light()}>
-              <Ionicons name="options" size={20} color={colors.primary.blue} />
+              <Ionicons name="close-circle" size={18} color={colors.text.tertiary} />
             </TouchableOpacity>
           )}
         </View>
-
-        {/* Filters */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filtersContent}
-        >
-          {filters.map((filter) => (
-            <TouchableOpacity
-              key={filter.id}
-              style={[
-                styles.filterChip,
-                activeFilter === filter.id && styles.filterChipActive,
-              ]}
-              onPress={() => handleFilterPress(filter.id)}
-            >
-              <Ionicons
-                name={filter.icon as any}
-                size={16}
-                color={activeFilter === filter.id ? colors.text.primary : colors.text.tertiary}
-              />
-              <Text
-                style={[
-                  styles.filterLabel,
-                  activeFilter === filter.id && styles.filterLabelActive,
-                ]}
-              >
-                {filter.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
       </View>
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
+      <FlatList
+        data={filteredCompanions}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => (
+          <CompanionCard
+            companion={item}
+            onPress={() => handleCompanionPress(item.id)}
+          />
+        )}
+        numColumns={2}
+        ListHeaderComponent={listHeader}
+        ListEmptyComponent={renderEmptyState}
+        columnWrapperStyle={filteredCompanions.length > 1 ? styles.columnWrapper : undefined}
+        contentContainerStyle={[
+          styles.listContent,
+          filteredCompanions.length === 0 && styles.listContentEmpty,
+        ]}
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}
@@ -286,22 +454,9 @@ export const DiscoverScreen: React.FC = () => {
             tintColor={colors.primary.blue}
           />
         }
-      >
-        {/* Results Count */}
-        {!isLoading && !error && companions.length > 0 && (
-          <View style={styles.resultsHeader}>
-            <Text style={styles.resultsCount}>
-              {companions.length} companion{companions.length !== 1 ? 's' : ''} available
-            </Text>
-            <TouchableOpacity style={styles.sortButton} onPress={async () => await haptics.light()}>
-              <Text style={styles.sortText}>Sort by: Rating</Text>
-              <Ionicons name="chevron-down" size={16} color={colors.text.tertiary} />
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {renderContent()}
-      </ScrollView>
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      />
     </View>
   );
 };
@@ -320,7 +475,7 @@ const styles = StyleSheet.create({
   title: {
     ...typography.presets.h1,
     color: colors.text.primary,
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
   },
   searchContainer: {
     flexDirection: 'row',
@@ -328,103 +483,151 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background.tertiary,
     borderRadius: spacing.radius.lg,
     paddingHorizontal: spacing.md,
-    marginBottom: spacing.lg,
   },
   searchInput: {
     flex: 1,
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.sm,
-    fontSize: typography.sizes.md,
     color: colors.text.primary,
+    fontSize: typography.sizes.md,
   },
-  filterButton: {
-    padding: spacing.sm,
+  clearSearchButton: {
+    padding: spacing.xs,
   },
-  clearButton: {
-    padding: spacing.sm,
+  listContent: {
+    paddingHorizontal: spacing.screenPadding,
+    paddingTop: spacing.md,
+    paddingBottom: 110,
   },
-  filtersContent: {
-    gap: spacing.sm,
+  listContentEmpty: {
+    flexGrow: 1,
+  },
+  controls: {
+    marginBottom: spacing.md,
+  },
+  chipRow: {
+    paddingBottom: spacing.sm,
   },
   filterChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
     backgroundColor: colors.background.tertiary,
     borderRadius: spacing.radius.round,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     marginRight: spacing.sm,
   },
   filterChipActive: {
     backgroundColor: colors.primary.blue,
   },
-  filterLabel: {
+  filterChipLabel: {
     ...typography.presets.bodySmall,
+    color: colors.text.secondary,
+    marginLeft: spacing.xs,
+  },
+  filterChipLabelActive: {
+    color: colors.text.primary,
+    fontWeight: typography.weights.semibold as any,
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    marginBottom: spacing.sm,
+  },
+  toggleChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.background.tertiary,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+    borderRadius: spacing.radius.round,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    marginRight: spacing.sm,
+  },
+  toggleChipActive: {
+    borderColor: colors.primary.blue,
+    backgroundColor: 'rgba(74, 144, 226, 0.12)',
+  },
+  toggleChipLabel: {
+    ...typography.presets.bodySmall,
+    color: colors.text.secondary,
+    marginLeft: spacing.xs,
+  },
+  sortRow: {
+    paddingBottom: spacing.xs,
+  },
+  sortChip: {
+    backgroundColor: colors.background.card,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+    borderRadius: spacing.radius.round,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    marginRight: spacing.sm,
+  },
+  sortChipActive: {
+    borderColor: colors.primary.blue,
+    backgroundColor: 'rgba(74, 144, 226, 0.12)',
+  },
+  sortChipLabel: {
+    ...typography.presets.caption,
     color: colors.text.tertiary,
   },
-  filterLabelActive: {
-    color: colors.text.primary,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  content: {
-    padding: spacing.screenPadding,
-    paddingBottom: 100,
+  sortChipLabelActive: {
+    color: colors.primary.blue,
+    fontWeight: typography.weights.semibold as any,
   },
   resultsHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.lg,
+    marginTop: spacing.sm,
+    marginBottom: spacing.sm,
   },
-  resultsCount: {
+  resultsText: {
     ...typography.presets.bodySmall,
     color: colors.text.secondary,
   },
-  sortButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  sortText: {
+  clearFiltersText: {
     ...typography.presets.bodySmall,
-    color: colors.text.tertiary,
+    color: colors.primary.blue,
+    fontWeight: typography.weights.semibold as any,
   },
-  companionGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.md,
+  columnWrapper: {
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
   },
-  loadingContainer: {
-    alignItems: 'center',
+  centerState: {
+    flex: 1,
     justifyContent: 'center',
-    paddingVertical: spacing.xxl * 2,
+    alignItems: 'center',
+    paddingVertical: spacing.xxl * 1.5,
+    paddingHorizontal: spacing.xl,
   },
-  loadingText: {
+  centerStateText: {
     ...typography.presets.body,
     color: colors.text.secondary,
     marginTop: spacing.md,
   },
-  errorContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.xxl * 2,
+  errorTitle: {
+    ...typography.presets.h3,
+    color: colors.text.primary,
+    marginTop: spacing.md,
   },
-  errorText: {
+  errorSubtitle: {
     ...typography.presets.body,
     color: colors.text.secondary,
-    marginTop: spacing.md,
-    marginBottom: spacing.lg,
+    marginTop: spacing.sm,
+    textAlign: 'center',
   },
   retryButton: {
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md,
+    marginTop: spacing.lg,
     backgroundColor: colors.primary.blue,
     borderRadius: spacing.radius.md,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.md,
   },
-  retryText: {
+  retryButtonText: {
     ...typography.presets.button,
     color: colors.text.primary,
   },
