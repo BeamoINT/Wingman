@@ -3,7 +3,6 @@
  *
  * Provides verification state management for the entire app including:
  * - User's verification status (email, phone, ID)
- * - Verification preferences
  * - Verification history
  *
  * NOTE: Background checks have been removed from the platform.
@@ -13,11 +12,11 @@ import React, {
     createContext, useCallback, useContext, useEffect, useMemo, useState
 } from 'react';
 import {
-    getVerificationEvents, getVerificationPreferences, getVerificationStatus, subscribeToVerificationUpdates, upsertVerificationPreferences
+    getVerificationEvents, getVerificationStatus, subscribeToVerificationUpdates
 } from '../services/api/verificationApi';
 import type {
     OverallVerificationStatus, VerificationEvent,
-    VerificationLevel, VerificationPreferences, VerificationState, VerificationStep
+    VerificationLevel, VerificationState, VerificationStep
 } from '../types/verification';
 import { useAuth } from './AuthContext';
 
@@ -28,9 +27,6 @@ import { useAuth } from './AuthContext';
 interface VerificationContextType extends VerificationState {
   // Actions
   refreshStatus: () => Promise<void>;
-  updatePreferences: (
-    prefs: Partial<Omit<VerificationPreferences, 'id' | 'userId' | 'createdAt' | 'updatedAt'>>
-  ) => Promise<void>;
   loadHistory: () => Promise<void>;
 
   // Computed
@@ -54,7 +50,6 @@ export const VerificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const [phoneVerified, setPhoneVerified] = useState(false);
   const [idVerified, setIdVerified] = useState(false);
   const [verificationLevel, setVerificationLevel] = useState<VerificationLevel>('basic');
-  const [preferences, setPreferences] = useState<VerificationPreferences | null>(null);
   const [history, setHistory] = useState<VerificationEvent[]>([]);
 
   // ===========================================
@@ -77,10 +72,6 @@ export const VerificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         setIdVerified(status.idVerified);
         setVerificationLevel(status.verificationLevel);
       }
-
-      // Load preferences
-      const prefs = await getVerificationPreferences(user.id);
-      setPreferences(prefs);
     } catch (error) {
       console.error('Error refreshing verification status:', error);
     } finally {
@@ -98,28 +89,6 @@ export const VerificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       console.error('Error loading verification history:', error);
     }
   }, [user?.id]);
-
-  // ===========================================
-  // Actions
-  // ===========================================
-
-  const updatePreferences = useCallback(
-    async (
-      prefs: Partial<Omit<VerificationPreferences, 'id' | 'userId' | 'createdAt' | 'updatedAt'>>
-    ) => {
-      if (!user?.id) return;
-
-      try {
-        const updated = await upsertVerificationPreferences(user.id, prefs);
-        if (updated) {
-          setPreferences(updated);
-        }
-      } catch (error) {
-        console.error('Error updating verification preferences:', error);
-      }
-    },
-    [user?.id]
-  );
 
   // ===========================================
   // Computed Values
@@ -183,7 +152,6 @@ export const VerificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       setPhoneVerified(false);
       setIdVerified(false);
       setVerificationLevel('basic');
-      setPreferences(null);
       setHistory([]);
     }
   }, [isAuthenticated, user?.id, refreshStatus]);
@@ -217,12 +185,10 @@ export const VerificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     idVerified,
     verificationLevel,
     overallStatus,
-    preferences,
     history,
 
     // Actions
     refreshStatus,
-    updatePreferences,
     loadHistory,
 
     // Computed

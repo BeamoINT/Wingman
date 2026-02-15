@@ -53,11 +53,6 @@ const EVENT_CONFIG: Record<VerificationEventType, {
     label: 'Verification Level Upgraded',
     color: colors.verification.premium,
   },
-  preferences_updated: {
-    icon: 'settings',
-    label: 'Preferences Updated',
-    color: colors.text.secondary,
-  },
 };
 
 const STATUS_CONFIG: Record<VerificationEventStatus, {

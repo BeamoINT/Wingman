@@ -136,7 +136,6 @@ export const DiscoverScreen: React.FC = () => {
   const [activeSpecialty, setActiveSpecialty] = useState<SpecialtyFilter>('all');
   const [sortOption, setSortOption] = useState<SortOption>('top-rated');
   const [availableOnly, setAvailableOnly] = useState(false);
-  const [verifiedOnly, setVerifiedOnly] = useState(false);
 
   const loadCompanions = useCallback(async (showRefresh = false) => {
     if (showRefresh) {
@@ -184,14 +183,6 @@ export const DiscoverScreen: React.FC = () => {
       result = result.filter(companion => companion.isOnline);
     }
 
-    if (verifiedOnly) {
-      result = result.filter(
-        companion =>
-          companion.verificationLevel === 'verified' ||
-          companion.verificationLevel === 'premium'
-      );
-    }
-
     if (normalizedSearch) {
       result = result.filter(companion => {
         const searchable = [
@@ -212,17 +203,16 @@ export const DiscoverScreen: React.FC = () => {
     }
 
     return sortCompanions(result, sortOption);
-  }, [allCompanions, activeSpecialty, availableOnly, verifiedOnly, searchQuery, sortOption]);
+  }, [allCompanions, activeSpecialty, availableOnly, searchQuery, sortOption]);
 
   const hasActiveFilters = useMemo(() => {
     return (
       activeSpecialty !== 'all' ||
       availableOnly ||
-      verifiedOnly ||
       !!searchQuery.trim() ||
       sortOption !== 'top-rated'
     );
-  }, [activeSpecialty, availableOnly, verifiedOnly, searchQuery, sortOption]);
+  }, [activeSpecialty, availableOnly, searchQuery, sortOption]);
 
   const handleCompanionPress = useCallback(
     (companionId: string) => {
@@ -241,7 +231,6 @@ export const DiscoverScreen: React.FC = () => {
     setActiveSpecialty('all');
     setSortOption('top-rated');
     setAvailableOnly(false);
-    setVerifiedOnly(false);
   }, []);
 
   const renderEmptyState = useCallback(() => {
@@ -336,21 +325,6 @@ export const DiscoverScreen: React.FC = () => {
             color={availableOnly ? colors.primary.blue : colors.text.tertiary}
           />
           <Text style={styles.toggleChipLabel}>Available now</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.toggleChip, verifiedOnly && styles.toggleChipActive]}
-          onPress={async () => {
-            await haptics.selection();
-            setVerifiedOnly(prev => !prev);
-          }}
-        >
-          <Ionicons
-            name={verifiedOnly ? 'shield-checkmark' : 'shield-outline'}
-            size={16}
-            color={verifiedOnly ? colors.primary.blue : colors.text.tertiary}
-          />
-          <Text style={styles.toggleChipLabel}>Verified only</Text>
         </TouchableOpacity>
       </View>
 

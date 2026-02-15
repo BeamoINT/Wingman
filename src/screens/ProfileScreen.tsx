@@ -4,12 +4,13 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useCallback, useState } from 'react';
 import {
-    Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View
+    Alert, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar, Badge, Card } from '../components';
 import { useAuth } from '../context/AuthContext';
 import { checkExistingCompanionProfile, getCompanionApplication } from '../services/api/companionApplicationApi';
+import { createPaymentPortalSession } from '../services/api/payments';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 import { typography } from '../theme/typography';
@@ -25,7 +26,7 @@ interface MenuItem {
   subtitle?: string;
   badge?: string;
   badgeVariant?: 'gold' | 'verified' | 'info';
-  onPress: () => void;
+  onPress: () => void | Promise<void>;
 }
 
 export const ProfileScreen: React.FC = () => {
@@ -34,6 +35,7 @@ export const ProfileScreen: React.FC = () => {
   const { user, signOut } = useAuth();
 
   const [companionStatus, setCompanionStatus] = useState<CompanionApplicationStatus | 'active' | null>(null);
+  const [isOpeningPaymentPortal, setIsOpeningPaymentPortal] = useState(false);
 
   // Load companion/application status on screen focus
   useFocusEffect(
@@ -60,7 +62,7 @@ export const ProfileScreen: React.FC = () => {
 
   const handleMenuPress = async (item: MenuItem) => {
     await haptics.light();
-    item.onPress();
+    await item.onPress();
   };
 
   const handleLogout = async () => {
@@ -86,6 +88,35 @@ export const ProfileScreen: React.FC = () => {
       ]
     );
   };
+
+  const handlePaymentMethodsPress = useCallback(async () => {
+    if (isOpeningPaymentPortal) {
+      return;
+    }
+
+    setIsOpeningPaymentPortal(true);
+    try {
+      const { url, error } = await createPaymentPortalSession();
+
+      if (error || !url) {
+        Alert.alert('Payment Methods', error || 'Unable to open payment methods right now.');
+        return;
+      }
+
+      const canOpen = await Linking.canOpenURL(url);
+      if (!canOpen) {
+        Alert.alert('Payment Methods', 'Unable to open Stripe payment management on this device.');
+        return;
+      }
+
+      await Linking.openURL(url);
+    } catch (error) {
+      console.error('Error opening payment methods:', error);
+      Alert.alert('Payment Methods', 'Unable to open payment methods right now. Please try again.');
+    } finally {
+      setIsOpeningPaymentPortal(false);
+    }
+  }, [isOpeningPaymentPortal]);
 
   const menuItems: MenuItem[] = [
     {
@@ -117,8 +148,8 @@ export const ProfileScreen: React.FC = () => {
       id: 'payments',
       icon: 'card',
       label: 'Payment Methods',
-      subtitle: 'Manage your payment options',
-      onPress: () => {},
+      subtitle: isOpeningPaymentPortal ? 'Opening Stripe payment portal...' : 'Manage your payment options',
+      onPress: handlePaymentMethodsPress,
     },
     {
       id: 'settings',

@@ -128,6 +128,15 @@ function normalizeCompanion(rawCompanion: unknown): CompanionData {
   };
 }
 
+function isVerifiedCompanion(companion: CompanionData): boolean {
+  const verificationLevel = companion.user?.verification_level;
+  if (verificationLevel === 'verified' || verificationLevel === 'premium') {
+    return true;
+  }
+
+  return Boolean(companion.user?.id_verified || companion.user?.phone_verified);
+}
+
 function containsCaseInsensitive(haystack: string, needle: string): boolean {
   return haystack.toLowerCase().includes(needle.toLowerCase());
 }
@@ -215,7 +224,8 @@ export async function fetchCompanions(
 
       if (!error) {
         const normalized = (data || []).map(item => normalizeCompanion(item));
-        const filtered = applyCompanionFilters(normalized, filters);
+        const verifiedCompanions = normalized.filter(isVerifiedCompanion);
+        const filtered = applyCompanionFilters(verifiedCompanions, filters);
 
         if (!applyRatingOrder) {
           filtered.sort(sortByRatingAndReviews);

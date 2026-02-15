@@ -332,7 +332,6 @@ export type RootStackParamList = {
   Notifications: undefined;
   // Verification sub-screens (accessible from verification tab)
   VerificationHistory: undefined;
-  VerificationPreferences: undefined;
   // Legal screens
   LegalDocument: { documentType: LegalDocumentType };
   // Companion onboarding screens
@@ -360,7 +359,6 @@ export type MainTabParamList = {
 export type VerificationStackParamList = {
   VerificationMain: undefined;
   VerificationHistory: undefined;
-  VerificationPreferences: undefined;
 };
 
 // Re-export verification types

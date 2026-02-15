@@ -52,11 +52,6 @@ export const VerificationTabScreen: React.FC = () => {
     navigation.navigate('VerificationHistory');
   };
 
-  const handlePreferencesPress = async () => {
-    await haptics.light();
-    navigation.navigate('VerificationPreferences');
-  };
-
   const verificationSteps = getVerificationSteps();
 
   if (isLoading) {
@@ -125,23 +120,8 @@ export const VerificationTabScreen: React.FC = () => {
 
         {/* Quick Actions */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Settings</Text>
+          <Text style={styles.sectionTitle}>History</Text>
           <Card variant="outlined" style={styles.actionsCard}>
-            <TouchableOpacity style={styles.actionRow} onPress={handlePreferencesPress}>
-              <View style={styles.actionIcon}>
-                <Ionicons name="options-outline" size={20} color={colors.primary.blue} />
-              </View>
-              <View style={styles.actionContent}>
-                <Text style={styles.actionLabel}>Verification Preferences</Text>
-                <Text style={styles.actionDescription}>
-                  Filter matches by verification level
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={colors.text.tertiary} />
-            </TouchableOpacity>
-
-            <View style={styles.actionDivider} />
-
             <TouchableOpacity style={styles.actionRow} onPress={handleHistoryPress}>
               <View style={styles.actionIcon}>
                 <Ionicons name="time-outline" size={20} color={colors.primary.blue} />
@@ -222,11 +202,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: spacing.lg,
-  },
-  actionDivider: {
-    height: 1,
-    backgroundColor: colors.border.subtle,
-    marginHorizontal: spacing.lg,
   },
   actionIcon: {
     width: 40,

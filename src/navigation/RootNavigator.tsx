@@ -28,8 +28,7 @@ import { SafetyScreen } from '../screens/SafetyScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { SubscriptionScreen } from '../screens/SubscriptionScreen';
 import {
-    VerificationHistoryScreen,
-    VerificationPreferencesScreen
+    VerificationHistoryScreen
 } from '../screens/verification';
 import { VerificationScreen } from '../screens/VerificationScreen';
 import { MainTabNavigator } from './MainTabNavigator';
@@ -96,7 +95,6 @@ const ProtectedSubscriptionScreen = withAuthGuard(SubscriptionScreen, 'Subscript
 const ProtectedSafetyScreen = withAuthGuard(SafetyScreen, 'Safety');
 const ProtectedVerificationScreen = withAuthGuard(VerificationScreen, 'Verification');
 const ProtectedVerificationHistoryScreen = withAuthGuard(VerificationHistoryScreen, 'VerificationHistory');
-const ProtectedVerificationPreferencesScreen = withAuthGuard(VerificationPreferencesScreen, 'VerificationPreferences');
 const ProtectedChangePasswordScreen = withAuthGuard(ChangePasswordScreen, 'ChangePassword');
 const ProtectedChangeEmailScreen = withAuthGuard(ChangeEmailScreen, 'ChangeEmail');
 const ProtectedNotificationsScreen = withAuthGuard(NotificationsScreen, 'Notifications');
@@ -222,7 +220,6 @@ export const RootNavigator: React.FC = () => {
 
         {/* Verification Sub-Screens - Protected */}
         <Stack.Screen name="VerificationHistory" component={ProtectedVerificationHistoryScreen} />
-        <Stack.Screen name="VerificationPreferences" component={ProtectedVerificationPreferencesScreen} />
 
         {/* Friends Feature - Protected */}
         <Stack.Screen
