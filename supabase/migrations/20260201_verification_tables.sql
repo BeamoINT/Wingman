@@ -11,7 +11,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- Stores Checkr background check records
 -- ===========================================
 CREATE TABLE IF NOT EXISTS background_checks (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
 
     -- Checkr specific fields
@@ -59,7 +59,7 @@ CREATE INDEX IF NOT EXISTS idx_background_checks_checkr_candidate_id ON backgrou
 -- User preferences for matching based on verification
 -- ===========================================
 CREATE TABLE IF NOT EXISTS verification_preferences (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
 
     -- Matching preferences
@@ -86,7 +86,7 @@ CREATE INDEX IF NOT EXISTS idx_verification_preferences_user_id ON verification_
 -- Records all verification-related events
 -- ===========================================
 CREATE TABLE IF NOT EXISTS verification_events (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
 
     -- Event details
@@ -114,6 +114,12 @@ CREATE INDEX IF NOT EXISTS idx_verification_events_created ON verification_event
 -- 4. UPDATE PROFILES TABLE
 -- Add background check columns
 -- ===========================================
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT false;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS phone_verified BOOLEAN DEFAULT false;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS id_verified BOOLEAN DEFAULT false;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS verification_level TEXT DEFAULT 'basic';
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS is_premium BOOLEAN DEFAULT false;
+
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS background_checked BOOLEAN DEFAULT false;
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS background_check_date TIMESTAMPTZ;
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS background_check_expires_at TIMESTAMPTZ;
