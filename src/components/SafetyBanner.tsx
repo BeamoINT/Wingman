@@ -70,7 +70,7 @@ export const SafetyBanner: React.FC<SafetyBannerProps> = ({
         <View style={styles.content}>
           <Text style={styles.title}>Your Safety is Our Priority</Text>
           <Text style={styles.subtitle}>
-            All companions are ID verified for your safety
+            All wingmen are ID verified for your safety
           </Text>
 
           <View style={styles.features}>

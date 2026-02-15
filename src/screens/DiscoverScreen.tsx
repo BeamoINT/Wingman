@@ -151,14 +151,14 @@ export const DiscoverScreen: React.FC = () => {
 
       if (apiError) {
         console.error('Error loading companions:', apiError);
-        setError('Unable to load companions right now.');
+        setError('Unable to load wingmen right now.');
         setAllCompanions([]);
       } else {
         setAllCompanions(companions.map(transformCompanionData));
       }
     } catch (err) {
       console.error('Error in loadCompanions:', err);
-      setError('Something went wrong while loading companions.');
+      setError('Something went wrong while loading wingmen.');
       setAllCompanions([]);
     } finally {
       setIsLoading(false);
@@ -238,7 +238,7 @@ export const DiscoverScreen: React.FC = () => {
       return (
         <View style={styles.centerState}>
           <ActivityIndicator size="large" color={colors.primary.blue} />
-          <Text style={styles.centerStateText}>Loading companions...</Text>
+          <Text style={styles.centerStateText}>Loading wingmen...</Text>
         </View>
       );
     }
@@ -271,8 +271,8 @@ export const DiscoverScreen: React.FC = () => {
     return (
       <EmptyState
         icon="people-outline"
-        title="No companions available"
-        message="There are currently no active companions matching your filters."
+        title="No wingmen available"
+        message="There are currently no active wingmen matching your filters."
         actionLabel={hasActiveFilters ? 'Clear Filters' : undefined}
         onAction={hasActiveFilters ? resetFilters : undefined}
       />
@@ -356,7 +356,7 @@ export const DiscoverScreen: React.FC = () => {
       {!isLoading && !error && (
         <View style={styles.resultsHeader}>
           <Text style={styles.resultsText}>
-            {filteredCompanions.length} companion{filteredCompanions.length !== 1 ? 's' : ''}
+            {filteredCompanions.length} {filteredCompanions.length === 1 ? 'wingman' : 'wingmen'}
           </Text>
           {hasActiveFilters && (
             <TouchableOpacity onPress={resetFilters}>
@@ -376,7 +376,7 @@ export const DiscoverScreen: React.FC = () => {
           <Ionicons name="search" size={20} color={colors.text.tertiary} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search companions by name, city, language..."
+            placeholder="Search wingmen by name, city, language..."
             placeholderTextColor={colors.text.tertiary}
             value={searchQuery}
             onChangeText={setSearchQuery}

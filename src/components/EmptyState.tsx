@@ -143,8 +143,8 @@ export const EmptyMessages: React.FC<{
   <EmptyState
     icon="chatbubbles-outline"
     title="No messages yet"
-    message="Start a conversation with a companion to see your messages here."
-    actionLabel={onStartConversation ? 'Browse Companions' : undefined}
+    message="Start a conversation with a wingman to see your messages here."
+    actionLabel={onStartConversation ? 'Browse Wingmen' : undefined}
     onAction={onStartConversation}
   />
 );
@@ -155,8 +155,8 @@ export const EmptyBookings: React.FC<{
   <EmptyState
     icon="calendar-outline"
     title="No bookings yet"
-    message="When you book a companion, your bookings will appear here."
-    actionLabel={onBrowse ? 'Find a Companion' : undefined}
+    message="When you book a wingman, your bookings will appear here."
+    actionLabel={onBrowse ? 'Find a Wingman' : undefined}
     onAction={onBrowse}
   />
 );
@@ -176,8 +176,8 @@ export const EmptyFavorites: React.FC<{
   <EmptyState
     icon="heart-outline"
     title="No favorites yet"
-    message="Tap the heart icon on companions you like to save them here."
-    actionLabel={onBrowse ? 'Browse Companions' : undefined}
+    message="Tap the heart icon on wingmen you like to save them here."
+    actionLabel={onBrowse ? 'Browse Wingmen' : undefined}
     onAction={onBrowse}
   />
 );

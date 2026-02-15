@@ -18,7 +18,7 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 /**
  * Subscription tiers for the "Find New Friends" feature
- * NOTE: Companion booking is FREE for all users (10% platform fee)
+ * NOTE: Wingman booking is FREE for all users (10% platform fee)
  * Subscriptions are ONLY for the Friends feature
  */
 const subscriptions: Subscription[] = [
@@ -28,7 +28,7 @@ const subscriptions: Subscription[] = [
     price: 0,
     billingPeriod: 'monthly',
     features: [
-      { name: 'Unlimited companion bookings', description: '', included: true },
+      { name: 'Unlimited wingman bookings', description: '', included: true },
       { name: 'Browse Friends profiles', description: '', included: true },
       { name: 'Basic messaging', description: '', included: true },
       { name: 'Friend matching', description: '', included: false },
@@ -42,7 +42,7 @@ const subscriptions: Subscription[] = [
     price: 14.99,
     billingPeriod: 'monthly',
     features: [
-      { name: 'Unlimited companion bookings', description: '', included: true },
+      { name: 'Unlimited wingman bookings', description: '', included: true },
       { name: '5 friend matches/month', description: '', included: true },
       { name: 'Join up to 3 groups', description: '', included: true },
       { name: 'View social feed', description: '', included: true },
@@ -57,7 +57,7 @@ const subscriptions: Subscription[] = [
     price: 29.99,
     billingPeriod: 'monthly',
     features: [
-      { name: 'Unlimited companion bookings', description: '', included: true },
+      { name: 'Unlimited wingman bookings', description: '', included: true },
       { name: 'Unlimited friend matches', description: '', included: true },
       { name: 'Unlimited groups', description: '', included: true },
       { name: 'Post to feed', description: '', included: true },

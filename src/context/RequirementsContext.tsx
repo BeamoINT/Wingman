@@ -625,7 +625,7 @@ export const RequirementsProvider: React.FC<{ children: React.ReactNode }> = ({ 
       ...bookingReqs,
       companionAgreementAccepted: {
         met: companionAgreementAccepted,
-        requirement: 'You must accept the Companion Service Agreement',
+        requirement: 'You must accept the Wingman Service Agreement',
         action: 'View Agreement',
         navigateTo: 'LegalDocument',
       },
@@ -637,7 +637,7 @@ export const RequirementsProvider: React.FC<{ children: React.ReactNode }> = ({ 
           : [
               {
                 met: false,
-                requirement: 'You must accept the Companion Agreement',
+                requirement: 'You must accept the Wingman Agreement',
                 action: 'View Agreement',
                 navigateTo: 'LegalDocument',
               },

@@ -62,7 +62,7 @@ function transformBookingData(data: BookingData): Booking {
       id: companion?.id || data.companion_id || '',
       user: {
         id: user?.id || companion?.user_id || '',
-        firstName: user?.first_name || 'Companion',
+        firstName: user?.first_name || 'Wingman',
         lastName: user?.last_name || '',
         email: user?.email || '',
         avatar: user?.avatar_url || undefined,
@@ -204,7 +204,7 @@ export const BookingConfirmationScreen: React.FC = () => {
 
   const handleMessageCompanion = useCallback(async () => {
     if (!booking?.companion.user.id) {
-      Alert.alert('Unavailable', 'Companion messaging is unavailable for this booking.');
+      Alert.alert('Unavailable', 'Wingman messaging is unavailable for this booking.');
       return;
     }
 
@@ -404,7 +404,7 @@ export const BookingConfirmationScreen: React.FC = () => {
         style={[styles.bottomActions, { paddingBottom: insets.bottom + spacing.md }]}
       >
         <Button
-          title={isOpeningChat ? 'Opening Chat...' : 'Message Companion'}
+          title={isOpeningChat ? 'Opening Chat...' : 'Message Wingman'}
           onPress={handleMessageCompanion}
           variant="outline"
           size="large"

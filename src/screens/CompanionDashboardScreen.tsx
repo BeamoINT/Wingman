@@ -65,7 +65,7 @@ export const CompanionDashboardScreen: React.FC = () => {
         <TouchableOpacity style={styles.backButton} onPress={handleBackPress}>
           <Ionicons name="chevron-back" size={24} color={colors.text.primary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Companion Dashboard</Text>
+        <Text style={styles.headerTitle}>Wingman Dashboard</Text>
         <TouchableOpacity onPress={() => haptics.light()}>
           <Ionicons name="settings-outline" size={24} color={colors.text.primary} />
         </TouchableOpacity>

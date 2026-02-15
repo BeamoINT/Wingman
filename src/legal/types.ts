@@ -127,10 +127,10 @@ export const LEGAL_DOCUMENT_META: Record<LegalDocumentType, LegalDocumentMeta> =
   },
   'companion-agreement': {
     id: 'companion-agreement',
-    title: 'Companion Service Agreement',
-    shortTitle: 'Companion Terms',
+    title: 'Wingman Service Agreement',
+    shortTitle: 'Wingman Terms',
     icon: 'briefcase',
-    description: 'Terms for companions providing services on Wingman',
+    description: 'Terms for wingmen providing services on Wingman',
     requiresConsent: true,
   },
 };

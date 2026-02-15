@@ -56,7 +56,7 @@ const STATUS_CONFIG: Record<CompanionApplicationStatus, {
     icon: 'checkmark-circle',
     color: colors.status.success,
     title: 'Application Approved',
-    description: 'Congratulations! Your companion application has been approved. You can now access your Companion Dashboard.',
+    description: 'Congratulations! Your Wingman application has been approved. You can now access your Wingman Dashboard.',
     badgeVariant: 'success',
   },
   rejected: {
@@ -70,7 +70,7 @@ const STATUS_CONFIG: Record<CompanionApplicationStatus, {
     icon: 'ban',
     color: colors.status.error,
     title: 'Account Suspended',
-    description: 'Your companion account has been suspended. Please contact support for more information.',
+    description: 'Your Wingman account has been suspended. Please contact support for more information.',
     badgeVariant: 'error',
   },
 };

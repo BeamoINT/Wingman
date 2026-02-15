@@ -184,7 +184,7 @@ export const FriendsScreen: React.FC = () => {
           <Text style={styles.sectionTitle}>What is Find New Friends?</Text>
           <Text style={styles.descriptionText}>
             Connect with like-minded people in your area for genuine, platonic friendships.
-            Unlike companion bookings, this feature helps you build lasting connections
+            Unlike wingman bookings, this feature helps you build lasting connections
             with people who share your interests.
           </Text>
 

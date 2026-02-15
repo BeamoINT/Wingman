@@ -66,7 +66,7 @@ function transformBookingData(data: BookingData): Booking {
       id: companion?.id || data.companion_id || '',
       user: {
         id: user?.id || companion?.user_id || '',
-        firstName: user?.first_name || 'Companion',
+        firstName: user?.first_name || 'Wingman',
         lastName: user?.last_name || '',
         email: user?.email || '',
         avatar: user?.avatar_url || undefined,
@@ -271,7 +271,7 @@ export const BookingsScreen: React.FC = () => {
   const handleMessageCompanion = useCallback(async (booking: Booking) => {
     const companionUserId = booking.companion.user.id;
     if (!companionUserId) {
-      Alert.alert('Unavailable', 'Companion messaging is unavailable for this booking.');
+      Alert.alert('Unavailable', 'Wingman messaging is unavailable for this booking.');
       return;
     }
 

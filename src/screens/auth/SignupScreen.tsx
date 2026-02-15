@@ -51,7 +51,7 @@ const GENDERS: { label: string; value: Gender }[] = [
 
 const LOOKING_FOR = [
   'Casual hangouts',
-  'Event companion',
+  'Event wingman',
   'Travel buddy',
   'Fitness partner',
   'Professional networking',
@@ -612,7 +612,7 @@ export const SignupScreen: React.FC = () => {
         return (
           <View key="step-3" style={styles.stepContent}>
             <Text style={styles.stepTitle}>Where are you located?</Text>
-            <Text style={styles.stepSubtitle}>Help us find companions near you</Text>
+            <Text style={styles.stepSubtitle}>Help us find wingmen near you</Text>
 
             <LocationPicker
               value={{

@@ -2,9 +2,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { CommonActions, useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as WebBrowser from 'expo-web-browser';
 import React, { useCallback, useState } from 'react';
 import {
-    Alert, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View
+    Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar, Badge, Card } from '../components';
@@ -103,13 +104,10 @@ export const ProfileScreen: React.FC = () => {
         return;
       }
 
-      const canOpen = await Linking.canOpenURL(url);
-      if (!canOpen) {
-        Alert.alert('Payment Methods', 'Unable to open Stripe payment management on this device.');
-        return;
-      }
-
-      await Linking.openURL(url);
+      await WebBrowser.openBrowserAsync(url, {
+        presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN,
+        showTitle: true,
+      });
     } catch (error) {
       console.error('Error opening payment methods:', error);
       Alert.alert('Payment Methods', 'Unable to open payment methods right now. Please try again.');
@@ -230,7 +228,7 @@ export const ProfileScreen: React.FC = () => {
           </Card>
         </TouchableOpacity>
 
-        {/* Become a Companion / Companion Status Banner */}
+        {/* Become a Wingman / Wingman Status Banner */}
         <TouchableOpacity
           activeOpacity={0.9}
           onPress={async () => {
@@ -269,16 +267,16 @@ export const ProfileScreen: React.FC = () => {
             <View style={styles.companionContent}>
               <Text style={styles.companionTitle}>
                 {companionStatus === 'active' || companionStatus === 'approved'
-                  ? 'Companion Dashboard'
+                  ? 'Wingman Dashboard'
                   : companionStatus === 'pending_review' || companionStatus === 'under_review'
                   ? 'Application Under Review'
                   : companionStatus === 'draft'
                   ? 'Continue Application'
-                  : 'Become a Companion'}
+                  : 'Become a Wingman'}
               </Text>
               <Text style={styles.companionSubtitle}>
                 {companionStatus === 'active' || companionStatus === 'approved'
-                  ? 'Manage your companion profile'
+                  ? 'Manage your Wingman profile'
                   : companionStatus === 'pending_review' || companionStatus === 'under_review'
                   ? 'Check your application status'
                   : companionStatus === 'draft'

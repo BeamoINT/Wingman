@@ -35,7 +35,7 @@ function transformConversationData(data: ConversationData, currentUserId: string
 
   const participant: User = {
     id: otherProfile?.id || otherParticipantId || '',
-    firstName: otherProfile?.first_name || 'Companion',
+    firstName: otherProfile?.first_name || 'Wingman',
     lastName: otherProfile?.last_name || '',
     email: otherProfile?.email || '',
     avatar: otherProfile?.avatar_url || undefined,
@@ -87,7 +87,7 @@ function transformMessageData(
   } else if (senderProfile?.id) {
     sender = {
       id: senderProfile.id,
-      firstName: senderProfile.first_name || 'Companion',
+      firstName: senderProfile.first_name || 'Wingman',
       lastName: senderProfile.last_name || '',
       email: senderProfile.email || '',
       avatar: senderProfile.avatar_url || undefined,
@@ -366,7 +366,7 @@ const ChatScreenContent: React.FC = () => {
     );
   }
 
-  const participantName = `${otherParticipant?.firstName || 'Companion'} ${otherParticipant?.lastName || ''}`.trim();
+  const participantName = `${otherParticipant?.firstName || 'Wingman'} ${otherParticipant?.lastName || ''}`.trim();
 
   return (
     <KeyboardAvoidingView
@@ -388,7 +388,7 @@ const ChatScreenContent: React.FC = () => {
             verificationLevel={otherParticipant?.isPremium ? 'premium' : otherParticipant?.isVerified ? 'verified' : 'basic'}
           />
           <View style={styles.headerInfo}>
-            <Text style={styles.headerName} numberOfLines={1}>{participantName || 'Companion'}</Text>
+            <Text style={styles.headerName} numberOfLines={1}>{participantName || 'Wingman'}</Text>
             <Text style={styles.headerStatus}>
               {otherParticipant?.isVerified ? 'Verified profile' : 'In-app conversation'}
             </Text>
@@ -410,7 +410,7 @@ const ChatScreenContent: React.FC = () => {
           styles.messagesList,
           messages.length === 0 && styles.emptyMessagesList,
         ]}
-        ListEmptyComponent={<EmptyChat companionName={otherParticipant?.firstName || 'Companion'} />}
+        ListEmptyComponent={<EmptyChat companionName={otherParticipant?.firstName || 'Wingman'} />}
         refreshControl={(
           <RefreshControl
             refreshing={isRefreshing}

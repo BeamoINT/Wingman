@@ -114,7 +114,7 @@ function toSqlTime(value: string): string | null {
 }
 
 function transformCompanionData(data: CompanionData): CompanionPreview {
-  const firstName = data.user?.first_name?.trim() || 'Companion';
+  const firstName = data.user?.first_name?.trim() || 'Wingman';
   const lastName = data.user?.last_name?.trim() || '';
   const lastInitial = lastName ? `${lastName.charAt(0)}.` : '';
 
@@ -176,7 +176,7 @@ const BookingScreenContent: React.FC = () => {
       const { companion: companionData, error } = await fetchCompanionById(route.params.companionId);
       if (error || !companionData) {
         console.error('Error loading companion for booking:', error);
-        setLoadError(error?.message || 'Unable to load companion details.');
+        setLoadError(error?.message || 'Unable to load wingman details.');
         setCompanion(null);
         return;
       }
@@ -184,7 +184,7 @@ const BookingScreenContent: React.FC = () => {
       setCompanion(transformCompanionData(companionData));
     } catch (error) {
       console.error('Unexpected error loading companion:', error);
-      setLoadError('Unable to load companion details.');
+      setLoadError('Unable to load wingman details.');
       setCompanion(null);
     } finally {
       setIsLoadingCompanion(false);
@@ -204,7 +204,7 @@ const BookingScreenContent: React.FC = () => {
     const requirements = checkBookingRequirements();
 
     if (!requirements.isAuthenticated.met) {
-      return { valid: false, message: 'You must be signed in to book a companion.' };
+      return { valid: false, message: 'You must be signed in to book a wingman.' };
     }
 
     if (!requirements.ageConfirmed.met) {
@@ -232,15 +232,15 @@ const BookingScreenContent: React.FC = () => {
     }
 
     if (!companion) {
-      return { valid: false, message: 'Companion details are unavailable.' };
+      return { valid: false, message: 'Wingman details are unavailable.' };
     }
 
     if (!companion.isAvailable) {
-      return { valid: false, message: 'This companion is currently unavailable for booking.' };
+      return { valid: false, message: 'This wingman is currently unavailable for booking.' };
     }
 
     if (!companion.hourlyRate || companion.hourlyRate <= 0) {
-      return { valid: false, message: 'This companion does not have a valid hourly rate yet.' };
+      return { valid: false, message: 'This wingman does not have a valid hourly rate yet.' };
     }
 
     if (!locationName.trim()) {
@@ -319,7 +319,7 @@ const BookingScreenContent: React.FC = () => {
     return (
       <View style={styles.stateScreen}>
         <ActivityIndicator size="large" color={colors.primary.blue} />
-        <Text style={styles.stateText}>Loading companion details...</Text>
+        <Text style={styles.stateText}>Loading wingman details...</Text>
       </View>
     );
   }
@@ -330,7 +330,7 @@ const BookingScreenContent: React.FC = () => {
         <EmptyState
           icon="alert-circle-outline"
           title="Booking Unavailable"
-          message={loadError || 'Unable to load companion details.'}
+          message={loadError || 'Unable to load wingman details.'}
           actionLabel="Try Again"
           onAction={loadCompanion}
           secondaryActionLabel="Back"
@@ -346,7 +346,7 @@ const BookingScreenContent: React.FC = () => {
         <TouchableOpacity style={styles.backButton} onPress={handleBackPress}>
           <Ionicons name="close" size={24} color={colors.text.primary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Book Companion</Text>
+        <Text style={styles.headerTitle}>Book Wingman</Text>
         <View style={styles.placeholder} />
       </View>
 
@@ -564,9 +564,9 @@ const BookingScreenContent: React.FC = () => {
           <View style={styles.verificationWarning}>
             <Ionicons name="time" size={20} color={colors.status.warning} />
             <View style={styles.verificationWarningContent}>
-              <Text style={styles.verificationWarningTitle}>Companion Unavailable</Text>
+              <Text style={styles.verificationWarningTitle}>Wingman Unavailable</Text>
               <Text style={styles.verificationWarningText}>
-                This companion is currently unavailable. Try booking another companion or check back later.
+                This wingman is currently unavailable. Try booking another wingman or check back later.
               </Text>
             </View>
           </View>
@@ -594,7 +594,7 @@ const BookingScreenContent: React.FC = () => {
         </Card>
 
         <Button
-          title={companion.isAvailable ? 'Confirm Booking' : 'Companion Unavailable'}
+          title={companion.isAvailable ? 'Confirm Booking' : 'Wingman Unavailable'}
           onPress={handleBookPress}
           variant="primary"
           size="large"

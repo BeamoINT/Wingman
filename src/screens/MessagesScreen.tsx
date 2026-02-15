@@ -242,7 +242,7 @@ export const MessagesScreen: React.FC = () => {
           title={searchQuery.trim() ? 'No Conversations Found' : 'No Messages Yet'}
           message={searchQuery.trim()
             ? 'Try a different name or message search.'
-            : 'Conversations will appear here after you message a companion.'}
+            : 'Conversations will appear here after you message a wingman.'}
         />
       </View>
     );

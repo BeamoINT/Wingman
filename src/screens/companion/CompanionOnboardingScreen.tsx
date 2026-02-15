@@ -180,7 +180,7 @@ export const CompanionOnboardingScreen: React.FC = () => {
         return true;
       case 6:
         if (!agreementAccepted) {
-          setError('Please accept the Companion Service Agreement');
+          setError('Please accept the Wingman Service Agreement');
           return false;
         }
         return true;
@@ -347,7 +347,7 @@ export const CompanionOnboardingScreen: React.FC = () => {
         style={styles.welcomeBanner}
       >
         <Ionicons name="people" size={40} color={colors.primary.darkBlack} />
-        <Text style={styles.welcomeTitle}>Become a Companion</Text>
+        <Text style={styles.welcomeTitle}>Become a Wingman</Text>
         <Text style={styles.welcomeSubtitle}>
           Earn money by being a great friend. Set your own hours, choose your activities, and get paid for spending time with others.
         </Text>
@@ -358,7 +358,7 @@ export const CompanionOnboardingScreen: React.FC = () => {
         {[
           { icon: 'shield-checkmark' as const, title: 'Verify Your Identity', desc: 'Upload your ID and take a selfie for safety' },
           { icon: 'person' as const, title: 'Set Up Your Profile', desc: 'Choose specialties, set your rate, and tell clients about yourself' },
-          { icon: 'document-text' as const, title: 'Accept Agreement', desc: 'Review and accept the Companion Service Agreement' },
+          { icon: 'document-text' as const, title: 'Accept Agreement', desc: 'Review and accept the Wingman Service Agreement' },
           { icon: 'checkmark-circle' as const, title: 'Get Approved', desc: 'Our team reviews applications within 1-3 business days' },
         ].map((item, i) => (
           <View key={i} style={styles.howItWorksItem}>
@@ -378,7 +378,7 @@ export const CompanionOnboardingScreen: React.FC = () => {
         <View style={{ flex: 1, marginLeft: spacing.md }}>
           <Text style={styles.earningsTitle}>Earning Potential</Text>
           <Text style={styles.earningsDesc}>
-            Companions earn $15-200/hour depending on specialty and experience. You keep 90% of every booking.
+            Wingmen earn $15-200/hour depending on specialty and experience. You keep 90% of every booking.
           </Text>
         </View>
       </Card>
@@ -396,8 +396,8 @@ export const CompanionOnboardingScreen: React.FC = () => {
     const upcomingSteps = [
       { label: 'Upload Government ID', icon: 'card' as const },
       { label: 'Selfie Verification', icon: 'camera' as const },
-      { label: 'Set Up Companion Profile', icon: 'create' as const },
-      { label: 'Accept Companion Agreement', icon: 'document-text' as const },
+      { label: 'Set Up Wingman Profile', icon: 'create' as const },
+      { label: 'Accept Wingman Agreement', icon: 'document-text' as const },
     ];
 
     const allPrereqsMet = prerequisites.every(r => r.met);
@@ -406,7 +406,7 @@ export const CompanionOnboardingScreen: React.FC = () => {
       <View style={styles.stepContainer}>
         <Text style={styles.stepTitle}>Prerequisites</Text>
         <Text style={styles.stepDescription}>
-          Complete these before starting your companion application.
+          Complete these before starting your Wingman application.
         </Text>
 
         {allPrereqsMet && (
@@ -563,7 +563,7 @@ export const CompanionOnboardingScreen: React.FC = () => {
     <View style={styles.stepContainer}>
       <Text style={styles.stepTitle}>Profile Setup</Text>
       <Text style={styles.stepDescription}>
-        Set up your companion profile. This is what clients will see when browsing.
+        Set up your Wingman profile. This is what clients will see when browsing.
       </Text>
 
       {/* Specialties */}
@@ -606,7 +606,7 @@ export const CompanionOnboardingScreen: React.FC = () => {
         style={styles.textArea}
         value={data.about}
         onChangeText={(text) => setData(prev => ({ ...prev, about: text }))}
-        placeholder="Tell potential clients about yourself, your experience, and what makes you a great companion..."
+        placeholder="Tell potential clients about yourself, your experience, and what makes you a great wingman..."
         placeholderTextColor={colors.text.muted}
         multiline
         numberOfLines={5}
@@ -653,22 +653,22 @@ export const CompanionOnboardingScreen: React.FC = () => {
 
   const renderAgreementStep = () => (
     <View style={styles.stepContainer}>
-      <Text style={styles.stepTitle}>Companion Agreement</Text>
+      <Text style={styles.stepTitle}>Wingman Agreement</Text>
       <Text style={styles.stepDescription}>
-        Please review and accept the Companion Service Agreement to continue.
+        Please review and accept the Wingman Service Agreement to continue.
       </Text>
 
       <Card variant="outlined" style={styles.agreementCard}>
         <ScrollView style={styles.agreementScroll} nestedScrollEnabled>
-          <Text style={styles.agreementHeading}>Companion Service Agreement</Text>
+          <Text style={styles.agreementHeading}>Wingman Service Agreement</Text>
           <Text style={styles.agreementText}>
-            By accepting this agreement, you acknowledge and agree to the following terms as a Companion on the Wingman platform:
+            By accepting this agreement, you acknowledge and agree to the following terms as a Wingman on the Wingman platform:
           </Text>
 
           {[
             {
               title: '1. Service Standards',
-              body: 'You agree to provide professional, respectful companionship services. You will arrive on time, dress appropriately for the activity, and maintain a positive and friendly demeanor throughout each booking.',
+              body: 'You agree to provide professional, respectful wingman services. You will arrive on time, dress appropriately for the activity, and maintain a positive and friendly demeanor throughout each booking.',
             },
             {
               title: '2. Safety & Conduct',
@@ -692,7 +692,7 @@ export const CompanionOnboardingScreen: React.FC = () => {
             },
             {
               title: '7. Account Termination',
-              body: 'Wingman reserves the right to suspend or terminate your companion account at any time for violations of this agreement, community guidelines, or applicable laws.',
+              body: 'Wingman reserves the right to suspend or terminate your wingman account at any time for violations of this agreement, community guidelines, or applicable laws.',
             },
           ].map((section, i) => (
             <View key={i} style={styles.agreementSection}>
@@ -715,7 +715,7 @@ export const CompanionOnboardingScreen: React.FC = () => {
           {agreementAccepted && <Ionicons name="checkmark" size={14} color={colors.primary.darkBlack} />}
         </View>
         <Text style={styles.checkboxLabel}>
-          I have read, understood, and agree to the Companion Service Agreement
+          I have read, understood, and agree to the Wingman Service Agreement
         </Text>
       </TouchableOpacity>
     </View>

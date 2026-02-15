@@ -205,13 +205,13 @@ export const WelcomeScreen: React.FC = () => {
             </Animated.Text>
 
             <Animated.Text style={[styles.subtitle, subtitleAnimatedStyle]}>
-              Find friendly companions for social outings, events, and activities
+              Find friendly wingmen for social outings, events, and activities
             </Animated.Text>
 
             <Animated.View style={[styles.featuresContainer, featuresAnimatedStyle]}>
               {[
                 { icon: 'shield-checkmark', text: 'Verified & Safe' },
-                { icon: 'star', text: 'Rated Companions' },
+                { icon: 'star', text: 'Rated Wingmen' },
                 { icon: 'calendar', text: 'Easy Booking' },
               ].map((feature, index) => (
                 <View key={index} style={styles.featureItem}>

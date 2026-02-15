@@ -245,13 +245,13 @@ export async function fetchCompanions(
       }
 
       console.error('Error fetching companions:', error);
-      return { companions: [], error: new Error(error.message || 'Failed to fetch companions') };
+      return { companions: [], error: new Error(error.message || 'Failed to fetch wingmen') };
     }
   } catch (err) {
     console.error('Error in fetchCompanions:', err);
     return {
       companions: [],
-      error: err instanceof Error ? err : new Error('Failed to fetch companions'),
+      error: err instanceof Error ? err : new Error('Failed to fetch wingmen'),
     };
   }
 }
@@ -274,7 +274,7 @@ export async function fetchCompanionById(
 
     if (error) {
       console.error('Error fetching companion:', error);
-      return { companion: null, error: new Error(error.message || 'Failed to fetch companion') };
+      return { companion: null, error: new Error(error.message || 'Failed to fetch wingman') };
     }
 
     return {
@@ -285,7 +285,7 @@ export async function fetchCompanionById(
     console.error('Error in fetchCompanionById:', err);
     return {
       companion: null,
-      error: err instanceof Error ? err : new Error('Failed to fetch companion'),
+      error: err instanceof Error ? err : new Error('Failed to fetch wingman'),
     };
   }
 }
@@ -377,7 +377,7 @@ export async function fetchCompanionReviews(
     if (companionError || !companion?.user_id) {
       return {
         reviews: [],
-        error: companionError ? new Error(companionError.message || 'Failed to fetch companion') : null,
+        error: companionError ? new Error(companionError.message || 'Failed to fetch wingman') : null,
       };
     }
 

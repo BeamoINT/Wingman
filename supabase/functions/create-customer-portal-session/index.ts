@@ -12,6 +12,7 @@ const corsHeaders = {
 };
 
 type StripeResponse = Record<string, unknown>;
+type SupabaseErrorLike = { code?: string; message?: string };
 
 function jsonResponse(body: Record<string, unknown>, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -52,6 +53,41 @@ async function stripeRequest(
   }
 
   return { data, error: null, status: response.status };
+}
+
+function isMissingStripeCustomerColumnError(error: SupabaseErrorLike | null): boolean {
+  if (!error) return false;
+
+  const code = String(error.code || '').toUpperCase();
+  const message = String(error.message || '').toLowerCase();
+
+  if (code === '42703') return true;
+  if (code.startsWith('PGRST') && message.includes('stripe_customer_id')) return true;
+
+  return message.includes('stripe_customer_id');
+}
+
+function getNamePartsFromUser(user: Record<string, unknown>): { firstName: string; lastName: string } {
+  const metadata = (user.user_metadata || {}) as Record<string, unknown>;
+
+  const firstNameRaw = String(
+    metadata.first_name
+    || metadata.given_name
+    || metadata.firstName
+    || ''
+  ).trim();
+
+  const lastNameRaw = String(
+    metadata.last_name
+    || metadata.family_name
+    || metadata.lastName
+    || ''
+  ).trim();
+
+  const firstName = firstNameRaw || 'Wingman';
+  const lastName = lastNameRaw || 'User';
+
+  return { firstName, lastName };
 }
 
 serve(async (req) => {
@@ -119,26 +155,60 @@ serve(async (req) => {
       .from('profiles')
       .select('id,email,first_name,last_name,stripe_customer_id')
       .eq('id', user.id)
-      .single();
+      .maybeSingle();
 
     if (profileWithStripe.error) {
-      if (profileWithStripe.error.code === '42703') {
+      if (isMissingStripeCustomerColumnError(profileWithStripe.error as SupabaseErrorLike)) {
         hasStripeCustomerColumn = false;
         const fallbackProfile = await supabaseAdmin
           .from('profiles')
           .select('id,email,first_name,last_name')
           .eq('id', user.id)
-          .single();
+          .maybeSingle();
 
-        if (fallbackProfile.error || !fallbackProfile.data) {
-          return jsonResponse({ error: 'Unable to load user profile' }, 400);
+        if (!fallbackProfile.error && fallbackProfile.data) {
+          profile = fallbackProfile.data as Record<string, unknown>;
+        } else if (fallbackProfile.error) {
+          console.warn('Fallback profile lookup failed:', fallbackProfile.error.message);
         }
-        profile = fallbackProfile.data as Record<string, unknown>;
       } else {
-        return jsonResponse({ error: 'Unable to load user profile' }, 400);
+        console.warn('Profile lookup failed, falling back to auth user:', profileWithStripe.error.message);
       }
-    } else {
+    } else if (profileWithStripe.data) {
       profile = profileWithStripe.data as Record<string, unknown>;
+    }
+
+    if (!profile) {
+      const { firstName, lastName } = getNamePartsFromUser(user as unknown as Record<string, unknown>);
+      const userEmail = String(user.email || '').trim();
+
+      if (userEmail) {
+        const createProfilePayload: Record<string, unknown> = {
+          id: user.id,
+          email: userEmail,
+          first_name: firstName,
+          last_name: lastName,
+        };
+
+        const createdProfile = await supabaseAdmin
+          .from('profiles')
+          .upsert(createProfilePayload, { onConflict: 'id' })
+          .select(
+            hasStripeCustomerColumn
+              ? 'id,email,first_name,last_name,stripe_customer_id'
+              : 'id,email,first_name,last_name'
+          )
+          .maybeSingle();
+
+        if (!createdProfile.error && createdProfile.data) {
+          profile = createdProfile.data as Record<string, unknown>;
+        } else {
+          if (createdProfile.error) {
+            console.warn('Profile upsert fallback failed:', createdProfile.error.message);
+          }
+          profile = createProfilePayload;
+        }
+      }
     }
 
     const email = String(profile?.email || user.email || '').trim();

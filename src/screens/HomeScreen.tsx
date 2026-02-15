@@ -151,20 +151,20 @@ export const HomeScreen: React.FC = () => {
           </View>
         )}
 
-        {/* Empty State - No Companions */}
+        {/* Empty State - No Wingmen */}
         {!isLoading && companions.length === 0 && (
           <View style={styles.emptyState}>
             <Ionicons name="people-outline" size={48} color={colors.text.tertiary} />
-            <Text style={styles.emptyTitle}>No companions available yet</Text>
-            <Text style={styles.emptySubtitle}>Check back soon for new companions in your area</Text>
+            <Text style={styles.emptyTitle}>No wingmen available yet</Text>
+            <Text style={styles.emptySubtitle}>Check back soon for new wingmen in your area</Text>
           </View>
         )}
 
-        {/* Featured Companion */}
+        {/* Featured Wingman */}
         {featuredCompanion && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Featured Companion</Text>
+              <Text style={styles.sectionTitle}>Featured Wingman</Text>
               <TouchableOpacity onPress={async () => await haptics.light()}>
                 <Text style={styles.seeAllText}>See all</Text>
               </TouchableOpacity>

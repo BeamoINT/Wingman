@@ -152,7 +152,10 @@ export const RequirementsGate: React.FC<RequirementsGateProps> = ({
               navigation.navigate('LegalDocument', { documentType: 'terms-of-service' as LegalDocumentType });
             } else if (requirement.requirement.toLowerCase().includes('privacy')) {
               navigation.navigate('LegalDocument', { documentType: 'privacy-policy' as LegalDocumentType });
-            } else if (requirement.requirement.toLowerCase().includes('companion')) {
+            } else if (
+              requirement.requirement.toLowerCase().includes('companion')
+              || requirement.requirement.toLowerCase().includes('wingman')
+            ) {
               navigation.navigate('LegalDocument', { documentType: 'companion-agreement' as LegalDocumentType });
             }
             break;

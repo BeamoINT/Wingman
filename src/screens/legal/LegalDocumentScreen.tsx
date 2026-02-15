@@ -30,6 +30,31 @@ interface LegalDocumentScreenProps {
   onAccept?: () => void;
 }
 
+function applyWingmanBranding(text: string): string {
+  const protectedEmails: string[] = [];
+  const withProtectedEmails = text.replace(
+    /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi,
+    (email) => {
+      const token = `__EMAIL_${protectedEmails.length}__`;
+      protectedEmails.push(email);
+      return token;
+    }
+  );
+
+  const branded = withProtectedEmails
+    .replace(/\bCOMPANIONS\b/g, 'WINGMEN')
+    .replace(/\bCOMPANION\b/g, 'WINGMAN')
+    .replace(/\bCompanions\b/g, 'Wingmen')
+    .replace(/\bCompanion\b/g, 'Wingman')
+    .replace(/\bcompanions\b/g, 'wingmen')
+    .replace(/\bcompanion\b/g, 'wingman');
+
+  return branded.replace(/__EMAIL_(\d+)__/g, (_, index) => {
+    const original = protectedEmails[Number(index)];
+    return typeof original === 'string' ? original : '';
+  });
+}
+
 export const LegalDocumentScreen: React.FC<LegalDocumentScreenProps> = ({
   documentType: propDocumentType,
   showAcceptButton = false,
@@ -75,9 +100,9 @@ export const LegalDocumentScreen: React.FC<LegalDocumentScreenProps> = ({
     return (
       <View key={section.id} style={[styles.section, level > 0 && styles.subsection]}>
         <Text style={[styles.sectionTitle, level > 0 && styles.subsectionTitle]}>
-          {section.title}
+          {applyWingmanBranding(section.title)}
         </Text>
-        <Text style={styles.sectionContent}>{section.content}</Text>
+        <Text style={styles.sectionContent}>{applyWingmanBranding(section.content)}</Text>
         {section.subsections?.map((subsection) => renderSection(subsection, level + 1))}
       </View>
     );
@@ -92,7 +117,7 @@ export const LegalDocumentScreen: React.FC<LegalDocumentScreenProps> = ({
         </TouchableOpacity>
         <View style={styles.headerTitleContainer}>
           <Text style={styles.headerTitle} numberOfLines={1}>
-            {document.shortTitle}
+            {applyWingmanBranding(document.shortTitle)}
           </Text>
         </View>
         <View style={styles.placeholder} />
@@ -115,7 +140,7 @@ export const LegalDocumentScreen: React.FC<LegalDocumentScreenProps> = ({
               color={colors.primary.blue}
             />
           </View>
-          <Text style={styles.documentTitle}>{document.title}</Text>
+          <Text style={styles.documentTitle}>{applyWingmanBranding(document.title)}</Text>
           <Text style={styles.documentMeta}>
             Last Updated: {document.lastUpdated} | Version {document.version}
           </Text>

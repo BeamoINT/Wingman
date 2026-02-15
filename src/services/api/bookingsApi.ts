@@ -445,8 +445,8 @@ export async function fetchCompanionBookings(): Promise<{ bookings: BookingData[
       return {
         bookings: [],
         error: companionError
-          ? new Error(companionError.message || 'Failed to fetch companion profile')
-          : new Error('Companion profile not found'),
+          ? new Error(companionError.message || 'Failed to fetch wingman profile')
+          : new Error('Wingman profile not found'),
       };
     }
 
@@ -471,12 +471,12 @@ export async function fetchCompanionBookings(): Promise<{ bookings: BookingData[
       }
     }
 
-    return { bookings: [], error: new Error('No supported companion column found for bookings') };
+    return { bookings: [], error: new Error('No supported wingman column found for bookings') };
   } catch (err) {
     console.error('Error in fetchCompanionBookings:', err);
     return {
       bookings: [],
-      error: err instanceof Error ? err : new Error('Failed to fetch companion bookings'),
+      error: err instanceof Error ? err : new Error('Failed to fetch wingman bookings'),
     };
   }
 }
@@ -650,8 +650,8 @@ export async function fetchCompanionEarnings(): Promise<{
       return {
         earnings: { week: 0, month: 0, year: 0, total: 0 },
         error: companionError
-          ? new Error(companionError.message || 'Failed to fetch companion')
-          : new Error('Companion profile not found'),
+          ? new Error(companionError.message || 'Failed to fetch wingman')
+          : new Error('Wingman profile not found'),
       };
     }
 
@@ -710,7 +710,7 @@ export async function fetchCompanionEarnings(): Promise<{
     if (!loaded) {
       return {
         earnings: { week: 0, month: 0, year: 0, total: 0 },
-        error: new Error('No supported companion column found for bookings'),
+        error: new Error('No supported wingman column found for bookings'),
       };
     }
 

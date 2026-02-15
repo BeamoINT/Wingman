@@ -129,7 +129,7 @@ export const CompanionProfileScreen: React.FC = () => {
 
       if (error || !companionData) {
         console.error('Error fetching companion profile:', error);
-        setLoadError('Unable to load this companion right now.');
+        setLoadError('Unable to load this wingman right now.');
         setCompanion(null);
         setReviews([]);
         return;
@@ -149,7 +149,7 @@ export const CompanionProfileScreen: React.FC = () => {
       setReviews(transformedReviews);
     } catch (error) {
       console.error('Unexpected error loading companion profile:', error);
-      setLoadError('Unable to load this companion right now.');
+      setLoadError('Unable to load this wingman right now.');
       setCompanion(null);
       setReviews([]);
     } finally {
@@ -220,7 +220,7 @@ export const CompanionProfileScreen: React.FC = () => {
     }
 
     if (!companion.user.id) {
-      Alert.alert('Unavailable', 'Messaging is unavailable for this companion right now.');
+      Alert.alert('Unavailable', 'Messaging is unavailable for this wingman right now.');
       return;
     }
 
@@ -269,7 +269,7 @@ export const CompanionProfileScreen: React.FC = () => {
     return (
       <View style={styles.loadingScreen}>
         <ActivityIndicator size="large" color={colors.primary.blue} />
-        <Text style={styles.loadingText}>Loading companion profile...</Text>
+        <Text style={styles.loadingText}>Loading wingman profile...</Text>
       </View>
     );
   }
@@ -279,7 +279,7 @@ export const CompanionProfileScreen: React.FC = () => {
       <View style={styles.loadingScreen}>
         <Ionicons name="alert-circle" size={36} color={colors.status.error} />
         <Text style={styles.errorTextCentered}>
-          {loadError || 'Companion profile is unavailable.'}
+          {loadError || 'Wingman profile is unavailable.'}
         </Text>
         <TouchableOpacity
           style={styles.retryButton}
