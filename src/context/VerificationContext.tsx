@@ -116,6 +116,7 @@ export const VerificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         description: 'Verify your phone number',
         icon: 'call',
         status: phoneVerified ? 'completed' : 'pending',
+        actionLabel: phoneVerified ? undefined : 'Verify Now',
         completedAt: phoneVerified ? new Date().toISOString() : undefined,
       },
       {

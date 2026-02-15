@@ -199,6 +199,8 @@ export const CompanionProfileScreen: React.FC = () => {
               // Navigate to the appropriate screen to complete the requirement
               if (firstUnmet.navigateTo === 'Verification') {
                 navigation.navigate('Verification', { source: 'requirements' });
+              } else if (firstUnmet.navigateTo === 'VerifyPhone') {
+                navigation.navigate('VerifyPhone');
               } else if (firstUnmet.navigateTo === 'Subscription') {
                 navigation.navigate('Subscription');
               } else if (firstUnmet.navigateTo === 'SignIn') {

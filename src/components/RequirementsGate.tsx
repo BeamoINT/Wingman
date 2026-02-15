@@ -140,6 +140,9 @@ export const RequirementsGate: React.FC<RequirementsGateProps> = ({
           case 'Verification':
             navigation.navigate('Verification', { source: 'requirements' });
             break;
+          case 'VerifyPhone':
+            navigation.navigate('VerifyPhone');
+            break;
           case 'Subscription':
             navigation.navigate('Subscription');
             break;

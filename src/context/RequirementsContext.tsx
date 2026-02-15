@@ -7,6 +7,7 @@
  * - Privacy Policy acceptance
  * - Age verification (18+)
  * - Email verification
+ * - Phone verification
  * - ID and photo verification (required only at final booking confirmation)
  *
  * NEW BUSINESS MODEL:
@@ -55,6 +56,7 @@ export interface BookingRequirements {
   termsAccepted: RequirementCheck;
   privacyAccepted: RequirementCheck;
   emailVerified: RequirementCheck;
+  phoneVerified: RequirementCheck;
   idVerified: RequirementCheck;
   photoVerified: RequirementCheck;
   profileComplete: RequirementCheck;
@@ -216,7 +218,7 @@ const RequirementsContext = createContext<RequirementsContextType | undefined>(u
 
 export const RequirementsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, isAuthenticated, isNewUser, signupConsents } = useAuth();
-  const { emailVerified, idVerified } = useVerification();
+  const { emailVerified, phoneVerified, idVerified } = useVerification();
 
   const [isLoading, setIsLoading] = useState(true);
   const [consents, setConsents] = useState<UserConsents>(defaultConsents);
@@ -590,6 +592,12 @@ export const RequirementsProvider: React.FC<{ children: React.ReactNode }> = ({ 
         action: 'Verify Email',
         navigateTo: 'Verification',
       },
+      phoneVerified: {
+        met: phoneVerified,
+        requirement: 'You must verify your phone number',
+        action: 'Verify Phone',
+        navigateTo: 'VerifyPhone',
+      },
       idVerified: {
         met: idVerified,
         requirement: 'You must verify your identity',
@@ -620,6 +628,7 @@ export const RequirementsProvider: React.FC<{ children: React.ReactNode }> = ({ 
             'termsAccepted',
             'privacyAccepted',
             'emailVerified',
+            'phoneVerified',
             'idVerified',
             'photoVerified',
             'profileComplete',
@@ -630,6 +639,7 @@ export const RequirementsProvider: React.FC<{ children: React.ReactNode }> = ({ 
             'termsAccepted',
             'privacyAccepted',
             'emailVerified',
+            'phoneVerified',
             'profileComplete',
           ];
 
@@ -646,6 +656,7 @@ export const RequirementsProvider: React.FC<{ children: React.ReactNode }> = ({ 
     isAuthenticated,
     consents,
     emailVerified,
+    phoneVerified,
     idVerified,
     user?.avatar,
     profileCompletionData,

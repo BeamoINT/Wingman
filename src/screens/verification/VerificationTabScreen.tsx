@@ -7,7 +7,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import React from 'react';
+import React, { useCallback } from 'react';
 import {
     RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View
 } from 'react-native';
@@ -51,6 +51,11 @@ export const VerificationTabScreen: React.FC = () => {
     await haptics.light();
     navigation.navigate('VerificationHistory');
   };
+
+  const handlePhoneVerificationPress = useCallback(async () => {
+    await haptics.light();
+    navigation.navigate('VerifyPhone');
+  }, [navigation]);
 
   const verificationSteps = getVerificationSteps();
 
@@ -112,6 +117,7 @@ export const VerificationTabScreen: React.FC = () => {
               <VerificationStepItem
                 key={step.id}
                 step={step}
+                onActionPress={step.id === 'phone' ? handlePhoneVerificationPress : undefined}
                 isLast={index === verificationSteps.length - 1}
               />
             ))}

@@ -276,7 +276,9 @@ export const MessagesScreen: React.FC = () => {
         </View>
         <View style={styles.trustNote}>
           <Ionicons name="shield-checkmark" size={14} color={colors.status.success} />
-          <Text style={styles.trustNoteText}>Wingman conversations are only between ID and photo verified users.</Text>
+          <Text style={styles.trustNoteText}>
+            Wingman recommends keeping all conversations on Wingman for everyone's personal safety.
+          </Text>
         </View>
       </View>
 

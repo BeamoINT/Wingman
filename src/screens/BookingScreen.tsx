@@ -142,7 +142,7 @@ const BookingScreenContent: React.FC = () => {
   const route = useRoute<Props['route']>();
   const insets = useSafeAreaInsets();
   const { checkBookingRequirements } = useRequirements();
-  const { idVerified, emailVerified } = useVerification();
+  const { idVerified, emailVerified, phoneVerified } = useVerification();
   const bookingRequirements = useMemo(
     () => checkBookingRequirements('finalize'),
     [checkBookingRequirements]
@@ -152,6 +152,7 @@ const BookingScreenContent: React.FC = () => {
   const verificationWarningMessage = useMemo(() => {
     const missing: string[] = [];
     if (!emailVerified) missing.push('email');
+    if (!phoneVerified) missing.push('phone');
     if (!idVerified) missing.push('ID');
     if (!photoVerified) missing.push('profile photo');
 
@@ -167,8 +168,10 @@ const BookingScreenContent: React.FC = () => {
       return `Complete ${missing[0]} and ${missing[1]} verification to book.`;
     }
 
-    return `Complete ${missing[0]}, ${missing[1]}, and ${missing[2]} verification to book.`;
-  }, [emailVerified, idVerified, photoVerified]);
+    const missingLast = missing[missing.length - 1];
+    const missingPrefix = missing.slice(0, -1).join(', ');
+    return `Complete ${missingPrefix}, and ${missingLast} verification to book.`;
+  }, [emailVerified, phoneVerified, idVerified, photoVerified]);
 
   const dates = useMemo(() => {
     return Array.from({ length: 14 }, (_, index) => {
@@ -253,6 +256,10 @@ const BookingScreenContent: React.FC = () => {
       return { valid: false, message: 'You must verify your email address before booking.' };
     }
 
+    if (!requirements.phoneVerified.met) {
+      return { valid: false, message: 'You must verify your phone number before booking.' };
+    }
+
     if (!requirements.idVerified.met) {
       return { valid: false, message: 'You must verify your identity before booking.' };
     }
@@ -302,9 +309,10 @@ const BookingScreenContent: React.FC = () => {
 
       const needsEmailOrIdVerification =
         !bookingRequirements.emailVerified.met || !bookingRequirements.idVerified.met;
+      const needsPhoneVerification = !bookingRequirements.phoneVerified.met;
       const needsProfilePhoto = !bookingRequirements.photoVerified.met;
 
-      if (needsEmailOrIdVerification || needsProfilePhoto) {
+      if (needsEmailOrIdVerification || needsPhoneVerification || needsProfilePhoto) {
         Alert.alert(
           'Complete Verification to Book',
           validation.message || verificationWarningMessage || 'Complete verification to place your booking.',
@@ -314,8 +322,15 @@ const BookingScreenContent: React.FC = () => {
               style: 'cancel',
             },
             {
-              text: needsEmailOrIdVerification ? 'Complete Verification' : 'Add Profile Photo',
+              text: needsPhoneVerification
+                ? 'Verify Phone'
+                : (needsEmailOrIdVerification ? 'Complete Verification' : 'Add Profile Photo'),
               onPress: () => {
+                if (needsPhoneVerification) {
+                  navigation.navigate('VerifyPhone');
+                  return;
+                }
+
                 if (needsEmailOrIdVerification) {
                   if (!companionIdForVerification) {
                     return;
@@ -612,7 +627,7 @@ const BookingScreenContent: React.FC = () => {
           </Text>
         </View>
 
-        {(!idVerified || !emailVerified || !photoVerified) && (
+        {(!idVerified || !emailVerified || !phoneVerified || !photoVerified) && (
           <View style={styles.verificationWarning}>
             <Ionicons name="warning" size={20} color={colors.status.warning} />
             <View style={styles.verificationWarningContent}>
