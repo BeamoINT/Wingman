@@ -142,6 +142,14 @@ async function clearAuthStorage(): Promise<void> {
   }
 }
 
+function toFallbackAppUser(sessionUser: SupabaseUser, existingUser?: User | null): User {
+  if (existingUser && existingUser.id === sessionUser.id) {
+    return existingUser;
+  }
+
+  return transformSupabaseUser(sessionUser);
+}
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [supabaseUser, setSupabaseUser] = useState<SupabaseUser | null>(null);
@@ -154,6 +162,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [signupData, setSignupData] = useState<SignupData>(defaultSignupData);
   const [signupConsents, setSignupConsents] = useState<SignupConsents>(defaultSignupConsents);
   const [signupDraftStep, setSignupDraftStep] = useState<number | null>(null);
+  const isAuthenticated = !!session && !!supabaseUser;
 
   /**
    * Fetch user profile from Supabase
@@ -207,6 +216,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (currentSession?.user) {
           setSession(currentSession);
           setSupabaseUser(currentSession.user);
+
+          const storedUser = await getStoredUser();
+          setUser(toFallbackAppUser(currentSession.user, storedUser));
 
           // Fetch profile from database
           const profile = await fetchUserProfile(currentSession.user.id);
@@ -275,6 +287,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setSession(newSession);
         setSupabaseUser(newSession.user);
         setIsNewUser(false);
+        setUser((prevUser) => toFallbackAppUser(newSession.user, prevUser));
 
         // Supabase auth callbacks should not await async work, or OTP flows can stall.
         void (async () => {
@@ -974,7 +987,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         user,
         supabaseUser,
         session,
-        isAuthenticated: !!user && !!session,
+        isAuthenticated,
         isNewUser,
         isLoading,
         isRestoringSession,

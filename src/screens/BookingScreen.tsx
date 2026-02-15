@@ -1,12 +1,12 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Modal,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,12 +17,14 @@ import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 import { typography } from '../theme/typography';
 import { haptics } from '../utils/haptics';
-import { Button, Card, Avatar, Badge, Input } from '../components';
-import { RequirementsGate, useFeatureGate } from '../components/RequirementsGate';
-import { useAuth } from '../context/AuthContext';
+import { Button, Card, Avatar, Badge, Input, EmptyState } from '../components';
+import { RequirementsGate } from '../components/RequirementsGate';
 import { useRequirements } from '../context/RequirementsContext';
 import { useVerification } from '../context/VerificationContext';
-import type { RootStackParamList, CompanionSpecialty, LegalDocumentType } from '../types';
+import { createBooking } from '../services/api/bookingsApi';
+import { fetchCompanionById } from '../services/api/companions';
+import type { CompanionData } from '../services/api/companions';
+import type { RootStackParamList, CompanionSpecialty, VerificationLevel } from '../types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Booking'>;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -53,43 +55,158 @@ const activities: { id: CompanionSpecialty; label: string; icon: string }[] = [
   { id: 'safety-companion', label: 'Safety', icon: 'shield' },
 ];
 
+interface CompanionPreview {
+  id: string;
+  userId: string;
+  displayName: string;
+  avatarUrl?: string;
+  hourlyRate: number;
+  rating: number;
+  reviewCount: number;
+  responseTime: string;
+  verificationLevel: VerificationLevel;
+  isAvailable: boolean;
+}
+
+function toNumber(value: unknown, fallback = 0): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function normalizeVerificationLevel(value: unknown): VerificationLevel {
+  const normalized = String(value || 'basic').toLowerCase();
+  if (normalized === 'premium') return 'premium';
+  if (normalized === 'verified') return 'verified';
+  return 'basic';
+}
+
+function toDateString(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function toSqlTime(value: string): string | null {
+  const trimmed = value.trim();
+
+  if (/^\d{2}:\d{2}:\d{2}$/.test(trimmed)) {
+    return trimmed;
+  }
+
+  if (/^\d{2}:\d{2}$/.test(trimmed)) {
+    return `${trimmed}:00`;
+  }
+
+  const match = trimmed.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (!match) {
+    return null;
+  }
+
+  const rawHours = Number(match[1]);
+  const minutes = Number(match[2]);
+  const meridiem = match[3].toUpperCase();
+
+  if (!Number.isFinite(rawHours) || !Number.isFinite(minutes) || rawHours < 1 || rawHours > 12) {
+    return null;
+  }
+
+  let hours = rawHours % 12;
+  if (meridiem === 'PM') {
+    hours += 12;
+  }
+
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`;
+}
+
+function transformCompanionData(data: CompanionData): CompanionPreview {
+  const firstName = data.user?.first_name?.trim() || 'Companion';
+  const lastName = data.user?.last_name?.trim() || '';
+  const lastInitial = lastName ? `${lastName.charAt(0)}.` : '';
+
+  return {
+    id: data.id,
+    userId: data.user_id,
+    displayName: `${firstName} ${lastInitial}`.trim(),
+    avatarUrl: data.user?.avatar_url || undefined,
+    hourlyRate: Math.max(0, toNumber(data.hourly_rate, 0)),
+    rating: Math.max(0, toNumber(data.rating, 0)),
+    reviewCount: Math.max(0, Math.round(toNumber(data.review_count, 0))),
+    responseTime: data.response_time || 'Usually responds within 1 hour',
+    verificationLevel: normalizeVerificationLevel(data.user?.verification_level),
+    isAvailable: typeof data.is_available === 'boolean' ? data.is_available : true,
+  };
+}
+
 // Inner component that contains the actual booking UI
 const BookingScreenContent: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute<Props['route']>();
   const insets = useSafeAreaInsets();
-  const { user } = useAuth();
-  const { checkBookingRequirements, consents } = useRequirements();
+  const { checkBookingRequirements } = useRequirements();
   const { idVerified, emailVerified } = useVerification();
+
+  const dates = useMemo(() => {
+    return Array.from({ length: 14 }, (_, index) => {
+      const date = new Date();
+      date.setHours(0, 0, 0, 0);
+      date.setDate(date.getDate() + index);
+
+      return {
+        day: date.toLocaleDateString('en-US', { weekday: 'short' }),
+        date: date.getDate(),
+        month: date.toLocaleDateString('en-US', { month: 'short' }),
+        full: toDateString(date),
+      };
+    });
+  }, []);
 
   const [selectedDate, setSelectedDate] = useState<number>(0);
   const [selectedTime, setSelectedTime] = useState<string>('7:00 PM');
   const [selectedDuration, setSelectedDuration] = useState<number>(2);
   const [selectedActivity, setSelectedActivity] = useState<CompanionSpecialty>('dining');
-  const [location, setLocation] = useState('');
+  const [locationName, setLocationName] = useState('');
+  const [locationAddress, setLocationAddress] = useState('');
   const [notes, setNotes] = useState('');
-  const [showRequirementsModal, setShowRequirementsModal] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const hourlyRate = 45;
+  const [companion, setCompanion] = useState<CompanionPreview | null>(null);
+  const [isLoadingCompanion, setIsLoadingCompanion] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const loadCompanion = useCallback(async () => {
+    setIsLoadingCompanion(true);
+    setLoadError(null);
+
+    try {
+      const { companion: companionData, error } = await fetchCompanionById(route.params.companionId);
+      if (error || !companionData) {
+        console.error('Error loading companion for booking:', error);
+        setLoadError(error?.message || 'Unable to load companion details.');
+        setCompanion(null);
+        return;
+      }
+
+      setCompanion(transformCompanionData(companionData));
+    } catch (error) {
+      console.error('Unexpected error loading companion:', error);
+      setLoadError('Unable to load companion details.');
+      setCompanion(null);
+    } finally {
+      setIsLoadingCompanion(false);
+    }
+  }, [route.params.companionId]);
+
+  useEffect(() => {
+    loadCompanion();
+  }, [loadCompanion]);
+
+  const hourlyRate = companion?.hourlyRate || 0;
   const totalPrice = hourlyRate * selectedDuration;
-  const serviceFee = Math.round(totalPrice * 0.1);
+  const serviceFee = Math.round(totalPrice * 0.1 * 100) / 100;
   const grandTotal = totalPrice + serviceFee;
 
-  const dates = Array.from({ length: 7 }, (_, i) => {
-    const date = new Date();
-    date.setDate(date.getDate() + i);
-    return {
-      day: date.toLocaleDateString('en-US', { weekday: 'short' }),
-      date: date.getDate(),
-      month: date.toLocaleDateString('en-US', { month: 'short' }),
-      full: date.toISOString().split('T')[0],
-    };
-  });
-
-  // Final validation before booking
   const validateBeforeBooking = useCallback((): { valid: boolean; message?: string } => {
-    // Check all requirements one more time
     const requirements = checkBookingRequirements();
 
     if (!requirements.isAuthenticated.met) {
@@ -109,7 +226,7 @@ const BookingScreenContent: React.FC = () => {
     }
 
     if (!requirements.emailVerified.met) {
-      return { valid: false, message: 'You must verify your email address.' };
+      return { valid: false, message: 'You must verify your email address before booking.' };
     }
 
     if (!requirements.idVerified.met) {
@@ -120,41 +237,80 @@ const BookingScreenContent: React.FC = () => {
       return { valid: false, message: 'Please complete your profile before booking.' };
     }
 
-    // Validate booking-specific fields
-    if (!location.trim()) {
+    if (!companion) {
+      return { valid: false, message: 'Companion details are unavailable.' };
+    }
+
+    if (!companion.isAvailable) {
+      return { valid: false, message: 'This companion is currently unavailable for booking.' };
+    }
+
+    if (!companion.hourlyRate || companion.hourlyRate <= 0) {
+      return { valid: false, message: 'This companion does not have a valid hourly rate yet.' };
+    }
+
+    if (!locationName.trim()) {
       return { valid: false, message: 'Please enter a meeting location.' };
     }
 
+    const selectedDateValue = dates[selectedDate];
+    if (!selectedDateValue) {
+      return { valid: false, message: 'Please select a valid booking date.' };
+    }
+
+    if (!toSqlTime(selectedTime)) {
+      return { valid: false, message: 'Please select a valid start time.' };
+    }
+
     return { valid: true };
-  }, [checkBookingRequirements, location]);
+  }, [checkBookingRequirements, companion, locationName, dates, selectedDate, selectedTime]);
 
   const handleBookPress = async () => {
-    // Perform final validation
     const validation = validateBeforeBooking();
 
-    if (!validation.valid) {
+    if (!validation.valid || !companion) {
       await haptics.warning();
-      Alert.alert(
-        'Cannot Complete Booking',
-        validation.message,
-        [
-          {
-            text: 'OK',
-            style: 'default',
-          },
-        ]
-      );
+      Alert.alert('Cannot Complete Booking', validation.message || 'Please review your booking details.');
+      return;
+    }
+
+    const selectedDateValue = dates[selectedDate];
+    const startTime = toSqlTime(selectedTime);
+
+    if (!selectedDateValue || !startTime) {
+      await haptics.warning();
+      Alert.alert('Cannot Complete Booking', 'Please select a valid date and time.');
       return;
     }
 
     setIsProcessing(true);
 
     try {
+      const { booking, error } = await createBooking({
+        companion_id: companion.id,
+        date: selectedDateValue.full,
+        start_time: startTime,
+        duration_hours: selectedDuration,
+        hourly_rate: companion.hourlyRate,
+        location_name: locationName.trim(),
+        location_address: locationAddress.trim() || undefined,
+        activity_type: selectedActivity,
+        notes: notes.trim() || undefined,
+      });
+
+      if (error || !booking?.id) {
+        console.error('Error creating booking:', error);
+        await haptics.error();
+        Alert.alert('Booking Failed', error?.message || 'Unable to create booking. Please try again.');
+        return;
+      }
+
       await haptics.success();
-      navigation.navigate('BookingConfirmation', { bookingId: '123' });
+      navigation.replace('BookingConfirmation', { bookingId: booking.id });
     } catch (error) {
+      console.error('Unexpected booking creation error:', error);
       await haptics.error();
-      Alert.alert('Error', 'Failed to complete booking. Please try again.');
+      Alert.alert('Booking Failed', 'Unable to create booking. Please try again.');
     } finally {
       setIsProcessing(false);
     }
@@ -165,24 +321,30 @@ const BookingScreenContent: React.FC = () => {
     navigation.goBack();
   };
 
-  const handleRequirementPress = async (navigateTo: string) => {
-    await haptics.light();
-    setShowRequirementsModal(false);
+  if (isLoadingCompanion) {
+    return (
+      <View style={styles.stateScreen}>
+        <ActivityIndicator size="large" color={colors.primary.blue} />
+        <Text style={styles.stateText}>Loading companion details...</Text>
+      </View>
+    );
+  }
 
-    switch (navigateTo) {
-      case 'Verification':
-        navigation.navigate('Verification');
-        break;
-      case 'Subscription':
-        navigation.navigate('Subscription');
-        break;
-      case 'LegalDocument':
-        navigation.navigate('LegalDocument', { documentType: 'terms-of-service' as LegalDocumentType });
-        break;
-      default:
-        break;
-    }
-  };
+  if (loadError || !companion) {
+    return (
+      <View style={styles.stateScreen}>
+        <EmptyState
+          icon="alert-circle-outline"
+          title="Booking Unavailable"
+          message={loadError || 'Unable to load companion details.'}
+          actionLabel="Try Again"
+          onAction={loadCompanion}
+          secondaryActionLabel="Back"
+          onSecondaryAction={handleBackPress}
+        />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -196,26 +358,32 @@ const BookingScreenContent: React.FC = () => {
 
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={{ paddingBottom: 180 }}
+        contentContainerStyle={{ paddingBottom: 220 }}
         showsVerticalScrollIndicator={false}
       >
-        {/* Companion Preview */}
         <View style={styles.companionPreview}>
           <Avatar
-            source="https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400"
-            name="Sarah Johnson"
+            source={companion.avatarUrl}
+            name={companion.displayName}
             size="medium"
             showVerified
-            verificationLevel="premium"
+            verificationLevel={companion.verificationLevel}
           />
           <View style={styles.companionInfo}>
-            <Text style={styles.companionName}>Sarah J.</Text>
-            <Text style={styles.companionRate}>${hourlyRate}/hr</Text>
+            <Text style={styles.companionName}>{companion.displayName}</Text>
+            <Text style={styles.companionMeta}>
+              ${companion.hourlyRate.toFixed(2)}/hr
+              {companion.reviewCount > 0 ? ` • ${companion.rating.toFixed(1)} (${companion.reviewCount})` : ''}
+            </Text>
+            <Text style={styles.companionResponse}>{companion.responseTime}</Text>
           </View>
-          <Badge label="Premium" variant="premium" icon="star" size="small" />
+          <Badge
+            label={companion.isAvailable ? 'Available' : 'Unavailable'}
+            variant={companion.isAvailable ? 'success' : 'error'}
+            size="small"
+          />
         </View>
 
-        {/* Date Selection */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Select Date</Text>
           <ScrollView
@@ -225,7 +393,7 @@ const BookingScreenContent: React.FC = () => {
           >
             {dates.map((date, index) => (
               <TouchableOpacity
-                key={index}
+                key={date.full}
                 style={[
                   styles.dateCard,
                   selectedDate === index && styles.dateCardSelected,
@@ -249,7 +417,6 @@ const BookingScreenContent: React.FC = () => {
           </ScrollView>
         </View>
 
-        {/* Time Selection */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Select Time</Text>
           <View style={styles.timeSlotsGrid}>
@@ -276,7 +443,6 @@ const BookingScreenContent: React.FC = () => {
           </View>
         </View>
 
-        {/* Duration Selection */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Duration</Text>
           <View style={styles.durationsGrid}>
@@ -302,14 +468,13 @@ const BookingScreenContent: React.FC = () => {
                   styles.durationPrice,
                   selectedDuration === duration.hours && styles.durationPriceSelected,
                 ]}>
-                  ${hourlyRate * duration.hours}
+                  ${(companion.hourlyRate * duration.hours).toFixed(2)}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
         </View>
 
-        {/* Activity Type */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Activity Type</Text>
           <View style={styles.activitiesGrid}>
@@ -326,7 +491,7 @@ const BookingScreenContent: React.FC = () => {
                 }}
               >
                 <Ionicons
-                  name={activity.icon as any}
+                  name={activity.icon as React.ComponentProps<typeof Ionicons>['name']}
                   size={24}
                   color={selectedActivity === activity.id ? colors.text.primary : colors.text.tertiary}
                 />
@@ -341,18 +506,24 @@ const BookingScreenContent: React.FC = () => {
           </View>
         </View>
 
-        {/* Location */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Meeting Location</Text>
           <Input
-            placeholder="Enter venue name or address"
-            value={location}
-            onChangeText={setLocation}
+            label="Location Name"
+            placeholder="Venue, restaurant, or meeting point"
+            value={locationName}
+            onChangeText={setLocationName}
             leftIcon="location-outline"
+          />
+          <Input
+            label="Address (Optional)"
+            placeholder="Street address for directions"
+            value={locationAddress}
+            onChangeText={setLocationAddress}
+            leftIcon="map-outline"
           />
         </View>
 
-        {/* Notes */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Additional Notes (Optional)</Text>
           <Input
@@ -360,19 +531,19 @@ const BookingScreenContent: React.FC = () => {
             value={notes}
             onChangeText={setNotes}
             multiline
+            numberOfLines={4}
+            textAlignVertical="top"
             containerStyle={{ marginBottom: 0 }}
           />
         </View>
 
-        {/* Safety Reminder */}
         <View style={styles.safetyReminder}>
           <Ionicons name="shield-checkmark" size={20} color={colors.primary.blue} />
           <Text style={styles.safetyText}>
-            Sarah is ID-verified. You can share your live location during the booking.
+            Keep payment and communication in-app for support and protection. {companion.displayName} is profile-verified.
           </Text>
         </View>
 
-        {/* Verification Status */}
         {(!idVerified || !emailVerified) && (
           <View style={styles.verificationWarning}>
             <Ionicons name="warning" size={20} color={colors.status.warning} />
@@ -382,8 +553,8 @@ const BookingScreenContent: React.FC = () => {
                 {!emailVerified && !idVerified
                   ? 'Complete email and ID verification to book'
                   : !emailVerified
-                  ? 'Verify your email to book'
-                  : 'Complete ID verification to book'}
+                    ? 'Verify your email to book'
+                    : 'Complete ID verification to book'}
               </Text>
               <TouchableOpacity
                 style={styles.verifyButton}
@@ -394,36 +565,55 @@ const BookingScreenContent: React.FC = () => {
             </View>
           </View>
         )}
+
+        {!companion.isAvailable && (
+          <View style={styles.verificationWarning}>
+            <Ionicons name="time" size={20} color={colors.status.warning} />
+            <View style={styles.verificationWarningContent}>
+              <Text style={styles.verificationWarningTitle}>Companion Unavailable</Text>
+              <Text style={styles.verificationWarningText}>
+                This companion is currently unavailable. Try booking another companion or check back later.
+              </Text>
+            </View>
+          </View>
+        )}
       </ScrollView>
 
-      {/* Bottom Pricing Bar */}
       <LinearGradient
         colors={['transparent', colors.background.primary]}
         style={[styles.bottomBar, { paddingBottom: insets.bottom + spacing.md }]}
       >
         <Card style={styles.pricingCard}>
           <View style={styles.pricingRow}>
-            <Text style={styles.pricingLabel}>${hourlyRate} × {selectedDuration} hours</Text>
-            <Text style={styles.pricingValue}>${totalPrice}</Text>
+            <Text style={styles.pricingLabel}>${hourlyRate.toFixed(2)} × {selectedDuration} hours</Text>
+            <Text style={styles.pricingValue}>${totalPrice.toFixed(2)}</Text>
           </View>
           <View style={styles.pricingRow}>
-            <Text style={styles.pricingLabel}>Service fee</Text>
-            <Text style={styles.pricingValue}>${serviceFee}</Text>
+            <Text style={styles.pricingLabel}>Service fee (10%)</Text>
+            <Text style={styles.pricingValue}>${serviceFee.toFixed(2)}</Text>
           </View>
           <View style={styles.pricingDivider} />
           <View style={styles.pricingRow}>
             <Text style={styles.totalLabel}>Total</Text>
-            <Text style={styles.totalValue}>${grandTotal}</Text>
+            <Text style={styles.totalValue}>${grandTotal.toFixed(2)}</Text>
           </View>
         </Card>
 
         <Button
-          title={isProcessing ? 'Processing...' : 'Confirm Booking'}
+          title={companion.isAvailable ? 'Confirm Booking' : 'Companion Unavailable'}
           onPress={handleBookPress}
           variant="primary"
           size="large"
           fullWidth
-          disabled={isProcessing || !idVerified || !emailVerified || !location.trim()}
+          loading={isProcessing}
+          disabled={
+            isProcessing ||
+            !idVerified ||
+            !emailVerified ||
+            !locationName.trim() ||
+            !companion.isAvailable ||
+            companion.hourlyRate <= 0
+          }
         />
       </LinearGradient>
     </View>
@@ -431,17 +621,7 @@ const BookingScreenContent: React.FC = () => {
 };
 
 /**
- * BookingScreen - Wrapped with RequirementsGate to enforce all booking requirements
- *
- * Requirements checked before allowing access:
- * - User is authenticated
- * - Age is confirmed (18+)
- * - Terms of Service accepted
- * - Privacy Policy accepted
- * - Email verified
- * - ID verified
- * - Within monthly booking limit
- * - Profile is complete
+ * BookingScreen - Wrapped with RequirementsGate to enforce all booking requirements.
  */
 export const BookingScreen: React.FC = () => {
   return (
@@ -458,6 +638,18 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background.primary,
+  },
+  stateScreen: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.background.primary,
+    paddingHorizontal: spacing.xl,
+  },
+  stateText: {
+    ...typography.presets.body,
+    color: colors.text.secondary,
+    marginTop: spacing.md,
   },
   header: {
     flexDirection: 'row',
@@ -490,19 +682,24 @@ const styles = StyleSheet.create({
     padding: spacing.screenPadding,
     borderBottomWidth: 1,
     borderBottomColor: colors.border.light,
+    gap: spacing.md,
   },
   companionInfo: {
     flex: 1,
-    marginLeft: spacing.md,
   },
   companionName: {
     ...typography.presets.h4,
     color: colors.text.primary,
   },
-  companionRate: {
+  companionMeta: {
     ...typography.presets.bodySmall,
     color: colors.primary.blue,
     marginTop: 2,
+  },
+  companionResponse: {
+    ...typography.presets.caption,
+    color: colors.text.tertiary,
+    marginTop: spacing.xs,
   },
   section: {
     padding: spacing.screenPadding,
@@ -516,7 +713,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   dateCard: {
-    width: 64,
+    width: 72,
     paddingVertical: spacing.md,
     alignItems: 'center',
     backgroundColor: colors.background.card,
@@ -553,6 +750,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     backgroundColor: colors.background.card,
     borderRadius: spacing.radius.md,
+    minWidth: 88,
+    alignItems: 'center',
   },
   timeSlotSelected: {
     backgroundColor: colors.primary.blue,

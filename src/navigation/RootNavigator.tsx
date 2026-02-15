@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback } from 'react';
+import React, { useEffect, useState } from 'react';
 import { NavigationContainer, useNavigation, useNavigationContainerRef, CommonActions } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -121,32 +121,62 @@ const ProtectedEventsScreen = withAuthGuard(EventsScreen, 'Events');
 export const RootNavigator: React.FC = () => {
   const navigationRef = useNavigationContainerRef<RootStackParamList>();
   const { isAuthenticated, signupDraftStep } = useAuth();
+  const [isNavigationReady, setIsNavigationReady] = useState(false);
 
-  // Auto-navigate based on auth state when navigation is ready
-  const handleNavigationReady = useCallback(() => {
-    if (!navigationRef.isReady()) return;
+  useEffect(() => {
+    if (!isNavigationReady || !navigationRef.isReady()) {
+      return;
+    }
+
+    const currentRouteName = navigationRef.getCurrentRoute()?.name;
+    const authRoutes = new Set<string>([
+      'Welcome',
+      'SignIn',
+      'Signup',
+      'VerifyEmail',
+      'VerifyPhone',
+      'ForgotPassword',
+      'MagicLinkLogin',
+      'Tutorial',
+      'LegalDocument',
+    ]);
 
     if (isAuthenticated) {
-      // User has an active session — go straight to Main
+      if (currentRouteName !== 'Main') {
+        navigationRef.dispatch(
+          CommonActions.reset({
+            index: 0,
+            routes: [{ name: 'Main' }],
+          })
+        );
+      }
+      return;
+    }
+
+    if (signupDraftStep != null) {
+      if (currentRouteName !== 'Signup') {
+        navigationRef.dispatch(
+          CommonActions.navigate({
+            name: 'Signup',
+            params: { resumeStep: signupDraftStep },
+          })
+        );
+      }
+      return;
+    }
+
+    if (!currentRouteName || !authRoutes.has(currentRouteName)) {
       navigationRef.dispatch(
         CommonActions.reset({
           index: 0,
-          routes: [{ name: 'Main' }],
-        })
-      );
-    } else if (signupDraftStep != null) {
-      // Resume in-progress signup
-      navigationRef.dispatch(
-        CommonActions.navigate({
-          name: 'Signup',
-          params: { resumeStep: signupDraftStep },
+          routes: [{ name: 'Welcome' }],
         })
       );
     }
-  }, [isAuthenticated, signupDraftStep, navigationRef]);
+  }, [isNavigationReady, isAuthenticated, signupDraftStep, navigationRef]);
 
   return (
-    <NavigationContainer ref={navigationRef} onReady={handleNavigationReady}>
+    <NavigationContainer ref={navigationRef} onReady={() => setIsNavigationReady(true)}>
       <Stack.Navigator
         initialRouteName="Welcome"
         screenOptions={{

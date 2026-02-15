@@ -1,12 +1,15 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
+  Alert,
+  FlatList,
+  Linking,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -16,77 +19,172 @@ import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 import { typography } from '../theme/typography';
 import { haptics } from '../utils/haptics';
-import { Card, Badge, Avatar } from '../components';
-import { fetchUserBookings } from '../services/api/bookingsApi';
+import { Card, Badge, Avatar, EmptyState } from '../components';
+import { fetchUserBookings, cancelBooking } from '../services/api/bookingsApi';
 import type { BookingData } from '../services/api/bookingsApi';
-import type { RootStackParamList, Booking, CompanionSpecialty } from '../types';
+import { getOrCreateConversation } from '../services/api/messages';
+import type {
+  RootStackParamList,
+  Booking,
+  BookingStatus,
+  CompanionSpecialty,
+  VerificationLevel,
+} from '../types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+type TabType = 'upcoming' | 'completed' | 'cancelled';
 
-type TabType = 'upcoming' | 'past';
+function toNumber(value: unknown, fallback = 0): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function normalizeBookingStatus(status: unknown): BookingStatus {
+  const normalized = String(status || 'pending').toLowerCase().replace(/_/g, '-');
+  switch (normalized) {
+    case 'pending':
+    case 'confirmed':
+    case 'in-progress':
+    case 'completed':
+    case 'cancelled':
+    case 'disputed':
+      return normalized;
+    default:
+      return 'pending';
+  }
+}
 
 /**
- * Transform API booking data to our Booking type
+ * Transform API booking data to app Booking type
  */
 function transformBookingData(data: BookingData): Booking {
   const companion = data.companion;
   const user = companion?.user;
+  const verificationLevel: VerificationLevel = user?.verification_level === 'premium'
+    ? 'premium'
+    : user?.verification_level === 'verified'
+      ? 'verified'
+      : 'basic';
+
+  const status = normalizeBookingStatus(data.status);
 
   return {
     id: data.id,
     companion: {
-      id: companion?.id || '',
+      id: companion?.id || data.companion_id || '',
       user: {
-        id: user?.id || '',
-        firstName: user?.first_name || '',
+        id: user?.id || companion?.user_id || '',
+        firstName: user?.first_name || 'Companion',
         lastName: user?.last_name || '',
         email: user?.email || '',
-        avatar: user?.avatar_url,
+        avatar: user?.avatar_url || undefined,
         isVerified: user?.phone_verified || false,
-        isPremium: user?.subscription_tier !== 'free',
+        isPremium: (user?.subscription_tier || 'free') !== 'free',
         createdAt: user?.created_at || data.created_at,
       },
-      rating: companion?.rating || 0,
-      reviewCount: companion?.review_count || 0,
-      hourlyRate: companion?.hourly_rate || 0,
+      rating: toNumber(companion?.rating, 0),
+      reviewCount: Math.max(0, Math.round(toNumber(companion?.review_count, 0))),
+      hourlyRate: toNumber(companion?.hourly_rate, toNumber(data.hourly_rate, 0)),
       specialties: (companion?.specialties || []) as CompanionSpecialty[],
       languages: companion?.languages || [],
       availability: [],
-      isOnline: companion?.is_available || false,
-      responseTime: companion?.response_time || '',
-      completedBookings: companion?.completed_bookings || 0,
+      isOnline: typeof companion?.is_available === 'boolean' ? companion.is_available : true,
+      responseTime: companion?.response_time || 'Usually responds within 1 hour',
+      completedBookings: Math.max(0, Math.round(toNumber(companion?.completed_bookings, 0))),
       badges: [],
       gallery: companion?.gallery || [],
       about: companion?.about || '',
       interests: [],
-      verificationLevel: user?.verification_level as any || 'basic',
+      verificationLevel,
     },
-    user: {} as any,
-    status: data.status.replace(/_/g, '-') as Booking['status'],
+    user: {
+      id: data.client_id || '',
+      firstName: '',
+      lastName: '',
+      email: '',
+      isVerified: false,
+      isPremium: false,
+      createdAt: data.created_at,
+    },
+    status,
     date: data.date,
     startTime: data.start_time,
     endTime: data.end_time || '',
-    duration: data.duration_hours,
-    totalPrice: data.total_price,
+    duration: Math.max(0, Math.round(toNumber(data.duration_hours, 0))),
+    totalPrice: toNumber(data.total_price, 0),
     location: {
       name: data.location_name || 'Location TBD',
       address: data.location_address || '',
-      type: 'other' as const,
+      type: 'other',
     },
     activityType: (data.activity_type || 'social-events') as CompanionSpecialty,
+    notes: data.notes,
     createdAt: data.created_at,
     updatedAt: data.updated_at,
   };
 }
 
+function formatDate(dateStr: string): string {
+  const parsed = new Date(dateStr);
+  if (Number.isNaN(parsed.getTime())) return dateStr;
+
+  return parsed.toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+function formatTime(time: string): string {
+  if (!time) return '';
+  const [rawHours, rawMinutes] = time.split(':');
+  const hours = Number(rawHours);
+  const minutes = Number(rawMinutes);
+  if (Number.isNaN(hours)) return time;
+
+  const period = hours >= 12 ? 'PM' : 'AM';
+  const displayHours = hours % 12 || 12;
+  return `${displayHours}:${(Number.isNaN(minutes) ? 0 : minutes).toString().padStart(2, '0')} ${period}`;
+}
+
+function mapBookingStatusToBadge(status: BookingStatus): 'success' | 'warning' | 'info' | 'error' {
+  switch (status) {
+    case 'confirmed':
+      return 'success';
+    case 'pending':
+      return 'warning';
+    case 'in-progress':
+      return 'info';
+    case 'completed':
+      return 'success';
+    case 'cancelled':
+    case 'disputed':
+      return 'error';
+    default:
+      return 'info';
+  }
+}
+
+function buildMapUrl(query: string): string {
+  const encoded = encodeURIComponent(query);
+  if (Platform.OS === 'ios') {
+    return `http://maps.apple.com/?q=${encoded}`;
+  }
+
+  return `geo:0,0?q=${encoded}`;
+}
+
 export const BookingsScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
+
   const [activeTab, setActiveTab] = useState<TabType>('upcoming');
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [cancellingBookingId, setCancellingBookingId] = useState<string | null>(null);
+  const [messagingBookingId, setMessagingBookingId] = useState<string | null>(null);
 
   const loadBookings = useCallback(async (showRefresh = false) => {
     if (showRefresh) {
@@ -100,14 +198,16 @@ export const BookingsScreen: React.FC = () => {
       const { bookings: data, error: apiError } = await fetchUserBookings();
 
       if (apiError) {
-        setError('Failed to load bookings');
+        setError(apiError.message || 'Failed to load bookings');
         console.error('Error loading bookings:', apiError);
+        setBookings([]);
       } else {
         setBookings(data.map(transformBookingData));
       }
     } catch (err) {
-      setError('Something went wrong');
+      setError('Something went wrong while loading bookings.');
       console.error('Error in loadBookings:', err);
+      setBookings([]);
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -118,50 +218,161 @@ export const BookingsScreen: React.FC = () => {
     loadBookings();
   }, [loadBookings]);
 
-  const handleTabPress = async (tab: TabType) => {
+  const upcomingBookings = useMemo(() => bookings.filter(
+    booking => booking.status === 'pending' || booking.status === 'confirmed' || booking.status === 'in-progress'
+  ), [bookings]);
+
+  const completedBookings = useMemo(() => bookings.filter(
+    booking => booking.status === 'completed'
+  ), [bookings]);
+
+  const cancelledBookings = useMemo(() => bookings.filter(
+    booking => booking.status === 'cancelled' || booking.status === 'disputed'
+  ), [bookings]);
+
+  const currentBookings = useMemo(() => {
+    switch (activeTab) {
+      case 'completed':
+        return completedBookings;
+      case 'cancelled':
+        return cancelledBookings;
+      case 'upcoming':
+      default:
+        return upcomingBookings;
+    }
+  }, [activeTab, upcomingBookings, completedBookings, cancelledBookings]);
+
+  const handleTabPress = useCallback(async (tab: TabType) => {
     await haptics.selection();
     setActiveTab(tab);
-  };
+  }, []);
 
-  const handleBookingPress = async (booking: Booking) => {
+  const handleBookingPress = useCallback(async (bookingId: string) => {
     await haptics.light();
-    navigation.navigate('BookingConfirmation', { bookingId: booking.id });
-  };
+    navigation.navigate('BookingConfirmation', { bookingId });
+  }, [navigation]);
 
-  const handleRefresh = () => {
+  const handleRefresh = useCallback(() => {
     loadBookings(true);
-  };
+  }, [loadBookings]);
 
-  const upcomingBookings = bookings.filter(
-    (b) => b.status === 'confirmed' || b.status === 'pending' || b.status === 'in-progress'
+  const handleOpenDirections = useCallback(async (booking: Booking) => {
+    const query = booking.location.address || booking.location.name;
+    if (!query.trim()) {
+      Alert.alert('No Location', 'This booking does not have a location yet.');
+      return;
+    }
+
+    const mapUrl = buildMapUrl(query);
+    const fallbackUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+
+    try {
+      const canOpenMapUrl = await Linking.canOpenURL(mapUrl);
+      const targetUrl = canOpenMapUrl ? mapUrl : fallbackUrl;
+      await Linking.openURL(targetUrl);
+    } catch (error) {
+      console.error('Error opening map:', error);
+      Alert.alert('Unable to Open Maps', 'Please check your maps application and try again.');
+    }
+  }, []);
+
+  const handleMessageCompanion = useCallback(async (booking: Booking) => {
+    const companionUserId = booking.companion.user.id;
+    if (!companionUserId) {
+      Alert.alert('Unavailable', 'Companion messaging is unavailable for this booking.');
+      return;
+    }
+
+    setMessagingBookingId(booking.id);
+    try {
+      const { conversation, error } = await getOrCreateConversation(companionUserId);
+      if (error || !conversation?.id) {
+        console.error('Error creating/opening conversation:', error);
+        Alert.alert('Message Failed', error?.message || 'Unable to open chat right now.');
+        return;
+      }
+
+      await haptics.light();
+      navigation.navigate('Chat', { conversationId: conversation.id });
+    } finally {
+      setMessagingBookingId(null);
+    }
+  }, [navigation]);
+
+  const handleCancelBooking = useCallback((booking: Booking) => {
+    Alert.alert(
+      'Cancel Booking',
+      'Are you sure you want to cancel this booking?',
+      [
+        { text: 'Keep Booking', style: 'cancel' },
+        {
+          text: 'Cancel Booking',
+          style: 'destructive',
+          onPress: async () => {
+            setCancellingBookingId(booking.id);
+            try {
+              const { success, error } = await cancelBooking(booking.id);
+              if (!success || error) {
+                console.error('Error cancelling booking:', error);
+                Alert.alert('Cancel Failed', error?.message || 'Unable to cancel booking.');
+                return;
+              }
+
+              await haptics.success();
+              await loadBookings();
+            } finally {
+              setCancellingBookingId(null);
+            }
+          },
+        },
+      ]
+    );
+  }, [loadBookings]);
+
+  const renderHeader = (
+    <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}>
+      <Text style={styles.title}>Bookings</Text>
+
+      <View style={styles.tabs}>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'upcoming' && styles.tabActive]}
+          onPress={() => handleTabPress('upcoming')}
+        >
+          <Text style={[styles.tabText, activeTab === 'upcoming' && styles.tabTextActive]}>
+            Upcoming
+          </Text>
+          {upcomingBookings.length > 0 && (
+            <View style={styles.tabBadge}>
+              <Text style={styles.tabBadgeText}>{upcomingBookings.length}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'completed' && styles.tabActive]}
+          onPress={() => handleTabPress('completed')}
+        >
+          <Text style={[styles.tabText, activeTab === 'completed' && styles.tabTextActive]}>
+            Completed
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'cancelled' && styles.tabActive]}
+          onPress={() => handleTabPress('cancelled')}
+        >
+          <Text style={[styles.tabText, activeTab === 'cancelled' && styles.tabTextActive]}>
+            Cancelled
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </View>
   );
-  const pastBookings = bookings.filter(
-    (b) => b.status === 'completed' || b.status === 'cancelled'
-  );
 
-  const currentBookings = activeTab === 'upcoming' ? upcomingBookings : pastBookings;
-
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-    });
-  };
-
-  const formatTime = (time: string) => {
-    if (!time) return '';
-    const [hours, minutes] = time.split(':').map(Number);
-    const period = hours >= 12 ? 'PM' : 'AM';
-    const displayHours = hours % 12 || 12;
-    return `${displayHours}:${(minutes || 0).toString().padStart(2, '0')} ${period}`;
-  };
-
-  const renderContent = () => {
+  const renderState = () => {
     if (isLoading && !isRefreshing) {
       return (
-        <View style={styles.loadingContainer}>
+        <View style={styles.centerState}>
           <ActivityIndicator size="large" color={colors.primary.blue} />
           <Text style={styles.loadingText}>Loading bookings...</Text>
         </View>
@@ -170,165 +381,153 @@ export const BookingsScreen: React.FC = () => {
 
     if (error) {
       return (
-        <View style={styles.errorContainer}>
-          <Ionicons name="alert-circle" size={48} color={colors.status.error} />
-          <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={() => loadBookings()}>
+        <View style={styles.centerState}>
+          <Ionicons name="alert-circle" size={42} color={colors.status.error} />
+          <Text style={styles.errorTitle}>Couldn’t Load Bookings</Text>
+          <Text style={styles.errorSubtitle}>{error}</Text>
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={() => loadBookings()}
+          >
             <Text style={styles.retryText}>Try Again</Text>
           </TouchableOpacity>
         </View>
       );
     }
 
-    if (currentBookings.length === 0) {
-      return (
-        <View style={styles.emptyState}>
-          <View style={styles.emptyIcon}>
-            <Ionicons name="calendar-outline" size={48} color={colors.text.tertiary} />
-          </View>
-          <Text style={styles.emptyTitle}>No {activeTab} bookings</Text>
-          <Text style={styles.emptySubtitle}>
-            {activeTab === 'upcoming'
-              ? 'Find a companion and book your first outing!'
-              : 'Your completed bookings will appear here.'}
-          </Text>
-        </View>
-      );
-    }
+    return (
+      <EmptyState
+        icon="calendar-outline"
+        title={`No ${activeTab} bookings`}
+        message={
+          activeTab === 'upcoming'
+            ? 'Your confirmed and pending bookings will appear here.'
+            : activeTab === 'completed'
+              ? 'Completed bookings will appear here after your sessions.'
+              : 'Cancelled or disputed bookings will appear here.'
+        }
+      />
+    );
+  };
 
-    return currentBookings.map((booking) => (
+  const renderBookingItem = ({ item }: { item: Booking }) => {
+    const statusLabel = item.status
+      .replace('-', ' ')
+      .replace(/\b\w/g, letter => letter.toUpperCase());
+
+    const canCancel = item.status === 'pending' || item.status === 'confirmed';
+    const canMessage = !!item.companion.user.id;
+    const bookingIsCancelling = cancellingBookingId === item.id;
+    const bookingIsOpeningChat = messagingBookingId === item.id;
+
+    return (
       <TouchableOpacity
-        key={booking.id}
-        onPress={() => handleBookingPress(booking)}
-        activeOpacity={0.8}
+        activeOpacity={0.85}
+        onPress={() => handleBookingPress(item.id)}
       >
         <Card variant="outlined" style={styles.bookingCard}>
           <View style={styles.bookingHeader}>
             <Avatar
-              source={booking.companion.user.avatar}
-              name={booking.companion.user.firstName}
+              source={item.companion.user.avatar}
+              name={item.companion.user.firstName}
               size="medium"
               showVerified
-              verificationLevel={booking.companion.verificationLevel}
+              verificationLevel={item.companion.verificationLevel}
             />
+
             <View style={styles.bookingInfo}>
               <Text style={styles.companionName}>
-                {booking.companion.user.firstName}
+                {item.companion.user.firstName} {item.companion.user.lastName?.charAt(0) ? `${item.companion.user.lastName.charAt(0)}.` : ''}
               </Text>
-              <View style={styles.bookingMeta}>
-                <Badge
-                  label={booking.status.charAt(0).toUpperCase() + booking.status.slice(1).replace('-', ' ')}
-                  variant={
-                    booking.status === 'confirmed' ? 'success' :
-                    booking.status === 'pending' ? 'warning' :
-                    booking.status === 'in-progress' ? 'info' :
-                    booking.status === 'completed' ? 'info' : 'error'
-                  }
-                  size="small"
-                />
-              </View>
+              <Badge
+                label={statusLabel}
+                variant={mapBookingStatusToBadge(item.status)}
+                size="small"
+              />
             </View>
-            <Text style={styles.bookingPrice}>${booking.totalPrice.toFixed(2)}</Text>
+
+            <Text style={styles.bookingPrice}>${item.totalPrice.toFixed(2)}</Text>
           </View>
 
-          <View style={styles.bookingDetails}>
+          <View style={styles.detailGrid}>
             <View style={styles.detailRow}>
               <Ionicons name="calendar-outline" size={16} color={colors.text.tertiary} />
-              <Text style={styles.detailText}>{formatDate(booking.date)}</Text>
+              <Text style={styles.detailText}>{formatDate(item.date)}</Text>
             </View>
             <View style={styles.detailRow}>
               <Ionicons name="time-outline" size={16} color={colors.text.tertiary} />
               <Text style={styles.detailText}>
-                {formatTime(booking.startTime)}{booking.endTime ? ` - ${formatTime(booking.endTime)}` : ` (${booking.duration}h)`}
+                {formatTime(item.startTime)}
+                {item.endTime ? ` - ${formatTime(item.endTime)}` : ` (${item.duration}h)`}
               </Text>
             </View>
             <View style={styles.detailRow}>
               <Ionicons name="location-outline" size={16} color={colors.text.tertiary} />
               <Text style={styles.detailText} numberOfLines={1}>
-                {booking.location.name}
+                {item.location.name}
               </Text>
             </View>
           </View>
 
-          {(booking.status === 'confirmed' || booking.status === 'in-progress') && (
-            <View style={styles.bookingActions}>
-              <TouchableOpacity style={styles.actionButton} onPress={() => haptics.light()}>
-                <Ionicons name="chatbubble-outline" size={18} color={colors.primary.blue} />
-                <Text style={styles.actionText}>Message</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.actionButton} onPress={() => haptics.light()}>
-                <Ionicons name="navigate-outline" size={18} color={colors.primary.blue} />
-                <Text style={styles.actionText}>Directions</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {booking.status === 'completed' && (
-            <TouchableOpacity style={styles.reviewButton} onPress={() => haptics.light()}>
-              <Ionicons name="star-outline" size={18} color={colors.primary.gold} />
-              <Text style={styles.reviewText}>Leave a Review</Text>
+          <View style={styles.actionRow}>
+            <TouchableOpacity
+              style={[styles.actionButton, !canMessage && styles.actionButtonDisabled]}
+              disabled={!canMessage || bookingIsOpeningChat}
+              onPress={() => handleMessageCompanion(item)}
+            >
+              <Ionicons name="chatbubble-outline" size={18} color={canMessage ? colors.primary.blue : colors.text.muted} />
+              <Text style={[styles.actionLabel, !canMessage && styles.actionLabelDisabled]}>
+                {bookingIsOpeningChat ? 'Opening...' : 'Message'}
+              </Text>
             </TouchableOpacity>
-          )}
+
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => handleOpenDirections(item)}
+            >
+              <Ionicons name="navigate-outline" size={18} color={colors.primary.blue} />
+              <Text style={styles.actionLabel}>Directions</Text>
+            </TouchableOpacity>
+
+            {canCancel ? (
+              <TouchableOpacity
+                style={[styles.actionButton, styles.cancelButton]}
+                disabled={bookingIsCancelling}
+                onPress={() => handleCancelBooking(item)}
+              >
+                <Ionicons name="close-circle-outline" size={18} color={colors.status.error} />
+                <Text style={styles.cancelLabel}>
+                  {bookingIsCancelling ? 'Cancelling...' : 'Cancel'}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
         </Card>
       </TouchableOpacity>
-    ));
+    );
   };
 
   return (
     <View style={styles.container}>
-      <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}>
-        <Text style={styles.title}>Bookings</Text>
-
-        {/* Tabs */}
-        <View style={styles.tabs}>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'upcoming' && styles.tabActive]}
-            onPress={() => handleTabPress('upcoming')}
-          >
-            <Text
-              style={[
-                styles.tabText,
-                activeTab === 'upcoming' && styles.tabTextActive,
-              ]}
-            >
-              Upcoming
-            </Text>
-            {upcomingBookings.length > 0 && (
-              <View style={styles.tabBadge}>
-                <Text style={styles.tabBadgeText}>{upcomingBookings.length}</Text>
-              </View>
-            )}
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'past' && styles.tabActive]}
-            onPress={() => handleTabPress('past')}
-          >
-            <Text
-              style={[
-                styles.tabText,
-                activeTab === 'past' && styles.tabTextActive,
-              ]}
-            >
-              Past
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
+      {renderHeader}
+      <FlatList
+        data={currentBookings}
+        keyExtractor={(item) => item.id}
+        renderItem={renderBookingItem}
+        ListEmptyComponent={renderState}
+        contentContainerStyle={[
+          styles.content,
+          currentBookings.length === 0 && styles.emptyContent,
+        ]}
+        refreshControl={(
           <RefreshControl
             refreshing={isRefreshing}
             onRefresh={handleRefresh}
             tintColor={colors.primary.blue}
           />
-        }
-      >
-        {renderContent()}
-      </ScrollView>
+        )}
+        showsVerticalScrollIndicator={false}
+      />
     </View>
   );
 };
@@ -345,7 +544,7 @@ const styles = StyleSheet.create({
   title: {
     ...typography.presets.h1,
     color: colors.text.primary,
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
   },
   tabs: {
     flexDirection: 'row',
@@ -366,11 +565,12 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background.card,
   },
   tabText: {
-    ...typography.presets.button,
+    ...typography.presets.buttonSmall,
     color: colors.text.tertiary,
   },
   tabTextActive: {
     color: colors.text.primary,
+    fontWeight: typography.weights.semibold as any,
   },
   tabBadge: {
     backgroundColor: colors.primary.blue,
@@ -383,69 +583,46 @@ const styles = StyleSheet.create({
     color: colors.text.primary,
     fontSize: 10,
   },
-  scrollView: {
-    flex: 1,
-  },
   content: {
     padding: spacing.screenPadding,
-    paddingBottom: 100,
+    paddingBottom: 110,
     gap: spacing.md,
   },
-  loadingContainer: {
+  emptyContent: {
+    flexGrow: 1,
+  },
+  centerState: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: spacing.xxl * 2,
+    paddingHorizontal: spacing.xl,
   },
   loadingText: {
     ...typography.presets.body,
     color: colors.text.secondary,
     marginTop: spacing.md,
   },
-  errorContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.xxl * 2,
+  errorTitle: {
+    ...typography.presets.h3,
+    color: colors.text.primary,
+    marginTop: spacing.md,
   },
-  errorText: {
+  errorSubtitle: {
     ...typography.presets.body,
     color: colors.text.secondary,
-    marginTop: spacing.md,
-    marginBottom: spacing.lg,
+    marginTop: spacing.sm,
+    textAlign: 'center',
   },
   retryButton: {
+    marginTop: spacing.lg,
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.md,
-    backgroundColor: colors.primary.blue,
     borderRadius: spacing.radius.md,
+    backgroundColor: colors.primary.blue,
   },
   retryText: {
     ...typography.presets.button,
     color: colors.text.primary,
-  },
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.massive,
-  },
-  emptyIcon: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: colors.background.tertiary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.lg,
-  },
-  emptyTitle: {
-    ...typography.presets.h3,
-    color: colors.text.primary,
-    marginBottom: spacing.sm,
-  },
-  emptySubtitle: {
-    ...typography.presets.body,
-    color: colors.text.tertiary,
-    textAlign: 'center',
-    maxWidth: 250,
   },
   bookingCard: {
     padding: spacing.lg,
@@ -457,22 +634,17 @@ const styles = StyleSheet.create({
   bookingInfo: {
     flex: 1,
     marginLeft: spacing.md,
+    gap: spacing.xs,
   },
   companionName: {
     ...typography.presets.h4,
     color: colors.text.primary,
-    marginBottom: spacing.xs,
-  },
-  bookingMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
   },
   bookingPrice: {
     ...typography.presets.h3,
     color: colors.primary.blue,
   },
-  bookingDetails: {
+  detailGrid: {
     marginTop: spacing.lg,
     paddingTop: spacing.lg,
     borderTopWidth: 1,
@@ -489,10 +661,10 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
     flex: 1,
   },
-  bookingActions: {
+  actionRow: {
     flexDirection: 'row',
+    gap: spacing.sm,
     marginTop: spacing.lg,
-    gap: spacing.md,
   },
   actionButton: {
     flex: 1,
@@ -500,28 +672,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.xs,
-    paddingVertical: spacing.md,
     backgroundColor: colors.background.tertiary,
     borderRadius: spacing.radius.md,
+    paddingVertical: spacing.md,
   },
-  actionText: {
+  actionButtonDisabled: {
+    opacity: 0.5,
+  },
+  actionLabel: {
     ...typography.presets.buttonSmall,
     color: colors.primary.blue,
   },
-  reviewButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    marginTop: spacing.lg,
-    paddingVertical: spacing.md,
-    backgroundColor: 'rgba(255, 215, 0, 0.1)',
-    borderRadius: spacing.radius.md,
-    borderWidth: 1,
-    borderColor: colors.border.gold,
+  actionLabelDisabled: {
+    color: colors.text.muted,
   },
-  reviewText: {
-    ...typography.presets.button,
-    color: colors.primary.gold,
+  cancelButton: {
+    backgroundColor: colors.status.errorLight,
+  },
+  cancelLabel: {
+    ...typography.presets.buttonSmall,
+    color: colors.status.error,
   },
 });
