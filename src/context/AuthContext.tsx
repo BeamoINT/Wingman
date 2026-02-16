@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Session, User as SupabaseUser } from '@supabase/supabase-js';
 import * as SecureStore from 'expo-secure-store';
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { getMessagingIdentity } from '../services/crypto/messagingEncryption';
 import { supabase } from '../services/supabase';
 import type { SignupData, User } from '../types';
 import { defaultSignupData } from '../types';
@@ -150,6 +151,14 @@ function toFallbackAppUser(sessionUser: SupabaseUser, existingUser?: User | null
   return transformSupabaseUser(sessionUser);
 }
 
+async function primeSecureMessagingIdentity(userId: string): Promise<void> {
+  try {
+    await getMessagingIdentity(userId);
+  } catch (error) {
+    safeLog('Secure messaging identity setup failed', { error: String(error) });
+  }
+}
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [supabaseUser, setSupabaseUser] = useState<SupabaseUser | null>(null);
@@ -216,6 +225,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (currentSession?.user) {
           setSession(currentSession);
           setSupabaseUser(currentSession.user);
+          void primeSecureMessagingIdentity(currentSession.user.id);
 
           const storedUser = await getStoredUser();
           setUser(toFallbackAppUser(currentSession.user, storedUser));
@@ -288,6 +298,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setSupabaseUser(newSession.user);
         setIsNewUser(false);
         setUser((prevUser) => toFallbackAppUser(newSession.user, prevUser));
+        void primeSecureMessagingIdentity(newSession.user.id);
 
         // Supabase auth callbacks should not await async work, or OTP flows can stall.
         void (async () => {

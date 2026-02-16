@@ -7,6 +7,16 @@
  */
 
 import { supabase } from '../supabase';
+import {
+  decryptMessageFromSender,
+  encryptMessageForRecipient,
+  fetchMessagingPublicKeys,
+  getEncryptedMessagePreview,
+  getMessageEncryptionVersion,
+  getMessagingIdentity,
+  type MessagingIdentity,
+  SecureMessagingError
+} from '../crypto/messagingEncryption';
 import type { ProfileData } from './profiles';
 
 type QueryError = {
@@ -44,8 +54,22 @@ const CONVERSATION_PARTICIPANTS_LAST_READ_COLUMNS = ['last_read_at', 'read_at'] 
 
 const MESSAGE_CONVERSATION_COLUMNS = ['conversation_id', 'thread_id'] as const;
 const MESSAGE_SENDER_COLUMNS = ['sender_id', 'user_id', 'author_id'] as const;
+const MESSAGE_ENCRYPTION_REQUIRED_COLUMNS = [
+  'encrypted_for_participant_1',
+  'encrypted_for_participant_2',
+  'encryption_nonce_p1',
+  'encryption_nonce_p2',
+  'encryption_sender_public_key',
+  'encryption_version',
+] as const;
+const ENCRYPTED_MESSAGE_PREVIEW = getEncryptedMessagePreview();
+const MESSAGE_ENCRYPTION_VERSION = getMessageEncryptionVersion();
 
 let conversationParticipantsConfigCache: ConversationParticipantTableConfig | null | undefined;
+const conversationParticipantCache = new Map<string, {
+  participant_1: string;
+  participant_2: string;
+}>();
 
 function toNumber(value: unknown, fallback = 0): number {
   const parsed = Number(value);
@@ -264,6 +288,24 @@ function normalizeMessage(rawMessage: unknown): MessageData {
     conversation_id: conversationId,
     sender_id: senderId,
     content: typeof message.content === 'string' ? message.content : '',
+    encrypted_for_participant_1: typeof message.encrypted_for_participant_1 === 'string'
+      ? message.encrypted_for_participant_1
+      : undefined,
+    encrypted_for_participant_2: typeof message.encrypted_for_participant_2 === 'string'
+      ? message.encrypted_for_participant_2
+      : undefined,
+    encryption_nonce_p1: typeof message.encryption_nonce_p1 === 'string'
+      ? message.encryption_nonce_p1
+      : undefined,
+    encryption_nonce_p2: typeof message.encryption_nonce_p2 === 'string'
+      ? message.encryption_nonce_p2
+      : undefined,
+    encryption_sender_public_key: typeof message.encryption_sender_public_key === 'string'
+      ? message.encryption_sender_public_key
+      : undefined,
+    encryption_version: typeof message.encryption_version === 'string'
+      ? message.encryption_version
+      : undefined,
     type: normalizeMessageType(message.type),
     is_read: typeof message.is_read === 'boolean' ? message.is_read : false,
     read_at: typeof message.read_at === 'string' ? message.read_at : undefined,
@@ -530,6 +572,217 @@ function buildParticipantMap(
   });
 
   return map;
+}
+
+function isMissingRequiredMessageEncryptionColumn(error: unknown): boolean {
+  return MESSAGE_ENCRYPTION_REQUIRED_COLUMNS.some((column) => (
+    isMissingColumnError(error, 'messages', column)
+  ));
+}
+
+async function resolveConversationParticipants(
+  conversationId: string,
+  currentUserId: string
+): Promise<{ participant_1: string; participant_2: string } | null> {
+  if (!conversationId) return null;
+
+  const cached = conversationParticipantCache.get(conversationId);
+  if (cached?.participant_1 && cached?.participant_2) {
+    return cached;
+  }
+
+  let participant1 = '';
+  let participant2 = '';
+
+  for (const pair of CONVERSATION_PARTICIPANT_COLUMN_PAIRS) {
+    const { data, error } = await supabase
+      .from('conversations')
+      .select(`${pair[0]},${pair[1]}`)
+      .eq('id', conversationId)
+      .maybeSingle();
+
+    if (!error && data) {
+      const row = data as unknown as Record<string, unknown>;
+      participant1 = typeof row[pair[0]] === 'string' ? row[pair[0]] as string : '';
+      participant2 = typeof row[pair[1]] === 'string' ? row[pair[1]] as string : '';
+      break;
+    }
+
+    if (
+      isMissingColumnError(error, 'conversations', pair[0]) ||
+      isMissingColumnError(error, 'conversations', pair[1])
+    ) {
+      continue;
+    }
+
+    if (error) {
+      console.error('Error resolving conversation participants from conversations table:', error);
+      break;
+    }
+  }
+
+  const joinRowsResult = await fetchConversationParticipantRowsByConversationIds([conversationId]);
+  if (joinRowsResult.error) {
+    console.error('Error resolving conversation participants from join table:', joinRowsResult.error);
+  }
+
+  const participantIds = joinRowsResult.config
+    ? buildParticipantMap(joinRowsResult.rows, joinRowsResult.config)[conversationId] || []
+    : [];
+
+  const resolved = resolveParticipants(
+    participant1,
+    participant2,
+    participantIds,
+    currentUserId
+  );
+
+  if (!resolved.participant_1 || !resolved.participant_2) {
+    return null;
+  }
+
+  conversationParticipantCache.set(conversationId, resolved);
+  return resolved;
+}
+
+function messageHasEncryptedPayload(message: MessageData): boolean {
+  return !!(
+    message.encrypted_for_participant_1 ||
+    message.encrypted_for_participant_2 ||
+    message.encryption_nonce_p1 ||
+    message.encryption_nonce_p2 ||
+    message.encryption_sender_public_key
+  );
+}
+
+function decryptMessageContentForCurrentUser(
+  message: MessageData,
+  currentUserId: string,
+  participants: { participant_1: string; participant_2: string },
+  identity: MessagingIdentity
+): string {
+  if (!messageHasEncryptedPayload(message)) {
+    return message.content;
+  }
+
+  const isParticipant1 = participants.participant_1 === currentUserId;
+  const isParticipant2 = participants.participant_2 === currentUserId;
+
+  if (!isParticipant1 && !isParticipant2) {
+    return ENCRYPTED_MESSAGE_PREVIEW;
+  }
+
+  const ciphertext = isParticipant1
+    ? message.encrypted_for_participant_1
+    : message.encrypted_for_participant_2;
+  const nonce = isParticipant1
+    ? message.encryption_nonce_p1
+    : message.encryption_nonce_p2;
+  const senderPublicKey = message.encryption_sender_public_key || '';
+
+  if (!ciphertext || !nonce || !senderPublicKey) {
+    return ENCRYPTED_MESSAGE_PREVIEW;
+  }
+
+  const decrypted = decryptMessageFromSender(
+    ciphertext,
+    nonce,
+    senderPublicKey,
+    identity.secretKey
+  );
+
+  return decrypted || ENCRYPTED_MESSAGE_PREVIEW;
+}
+
+async function decryptMessagesForCurrentUser(
+  messages: MessageData[],
+  conversationId: string,
+  currentUserId: string
+): Promise<MessageData[]> {
+  if (!conversationId || !currentUserId || messages.length === 0) {
+    return messages;
+  }
+
+  if (!messages.some((message) => messageHasEncryptedPayload(message))) {
+    return messages;
+  }
+
+  const participants = await resolveConversationParticipants(conversationId, currentUserId);
+  if (!participants) {
+    return messages.map((message) => (
+      messageHasEncryptedPayload(message)
+        ? { ...message, content: ENCRYPTED_MESSAGE_PREVIEW }
+        : message
+    ));
+  }
+
+  let identity: MessagingIdentity;
+  try {
+    identity = await getMessagingIdentity(currentUserId, { syncProfile: false });
+  } catch (error) {
+    console.error('Error loading local messaging identity for decrypt:', error);
+    return messages.map((message) => (
+      messageHasEncryptedPayload(message)
+        ? { ...message, content: ENCRYPTED_MESSAGE_PREVIEW }
+        : message
+    ));
+  }
+
+  return messages.map((message) => ({
+    ...message,
+    content: decryptMessageContentForCurrentUser(message, currentUserId, participants, identity),
+  }));
+}
+
+async function buildEncryptedPayloadForMessage(
+  conversationId: string,
+  currentUserId: string,
+  plaintext: string
+): Promise<Record<string, string>> {
+  const participants = await resolveConversationParticipants(conversationId, currentUserId);
+  if (!participants) {
+    throw new Error('Unable to resolve conversation participants for secure messaging.');
+  }
+
+  if (participants.participant_1 !== currentUserId && participants.participant_2 !== currentUserId) {
+    throw new Error('You are not a participant in this conversation.');
+  }
+
+  const identity = await getMessagingIdentity(currentUserId);
+  const publicKeyMap = await fetchMessagingPublicKeys([
+    participants.participant_1,
+    participants.participant_2,
+  ]);
+
+  const participant1Key = publicKeyMap[participants.participant_1];
+  const participant2Key = publicKeyMap[participants.participant_2];
+
+  if (!participant1Key || !participant2Key) {
+    throw new SecureMessagingError(
+      'missing_public_key',
+      'Secure messaging is still initializing for this conversation. Ask both users to open Messages and try again.'
+    );
+  }
+
+  const encryptedForParticipant1 = encryptMessageForRecipient(
+    plaintext,
+    participant1Key,
+    identity.secretKey
+  );
+  const encryptedForParticipant2 = encryptMessageForRecipient(
+    plaintext,
+    participant2Key,
+    identity.secretKey
+  );
+
+  return {
+    encrypted_for_participant_1: encryptedForParticipant1.ciphertextBase64,
+    encrypted_for_participant_2: encryptedForParticipant2.ciphertextBase64,
+    encryption_nonce_p1: encryptedForParticipant1.nonceBase64,
+    encryption_nonce_p2: encryptedForParticipant2.nonceBase64,
+    encryption_sender_public_key: identity.publicKeyBase64,
+    encryption_version: MESSAGE_ENCRYPTION_VERSION,
+  };
 }
 
 async function countUnreadMessages(
@@ -909,6 +1162,15 @@ async function finalizeConversations(
     };
   });
 
+  withUnreadAndPreview.forEach((conversation) => {
+    if (conversation.id && conversation.participant_1 && conversation.participant_2) {
+      conversationParticipantCache.set(conversation.id, {
+        participant_1: conversation.participant_1,
+        participant_2: conversation.participant_2,
+      });
+    }
+  });
+
   withUnreadAndPreview.sort((a, b) => {
     const aTime = new Date(a.last_message_at || a.created_at).getTime();
     const bTime = new Date(b.last_message_at || b.created_at).getTime();
@@ -1048,12 +1310,19 @@ async function hydrateConversationRow(
     }
   }
 
+  if (conversation.id && conversation.participant_1 && conversation.participant_2) {
+    conversationParticipantCache.set(conversation.id, {
+      participant_1: conversation.participant_1,
+      participant_2: conversation.participant_2,
+    });
+  }
+
   return conversation;
 }
 
-async function updateConversationLastMessage(conversationId: string, content: string): Promise<void> {
+async function updateConversationLastMessage(conversationId: string): Promise<void> {
   const now = new Date().toISOString();
-  const preview = content.trim().replace(/\s+/g, ' ').slice(0, 160);
+  const preview = ENCRYPTED_MESSAGE_PREVIEW;
 
   const payloads: Array<Record<string, unknown>> = [
     { last_message_at: now, last_message_preview: preview },
@@ -1082,7 +1351,7 @@ async function updateConversationLastMessage(conversationId: string, content: st
   }
 }
 
-async function fetchMessageById(messageId: string): Promise<MessageData | null> {
+async function fetchMessageById(messageId: string, currentUserId?: string): Promise<MessageData | null> {
   for (const includeSenderRelation of [true, false]) {
     const { data, error } = includeSenderRelation
       ? await supabase
@@ -1106,6 +1375,15 @@ async function fetchMessageById(messageId: string): Promise<MessageData | null> 
       if (!normalized.sender) {
         const senderMap = await fetchProfilesByIds([normalized.sender_id]);
         normalized.sender = normalized.sender_id ? senderMap[normalized.sender_id] : undefined;
+      }
+
+      if (currentUserId && normalized.conversation_id) {
+        const decrypted = await decryptMessagesForCurrentUser(
+          [normalized],
+          normalized.conversation_id,
+          currentUserId
+        );
+        return decrypted[0] || normalized;
       }
 
       return normalized;
@@ -1445,6 +1723,12 @@ export interface MessageData {
   conversation_id: string;
   sender_id: string;
   content: string;
+  encrypted_for_participant_1?: string;
+  encrypted_for_participant_2?: string;
+  encryption_nonce_p1?: string;
+  encryption_nonce_p2?: string;
+  encryption_sender_public_key?: string;
+  encryption_version?: string;
   type: 'text' | 'image' | 'booking_request' | 'system';
   is_read: boolean;
   read_at?: string;
@@ -1534,6 +1818,9 @@ export async function fetchMessages(
   conversationId: string
 ): Promise<{ messages: MessageData[]; error: Error | null }> {
   try {
+    const { data: { user } } = await supabase.auth.getUser();
+    const currentUserId = user?.id || '';
+
     for (const conversationColumn of MESSAGE_CONVERSATION_COLUMNS) {
       let missingConversationColumn = false;
 
@@ -1573,7 +1860,13 @@ export async function fetchMessages(
               new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
             );
 
-            return { messages: normalized, error: null };
+            const decrypted = await decryptMessagesForCurrentUser(
+              normalized,
+              conversationId,
+              currentUserId
+            );
+
+            return { messages: decrypted, error: null };
           }
 
           if (isMissingColumnError(error, 'messages', conversationColumn)) {
@@ -1635,6 +1928,18 @@ export async function sendMessage(
       return { message: null, error: new Error('Message content cannot be empty') };
     }
 
+    let encryptedPayload: Record<string, string>;
+    try {
+      encryptedPayload = await buildEncryptedPayloadForMessage(conversationId, user.id, trimmedContent);
+    } catch (error) {
+      if (error instanceof SecureMessagingError) {
+        return { message: null, error: new Error(error.message) };
+      }
+
+      const message = error instanceof Error ? error.message : 'Failed to encrypt your message.';
+      return { message: null, error: new Error(message) };
+    }
+
     for (const conversationColumn of MESSAGE_CONVERSATION_COLUMNS) {
       let missingConversationColumn = false;
 
@@ -1642,8 +1947,9 @@ export async function sendMessage(
         const payload: Record<string, unknown> = {
           [conversationColumn]: conversationId,
           [senderColumn]: user.id,
-          content: trimmedContent,
+          content: ENCRYPTED_MESSAGE_PREVIEW,
           type: normalizedType,
+          ...encryptedPayload,
         };
 
         let attempts = 0;
@@ -1657,7 +1963,7 @@ export async function sendMessage(
             .maybeSingle();
 
           if (!error) {
-            await updateConversationLastMessage(conversationId, trimmedContent);
+            await updateConversationLastMessage(conversationId);
 
             const normalized = data ? normalizeMessage(data) : null;
             if (!normalized) {
@@ -1669,7 +1975,15 @@ export async function sendMessage(
               normalized.sender = profileMap[normalized.sender_id];
             }
 
-            return { message: normalized, error: null };
+            const decrypted = await decryptMessagesForCurrentUser([normalized], conversationId, user.id);
+            return { message: decrypted[0] || normalized, error: null };
+          }
+
+          if (isMissingRequiredMessageEncryptionColumn(error)) {
+            return {
+              message: null,
+              error: new Error('Secure messaging schema is out of date. Please run the latest Supabase migrations.'),
+            };
           }
 
           if (isMissingColumnError(error, 'messages', conversationColumn)) {
@@ -1683,6 +1997,14 @@ export async function sendMessage(
 
           const missingColumn = extractMissingColumn(error);
           if (missingColumn && missingColumn in payload) {
+            if (
+              (MESSAGE_ENCRYPTION_REQUIRED_COLUMNS as readonly string[]).includes(missingColumn)
+            ) {
+              return {
+                message: null,
+                error: new Error('Secure messaging schema is out of date. Please run the latest Supabase migrations.'),
+              };
+            }
             delete payload[missingColumn];
             continue;
           }
@@ -1851,6 +2173,11 @@ export function subscribeToMessages(
   conversationId: string,
   onMessage: (message: MessageData) => void
 ): () => void {
+  let currentUserId = '';
+  void supabase.auth.getUser().then(({ data }) => {
+    currentUserId = data.user?.id || '';
+  });
+
   const channel = supabase
     .channel(`messages:${conversationId}`)
     .on(
@@ -1873,7 +2200,12 @@ export function subscribeToMessages(
           return;
         }
 
-        const message = await fetchMessageById(String(row.id || ''));
+        if (!currentUserId) {
+          const { data } = await supabase.auth.getUser();
+          currentUserId = data.user?.id || '';
+        }
+
+        const message = await fetchMessageById(String(row.id || ''), currentUserId);
         if (message) {
           onMessage(message);
         }

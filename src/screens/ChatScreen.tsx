@@ -405,8 +405,11 @@ const ChatScreenContent: React.FC = () => {
       </View>
 
       <View style={styles.safetyTip}>
-        <Ionicons name="shield-checkmark" size={14} color={colors.primary.blue} />
-        <Text style={styles.safetyTipText}>Keep communication in-app for trust and support coverage. Wingman users are ID and photo verified.</Text>
+        <Ionicons name="lock-closed" size={14} color={colors.primary.blue} />
+        <Text style={styles.safetyTipText}>
+          End-to-end encrypted: only you and this Wingman can read these messages.
+          {' '}Wingman cannot access message content.
+        </Text>
       </View>
 
       <FlatList

@@ -148,8 +148,7 @@ export const VerificationTabScreen: React.FC = () => {
           <View style={styles.infoCard}>
             <Ionicons name="information-circle-outline" size={24} color={colors.text.tertiary} />
             <Text style={styles.infoText}>
-              Higher verification levels increase trust and visibility in the community.
-              ID-verified users are more likely to receive booking requests.
+              Every user must be ID verified before they can complete a booking on Wingman.
             </Text>
           </View>
         </View>
