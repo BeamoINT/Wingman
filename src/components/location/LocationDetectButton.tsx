@@ -4,13 +4,13 @@
  */
 
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import React from 'react';
 import {
   ActivityIndicator,
   StyleSheet,
   Text,
   TouchableOpacity,
+  View,
 } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
 import type { ThemeTokens } from '../../theme/tokens';
@@ -29,29 +29,25 @@ export const LocationDetectButton: React.FC<LocationDetectButtonProps> = ({
 }) => {
   const { tokens } = useTheme();
   const styles = useThemedStyles(createStyles);
+  const isDisabled = disabled || isLoading;
 
   return (
     <TouchableOpacity
       onPress={onPress}
-      disabled={disabled || isLoading}
+      disabled={isDisabled}
       activeOpacity={0.8}
-      style={styles.container}
+      style={[styles.container, isDisabled && styles.disabled]}
     >
-      <LinearGradient
-        colors={[tokens.colors.primary.blue, tokens.colors.primary.blueDark]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={[styles.gradient, (disabled || isLoading) && styles.disabled]}
-      >
+      <View style={styles.button}>
         {isLoading ? (
-          <ActivityIndicator size="small" color={tokens.colors.text.primary} />
+          <ActivityIndicator size="small" color={tokens.colors.accent.primary} />
         ) : (
-          <Ionicons name="locate" size={20} color={tokens.colors.text.primary} />
+          <Ionicons name="locate" size={20} color={tokens.colors.accent.primary} />
         )}
         <Text style={styles.text}>
           {isLoading ? 'Detecting location...' : 'Use my current location'}
         </Text>
-      </LinearGradient>
+      </View>
     </TouchableOpacity>
   );
 };
@@ -59,21 +55,24 @@ export const LocationDetectButton: React.FC<LocationDetectButtonProps> = ({
 const createStyles = ({ spacing, typography, colors }: ThemeTokens) => StyleSheet.create({
   container: {
     marginBottom: spacing.lg,
+    borderRadius: spacing.radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
+    backgroundColor: colors.surface.level1,
   },
-  gradient: {
+  button: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.lg,
-    borderRadius: spacing.radius.lg,
   },
   disabled: {
     opacity: 0.6,
   },
   text: {
     ...typography.presets.button,
-    color: colors.text.primary,
+    color: colors.text.secondary,
   },
 });

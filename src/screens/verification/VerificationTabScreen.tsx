@@ -9,18 +9,27 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useCallback } from 'react';
 import {
-    RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Card, Skeleton } from '../../components';
 import {
-    VerificationStatusCard,
-    VerificationStepItem
+  Card,
+  Header,
+  InlineBanner,
+  ScreenScaffold,
+  SectionHeader,
+  Skeleton,
+} from '../../components';
+import {
+  VerificationStatusCard,
+  VerificationStepItem,
 } from '../../components/verification';
 import { useVerification } from '../../context/VerificationContext';
-import { colors } from '../../theme/colors';
-import { spacing } from '../../theme/spacing';
-import { typography } from '../../theme/typography';
+import { useTheme } from '../../context/ThemeContext';
+import type { ThemeTokens } from '../../theme/tokens';
+import { useThemedStyles } from '../../theme/useThemedStyles';
 import type { RootStackParamList } from '../../types';
 import { haptics } from '../../utils/haptics';
 
@@ -28,7 +37,8 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 export const VerificationTabScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
-  const insets = useSafeAreaInsets();
+  const { tokens } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const {
     isLoading,
     overallStatus,
@@ -61,140 +71,102 @@ export const VerificationTabScreen: React.FC = () => {
 
   if (isLoading) {
     return (
-      <View style={styles.container}>
-        <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
-          <View style={styles.headerContent}>
-            <Ionicons name="shield-checkmark" size={28} color={colors.primary.blue} />
-            <Text style={styles.headerTitle}>Verification</Text>
-          </View>
-        </View>
-        <View style={styles.loadingContainer}>
-          <Skeleton width="100%" height={140} borderRadius={16} />
-          <View style={{ height: spacing.lg }} />
-          <Skeleton width="100%" height={200} borderRadius={16} />
-        </View>
-      </View>
+      <ScreenScaffold scrollable contentContainerStyle={styles.loadingContainer}>
+        <Header title="Verification" transparent />
+        <Skeleton width="100%" height={150} borderRadius={16} />
+        <View style={styles.loadingSpacer} />
+        <Skeleton width="100%" height={220} borderRadius={16} />
+      </ScreenScaffold>
     );
   }
 
   return (
-    <View style={styles.container}>
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
-        <View style={styles.headerContent}>
-          <Ionicons name="shield-checkmark" size={28} color={colors.primary.blue} />
-          <Text style={styles.headerTitle}>Verification</Text>
-        </View>
+    <ScreenScaffold scrollable contentContainerStyle={styles.contentContainer}>
+      <Header title="Verification" transparent />
+
+      <InlineBanner
+        title="Identity checks protect every booking"
+        message="All users must complete ID and photo verification before checkout."
+        variant="info"
+      />
+
+      <VerificationStatusCard
+        overallStatus={overallStatus}
+        verificationLevel={verificationLevel}
+        completedSteps={completedStepsCount}
+        totalSteps={totalStepsCount}
+      />
+
+      <View style={styles.section}>
+        <SectionHeader
+          title="Verification Steps"
+          subtitle="Complete each step to unlock booking access"
+        />
+        <Card variant="outlined" style={styles.stepsCard}>
+          {verificationSteps.map((step, index) => (
+            <VerificationStepItem
+              key={step.id}
+              step={step}
+              onActionPress={step.id === 'phone' ? handlePhoneVerificationPress : undefined}
+              isLast={index === verificationSteps.length - 1}
+            />
+          ))}
+        </Card>
       </View>
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            tintColor={colors.primary.blue}
+      <View style={styles.section}>
+        <SectionHeader title="History" subtitle="Review your verification timeline" />
+        <Card variant="outlined" style={styles.actionsCard}>
+          <TouchableOpacity style={styles.actionRow} onPress={handleHistoryPress}>
+            <View style={styles.actionIcon}>
+              <Ionicons name="time-outline" size={20} color={tokens.colors.accent.primary} />
+            </View>
+            <View style={styles.actionContent}>
+              <Text style={styles.actionLabel}>Verification History</Text>
+              <Text style={styles.actionDescription}>View completed and pending verification events</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={tokens.colors.text.tertiary} />
+          </TouchableOpacity>
+        </Card>
+      </View>
+
+      <View style={styles.refreshWrap}>
+        <TouchableOpacity
+          style={styles.refreshButton}
+          onPress={handleRefresh}
+          disabled={refreshing}
+        >
+          <Ionicons
+            name={refreshing ? 'sync' : 'refresh-outline'}
+            size={16}
+            color={tokens.colors.accent.primary}
           />
-        }
-      >
-        {/* Status Card */}
-        <View style={styles.section}>
-          <VerificationStatusCard
-            overallStatus={overallStatus}
-            verificationLevel={verificationLevel}
-            completedSteps={completedStepsCount}
-            totalSteps={totalStepsCount}
-          />
-        </View>
+          <Text style={styles.refreshLabel}>{refreshing ? 'Refreshing…' : 'Refresh Status'}</Text>
+        </TouchableOpacity>
+      </View>
 
-        {/* Verification Steps */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Verification Steps</Text>
-          <Card variant="outlined" style={styles.stepsCard}>
-            {verificationSteps.map((step, index) => (
-              <VerificationStepItem
-                key={step.id}
-                step={step}
-                onActionPress={step.id === 'phone' ? handlePhoneVerificationPress : undefined}
-                isLast={index === verificationSteps.length - 1}
-              />
-            ))}
-          </Card>
-        </View>
-
-        {/* Quick Actions */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>History</Text>
-          <Card variant="outlined" style={styles.actionsCard}>
-            <TouchableOpacity style={styles.actionRow} onPress={handleHistoryPress}>
-              <View style={styles.actionIcon}>
-                <Ionicons name="time-outline" size={20} color={colors.primary.blue} />
-              </View>
-              <View style={styles.actionContent}>
-                <Text style={styles.actionLabel}>Verification History</Text>
-                <Text style={styles.actionDescription}>
-                  View all verification events
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={colors.text.tertiary} />
-            </TouchableOpacity>
-          </Card>
-        </View>
-
-        {/* Info Section */}
-        <View style={styles.infoSection}>
-          <View style={styles.infoCard}>
-            <Ionicons name="information-circle-outline" size={24} color={colors.text.tertiary} />
-            <Text style={styles.infoText}>
-              Every user must be ID verified before they can complete a booking on Wingman.
-            </Text>
-          </View>
-        </View>
-      </ScrollView>
-    </View>
+      <InlineBanner
+        title="Verification requirement"
+        message="Every user must be ID and photo verified before completing a booking on Wingman."
+        variant="success"
+      />
+    </ScreenScaffold>
   );
 };
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background.primary,
-  },
-  header: {
-    paddingHorizontal: spacing.screenPadding,
-    paddingBottom: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border.light,
-  },
-  headerContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  headerTitle: {
-    ...typography.presets.h3,
-    color: colors.text.primary,
-  },
+const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
   loadingContainer: {
-    padding: spacing.screenPadding,
+    paddingBottom: spacing.xxxl,
   },
-  scrollView: {
-    flex: 1,
+  loadingSpacer: {
+    height: spacing.lg,
   },
-  scrollContent: {
-    paddingBottom: 120,
+  contentContainer: {
+    gap: spacing.lg,
+    paddingBottom: spacing.xxxl,
   },
   section: {
-    paddingHorizontal: spacing.screenPadding,
-    paddingTop: spacing.xl,
-  },
-  sectionTitle: {
-    ...typography.presets.label,
-    color: colors.text.tertiary,
-    marginBottom: spacing.sm,
-    marginLeft: spacing.xs,
+    gap: spacing.sm,
   },
   stepsCard: {
     padding: spacing.md,
@@ -212,7 +184,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: spacing.radius.md,
-    backgroundColor: colors.primary.blueSoft,
+    backgroundColor: colors.accent.soft,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: spacing.md,
@@ -230,22 +202,22 @@ const styles = StyleSheet.create({
     color: colors.text.tertiary,
     marginTop: spacing.xxs,
   },
-  infoSection: {
-    padding: spacing.screenPadding,
-    paddingTop: spacing.xl,
-  },
-  infoCard: {
-    flexDirection: 'row',
+  refreshWrap: {
     alignItems: 'flex-start',
-    backgroundColor: colors.background.tertiary,
-    borderRadius: spacing.radius.md,
-    padding: spacing.md,
-    gap: spacing.sm,
   },
-  infoText: {
+  refreshButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
+    backgroundColor: colors.surface.level1,
+    borderRadius: spacing.radius.round,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  refreshLabel: {
     ...typography.presets.caption,
-    color: colors.text.tertiary,
-    flex: 1,
-    lineHeight: 18,
+    color: colors.accent.primary,
   },
 });

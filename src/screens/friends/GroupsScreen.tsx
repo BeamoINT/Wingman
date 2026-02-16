@@ -3,14 +3,17 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-    ActivityIndicator, FlatList,
-    Image, StyleSheet, Text, TouchableOpacity, View
+  ActivityIndicator,
+  FlatList,
+  Image,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { PillTabs } from '../../components';
-import { RequirementsGate } from '../../components/RequirementsGate';
-import { useTheme } from '../../context/ThemeContext';
+import { Header, PillTabs, RequirementsGate, ScreenScaffold, SectionHeader } from '../../components';
 import { useRequirements } from '../../context/RequirementsContext';
+import { useTheme } from '../../context/ThemeContext';
 import { fetchFriendGroups, joinFriendGroup, leaveFriendGroup } from '../../services/api/friendsApi';
 import { getOrCreateGroupConversation } from '../../services/api/messages';
 import type { ThemeTokens } from '../../theme/tokens';
@@ -27,24 +30,19 @@ const categoryIcons: Record<string, keyof typeof Ionicons.glyphMap> = {
   'food-dining': 'restaurant-outline',
   'outdoor-adventure': 'trail-sign-outline',
   'arts-culture': 'color-palette-outline',
-  'gaming': 'game-controller-outline',
+  gaming: 'game-controller-outline',
   'book-club': 'book-outline',
-  'professional': 'briefcase-outline',
-  'travel': 'airplane-outline',
-  'pets': 'paw-outline',
-  'wellness': 'leaf-outline',
+  professional: 'briefcase-outline',
+  travel: 'airplane-outline',
+  pets: 'paw-outline',
+  wellness: 'leaf-outline',
   'language-exchange': 'language-outline',
-  'photography': 'camera-outline',
-  'tech': 'code-slash-outline',
+  photography: 'camera-outline',
+  tech: 'code-slash-outline',
 };
 
-/**
- * GroupsScreen - Browse and join interest-based groups
- * Subscription-gated: Pro required
- */
 const GroupsContent: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
-  const insets = useSafeAreaInsets();
   const { tokens } = useTheme();
   const styles = useThemedStyles(createStyles);
   const { colors } = tokens;
@@ -86,7 +84,7 @@ const GroupsContent: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    loadGroups();
+    void loadGroups();
   }, [loadGroups]);
 
   const groupsRemaining = friendsLimits.groupsCanJoin === 999
@@ -159,13 +157,9 @@ const GroupsContent: React.FC = () => {
   };
 
   const renderGroup = ({ item }: { item: Group }) => (
-    <TouchableOpacity style={styles.groupCard}>
+    <TouchableOpacity style={styles.groupCard} activeOpacity={0.9}>
       {item.coverImage ? (
-        <Image
-          source={{ uri: item.coverImage }}
-          style={styles.groupCover}
-          resizeMode="cover"
-        />
+        <Image source={{ uri: item.coverImage }} style={styles.groupCover} resizeMode="cover" />
       ) : (
         <View style={[styles.groupCover, styles.groupCoverFallback]}>
           <Ionicons name="people-outline" size={28} color={colors.text.tertiary} />
@@ -177,14 +171,12 @@ const GroupsContent: React.FC = () => {
             <Ionicons
               name={categoryIcons[item.category] || 'people-outline'}
               size={12}
-              color={colors.primary.blue}
+              color={colors.accent.primary}
             />
           </View>
           <Text style={styles.groupName} numberOfLines={1}>{item.name}</Text>
         </View>
-        <Text style={styles.groupDescription} numberOfLines={2}>
-          {item.description}
-        </Text>
+        <Text style={styles.groupDescription} numberOfLines={2}>{item.description}</Text>
         <View style={styles.groupFooter}>
           <View style={styles.memberCount}>
             <Ionicons name="people" size={14} color={colors.text.tertiary} />
@@ -192,21 +184,18 @@ const GroupsContent: React.FC = () => {
           </View>
           {item.isMember ? (
             <View style={styles.memberActions}>
-              <TouchableOpacity
-                style={styles.chatButton}
-                onPress={() => handleOpenGroupChat(item.id)}
-              >
-                <Ionicons name="chatbubble-ellipses-outline" size={14} color={colors.primary.blue} />
+              <TouchableOpacity style={styles.chatButton} onPress={() => handleOpenGroupChat(item.id)}>
+                <Ionicons name="chatbubble-ellipses-outline" size={14} color={colors.accent.primary} />
                 <Text style={styles.chatButtonText}>Open Chat</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.leaveButton}
-                onPress={() => handleLeaveGroup(item.id)}
+                onPress={() => {
+                  void handleLeaveGroup(item.id);
+                }}
                 disabled={busyGroupId === item.id}
               >
-                <Text style={styles.leaveButtonText}>
-                  {busyGroupId === item.id ? 'Updating...' : 'Joined'}
-                </Text>
+                <Text style={styles.leaveButtonText}>{busyGroupId === item.id ? 'Updating...' : 'Joined'}</Text>
                 <Ionicons name="checkmark" size={14} color={colors.status.success} />
               </TouchableOpacity>
             </View>
@@ -217,12 +206,12 @@ const GroupsContent: React.FC = () => {
           ) : (
             <TouchableOpacity
               style={[styles.joinButton, !canJoinMore && styles.joinButtonDisabled]}
-              onPress={() => handleJoinGroup(item.id)}
+              onPress={() => {
+                void handleJoinGroup(item.id);
+              }}
               disabled={!canJoinMore || busyGroupId === item.id}
             >
-              <Text style={styles.joinButtonText}>
-                {busyGroupId === item.id ? 'Joining...' : 'Join'}
-              </Text>
+              <Text style={styles.joinButtonText}>{busyGroupId === item.id ? 'Joining...' : 'Join'}</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -231,22 +220,15 @@ const GroupsContent: React.FC = () => {
   );
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={handleBackPress}>
-          <Ionicons name="chevron-back" size={24} color={colors.text.primary} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Groups</Text>
-        <View style={styles.groupsCounter}>
-          <Ionicons name="people" size={16} color={colors.primary.blue} />
-          <Text style={styles.groupsCountText}>
-            {friendsLimits.groupsCanJoin === 999 ? '∞' : groupsRemaining} left
-          </Text>
-        </View>
-      </View>
+    <ScreenScaffold hideHorizontalPadding withBottomPadding={false} style={styles.container}>
+      <Header title="Groups" showBack onBackPress={handleBackPress} transparent />
 
-      <View style={styles.tabs}>
+      <View style={styles.innerContent}>
+        <SectionHeader
+          title="Community Groups"
+          subtitle={friendsLimits.groupsCanJoin === 999 ? 'Unlimited joins available' : `${groupsRemaining} joins remaining this month`}
+        />
+
         <PillTabs
           items={[
             { id: 'discover', label: 'Discover' },
@@ -255,60 +237,58 @@ const GroupsContent: React.FC = () => {
           activeId={activeTab}
           onChange={(value) => setActiveTab(value as 'discover' | 'my-groups')}
         />
-      </View>
 
-      {/* Groups List */}
-      <FlatList
-        data={activeTab === 'discover' ? discoverGroups : myGroups}
-        renderItem={renderGroup}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
-        ItemSeparatorComponent={() => <View style={styles.separator} />}
-        ListEmptyComponent={
-          isLoading ? (
-            <View style={styles.emptyState}>
-              <ActivityIndicator size="large" color={colors.primary.blue} />
-              <Text style={styles.emptyTitle}>Loading groups...</Text>
-            </View>
-          ) : (
-            <View style={styles.emptyState}>
-              <Ionicons
-                name={error ? 'alert-circle-outline' : 'people-outline'}
-                size={48}
-                color={error ? colors.status.error : colors.text.tertiary}
-              />
-              <Text style={styles.emptyTitle}>
-                {error
-                  ? 'Unable to Load Groups'
-                  : activeTab === 'my-groups'
-                    ? 'No Groups Yet'
-                    : 'No More Groups'}
-              </Text>
-              <Text style={styles.emptySubtitle}>
-                {error
-                  ? error
-                  : activeTab === 'my-groups'
-                    ? 'Join groups to connect with people who share your interests'
-                    : 'Check back later for new groups in your area'}
-              </Text>
-              <TouchableOpacity style={styles.retryButton} onPress={() => loadGroups()}>
-                <Text style={styles.retryButtonText}>Refresh</Text>
-              </TouchableOpacity>
-            </View>
-          )
-        }
-      />
-    </View>
+        <FlatList
+          data={activeTab === 'discover' ? discoverGroups : myGroups}
+          renderItem={renderGroup}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          ItemSeparatorComponent={() => <View style={styles.separator} />}
+          ListEmptyComponent={
+            isLoading ? (
+              <View style={styles.emptyState}>
+                <ActivityIndicator size="large" color={colors.accent.primary} />
+                <Text style={styles.emptyTitle}>Loading groups...</Text>
+              </View>
+            ) : (
+              <View style={styles.emptyState}>
+                <Ionicons
+                  name={error ? 'alert-circle-outline' : 'people-outline'}
+                  size={48}
+                  color={error ? colors.status.error : colors.text.tertiary}
+                />
+                <Text style={styles.emptyTitle}>
+                  {error
+                    ? 'Unable to Load Groups'
+                    : activeTab === 'my-groups'
+                      ? 'No Groups Yet'
+                      : 'No More Groups'}
+                </Text>
+                <Text style={styles.emptySubtitle}>
+                  {error
+                    ? error
+                    : activeTab === 'my-groups'
+                      ? 'Join groups to connect with people who share your interests'
+                      : 'Check back later for new groups in your area'}
+                </Text>
+                <TouchableOpacity style={styles.retryButton} onPress={() => {
+                  void loadGroups();
+                }}>
+                  <Text style={styles.retryButtonText}>Refresh</Text>
+                </TouchableOpacity>
+              </View>
+            )
+          }
+        />
+      </View>
+    </ScreenScaffold>
   );
 };
 
 export const GroupsScreen: React.FC = () => {
   return (
-    <RequirementsGate
-      feature="friends_groups"
-      modalTitle="Upgrade to Join Groups"
-    >
+    <RequirementsGate feature="friends_groups" modalTitle="Upgrade to Join Groups">
       <GroupsContent />
     </RequirementsGate>
   );
@@ -317,50 +297,21 @@ export const GroupsScreen: React.FC = () => {
 const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background.primary,
+    backgroundColor: colors.surface.level0,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  innerContent: {
+    flex: 1,
     paddingHorizontal: spacing.screenPadding,
-    paddingVertical: spacing.md,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: -spacing.sm,
-  },
-  headerTitle: {
-    ...typography.presets.h3,
-    color: colors.text.primary,
-  },
-  groupsCounter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    backgroundColor: colors.background.card,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: spacing.radius.full,
-  },
-  groupsCountText: {
-    ...typography.presets.caption,
-    color: colors.text.primary,
-    fontWeight: '600',
-  },
-  tabs: {
-    paddingHorizontal: spacing.screenPadding,
-    marginBottom: spacing.xs,
+    gap: spacing.sm,
   },
   listContent: {
-    padding: spacing.screenPadding,
+    paddingBottom: spacing.massive,
   },
   groupCard: {
-    backgroundColor: colors.background.card,
+    backgroundColor: colors.surface.level1,
     borderRadius: spacing.radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
     overflow: 'hidden',
   },
   groupCover: {
@@ -368,7 +319,7 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     height: 120,
   },
   groupCoverFallback: {
-    backgroundColor: colors.background.tertiary,
+    backgroundColor: colors.surface.level2,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -385,7 +336,7 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: colors.primary.blueSoft,
+    backgroundColor: colors.accent.soft,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -423,18 +374,18 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    backgroundColor: colors.primary.blueSoft,
+    backgroundColor: colors.accent.soft,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
     borderRadius: spacing.radius.full,
   },
   chatButtonText: {
     ...typography.presets.caption,
-    color: colors.primary.blue,
-    fontWeight: '600',
+    color: colors.accent.primary,
+    fontWeight: typography.weights.semibold,
   },
   joinButton: {
-    backgroundColor: colors.primary.blue,
+    backgroundColor: colors.accent.primary,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.xs,
     borderRadius: spacing.radius.full,
@@ -445,32 +396,36 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
   joinButtonText: {
     ...typography.presets.caption,
     color: colors.text.primary,
-    fontWeight: '600',
+    fontWeight: typography.weights.semibold,
   },
   leaveButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    backgroundColor: colors.background.tertiary,
+    backgroundColor: colors.surface.level2,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
     borderRadius: spacing.radius.full,
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
   },
   leaveButtonText: {
     ...typography.presets.caption,
     color: colors.status.success,
-    fontWeight: '600',
+    fontWeight: typography.weights.semibold,
   },
   pendingButton: {
-    backgroundColor: colors.background.tertiary,
+    backgroundColor: colors.surface.level2,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
     borderRadius: spacing.radius.full,
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
   },
   pendingButtonText: {
     ...typography.presets.caption,
     color: colors.text.tertiary,
-    fontWeight: '600',
+    fontWeight: typography.weights.semibold,
   },
   separator: {
     height: spacing.md,
@@ -493,7 +448,7 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
   },
   retryButton: {
     marginTop: spacing.sm,
-    backgroundColor: colors.primary.blue,
+    backgroundColor: colors.accent.primary,
     borderRadius: spacing.radius.full,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,

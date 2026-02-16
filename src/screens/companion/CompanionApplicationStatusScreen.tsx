@@ -179,7 +179,7 @@ export const CompanionApplicationStatusScreen: React.FC = () => {
             title="Review Timeline"
             subtitle="Progress of your submission"
           />
-          <Card variant="gradient" style={styles.timelineCard}>
+          <Card variant="outlined" style={styles.timelineCard}>
             {[
               { label: 'Application Submitted', done: true, icon: 'checkmark-circle' as const },
               {

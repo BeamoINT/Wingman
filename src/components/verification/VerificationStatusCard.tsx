@@ -5,7 +5,6 @@
  */
 
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
@@ -24,31 +23,31 @@ const getStatusConfig = (tokens: ThemeTokens): Record<OverallVerificationStatus,
   label: string;
   color: string;
   icon: keyof typeof Ionicons.glyphMap;
-  gradient: readonly [string, string];
+  background: string;
 }> => ({
   not_started: {
     label: 'Not Verified',
     color: tokens.colors.text.tertiary,
     icon: 'shield-outline',
-    gradient: [tokens.colors.background.card, tokens.colors.background.tertiary] as const,
+    background: tokens.colors.surface.level2,
   },
   in_progress: {
     label: 'Verification in Progress',
     color: tokens.colors.status.warning,
     icon: 'time-outline',
-    gradient: [tokens.colors.status.warningLight, tokens.colors.background.secondary] as const,
+    background: tokens.colors.status.warningLight,
   },
   verified: {
     label: 'ID Verified',
     color: tokens.colors.verification.verified,
     icon: 'checkmark-circle',
-    gradient: [tokens.colors.status.successLight, tokens.colors.background.secondary] as const,
+    background: tokens.colors.status.successLight,
   },
   premium_verified: {
     label: 'Premium Verified',
     color: tokens.colors.verification.premium,
     icon: 'star',
-    gradient: [tokens.colors.primary.goldSoft, tokens.colors.primary.goldSoft] as const,
+    background: tokens.colors.surface.level2,
   },
 });
 
@@ -65,13 +64,8 @@ export const VerificationStatusCard: React.FC<VerificationStatusCardProps> = ({
   const progressPercent = (completedSteps / totalSteps) * 100;
 
   return (
-    <View style={styles.container}>
-      <LinearGradient
-        colors={config.gradient}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.gradient}
-      >
+    <View style={[styles.container, { backgroundColor: config.background }]}>
+      <View style={styles.content}>
         <View style={styles.header}>
           <View style={[styles.iconContainer, { backgroundColor: `${config.color}20` }]}>
             <Ionicons name={config.icon} size={32} color={config.color} />
@@ -104,7 +98,7 @@ export const VerificationStatusCard: React.FC<VerificationStatusCardProps> = ({
             />
           </View>
         </View>
-      </LinearGradient>
+      </View>
     </View>
   );
 };
@@ -114,9 +108,9 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     borderRadius: spacing.radius.lg,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: colors.border.light,
+    borderColor: colors.border.subtle,
   },
-  gradient: {
+  content: {
     padding: spacing.lg,
   },
   header: {
@@ -160,7 +154,7 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
   },
   progressBarContainer: {
     height: 6,
-    backgroundColor: colors.background.secondary,
+    backgroundColor: colors.surface.level3,
     borderRadius: spacing.radius.round,
     overflow: 'hidden',
   },

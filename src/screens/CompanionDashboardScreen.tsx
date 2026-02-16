@@ -1,7 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { LinearGradient } from 'expo-linear-gradient';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -345,7 +344,7 @@ export const CompanionDashboardScreen: React.FC = () => {
         />
 
         <TouchableOpacity activeOpacity={0.9} onPress={toggleOnlineStatus}>
-          <Card variant="gradient" style={styles.availabilityCard}>
+          <Card variant="outlined" style={styles.availabilityCard}>
             <View style={styles.availabilityLeft}>
               <View style={[styles.statusDot, isOnline && styles.statusDotOnline]} />
               <View style={styles.availabilityTextWrap}>
@@ -384,12 +383,7 @@ export const CompanionDashboardScreen: React.FC = () => {
           }}
         />
 
-        <LinearGradient
-          colors={colors.gradients.premium}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.earningsCard}
-        >
+        <Card variant="default" style={styles.earningsCard}>
           <Text style={styles.earningsLabel}>Total Earnings</Text>
           <Text style={styles.earningsAmount}>${currentData.total.toLocaleString()}</Text>
 
@@ -411,7 +405,7 @@ export const CompanionDashboardScreen: React.FC = () => {
               <Text style={styles.metricLabel}>Avg/Hour</Text>
             </View>
           </View>
-        </LinearGradient>
+        </Card>
 
         <Button
           title="Withdraw Earnings"
@@ -600,17 +594,20 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     width: 50,
     height: 30,
     borderRadius: 15,
-    backgroundColor: colors.background.tertiary,
+    backgroundColor: colors.surface.level2,
     padding: 3,
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
   },
   switchRailActive: {
-    backgroundColor: colors.status.success,
+    backgroundColor: colors.status.successLight,
+    borderColor: colors.status.success,
   },
   switchThumb: {
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: colors.text.inverse,
+    backgroundColor: colors.surface.level0,
   },
   switchThumbActive: {
     marginLeft: 20,
@@ -623,11 +620,11 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
   },
   earningsLabel: {
     ...typography.presets.bodySmall,
-    color: colors.primary.darkBlack,
+    color: colors.text.tertiary,
   },
   earningsAmount: {
     ...typography.presets.hero,
-    color: colors.primary.darkBlack,
+    color: colors.text.primary,
   },
   earningsStats: {
     marginTop: spacing.sm,
@@ -642,16 +639,16 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
   metricDivider: {
     width: 1,
     height: 26,
-    backgroundColor: colors.border.medium,
+    backgroundColor: colors.border.subtle,
   },
   metricValue: {
     ...typography.presets.h4,
-    color: colors.primary.darkBlack,
+    color: colors.text.primary,
     fontWeight: typography.weights.bold,
   },
   metricLabel: {
     ...typography.presets.caption,
-    color: colors.primary.darkBlack,
+    color: colors.text.secondary,
   },
   statsGrid: {
     flexDirection: 'row',

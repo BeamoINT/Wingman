@@ -144,7 +144,7 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({
         <View style={styles.selectorContent}>
           {value.city ? (
             <>
-              <Ionicons name="location" size={20} color={tokens.colors.primary.blue} />
+              <Ionicons name="location" size={20} color={tokens.colors.accent.primary} />
               <Text style={styles.selectorValue}>{value.city}</Text>
             </>
           ) : (
@@ -213,13 +213,13 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: colors.background.tertiary,
+    backgroundColor: colors.surface.level2,
     borderRadius: spacing.radius.lg,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
     marginBottom: spacing.sm,
     borderWidth: 1,
-    borderColor: colors.border.light,
+    borderColor: colors.border.subtle,
   },
   selectorDisabled: {
     opacity: 0.5,

@@ -7,80 +7,88 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-    FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View, ViewStyle
+  FlatList,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Card, Skeleton } from '../../components';
+import { Card, Header, InlineBanner, ScreenScaffold, SectionHeader, Skeleton } from '../../components';
+import { useTheme } from '../../context/ThemeContext';
 import { useVerification } from '../../context/VerificationContext';
-import { colors } from '../../theme/colors';
-import { spacing } from '../../theme/spacing';
-import { typography } from '../../theme/typography';
+import type { ThemeTokens } from '../../theme/tokens';
+import { useThemedStyles } from '../../theme/useThemedStyles';
 import type { RootStackParamList } from '../../types';
-import type { VerificationEvent, VerificationEventStatus, VerificationEventType } from '../../types/verification';
+import type {
+  VerificationEvent,
+  VerificationEventStatus,
+  VerificationEventType,
+} from '../../types/verification';
 import { haptics } from '../../utils/haptics';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
-const EVENT_CONFIG: Record<VerificationEventType, {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  color: string;
-}> = {
+const getEventConfig = (
+  tokens: ThemeTokens,
+): Record<VerificationEventType, { icon: keyof typeof Ionicons.glyphMap; label: string; color: string }> => ({
   email_verified: {
     icon: 'mail',
     label: 'Email Verified',
-    color: colors.status.success,
+    color: tokens.colors.status.success,
   },
   phone_verified: {
     icon: 'call',
     label: 'Phone Verified',
-    color: colors.status.success,
+    color: tokens.colors.status.success,
   },
   id_verified: {
     icon: 'card',
     label: 'ID Verified',
-    color: colors.status.success,
+    color: tokens.colors.status.success,
   },
   id_verification_failed: {
     icon: 'card',
     label: 'ID Verification Failed',
-    color: colors.status.error,
+    color: tokens.colors.status.error,
   },
   verification_level_upgraded: {
     icon: 'trending-up',
     label: 'Verification Level Upgraded',
-    color: colors.verification.premium,
+    color: tokens.colors.accent.primary,
   },
-};
+});
 
-const STATUS_CONFIG: Record<VerificationEventStatus, {
-  icon: keyof typeof Ionicons.glyphMap;
-  color: string;
-}> = {
+const getStatusConfig = (
+  tokens: ThemeTokens,
+): Record<VerificationEventStatus, { icon: keyof typeof Ionicons.glyphMap; color: string }> => ({
   success: {
     icon: 'checkmark-circle',
-    color: colors.status.success,
+    color: tokens.colors.status.success,
   },
   failed: {
     icon: 'close-circle',
-    color: colors.status.error,
+    color: tokens.colors.status.error,
   },
   pending: {
     icon: 'time',
-    color: colors.status.warning,
+    color: tokens.colors.status.warning,
   },
-};
+});
 
 export const VerificationHistoryScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
-  const insets = useSafeAreaInsets();
+  const { tokens } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const { history, loadHistory, isLoading } = useVerification();
   const [refreshing, setRefreshing] = useState(false);
 
+  const eventConfig = useMemo(() => getEventConfig(tokens), [tokens]);
+  const statusConfig = useMemo(() => getStatusConfig(tokens), [tokens]);
+
   useEffect(() => {
-    loadHistory();
+    void loadHistory();
   }, [loadHistory]);
 
   const handleBackPress = async () => {
@@ -114,34 +122,28 @@ export const VerificationHistoryScreen: React.FC = () => {
     });
   };
 
-  const renderItem = ({ item, index }: { item: VerificationEvent; index: number }) => {
-    const eventConfig = EVENT_CONFIG[item.eventType] || {
-      icon: 'information-circle',
+  const renderItem = ({ item }: { item: VerificationEvent }) => {
+    const resolvedEvent = eventConfig[item.eventType] || {
+      icon: 'information-circle' as const,
       label: item.eventType.replace(/_/g, ' '),
-      color: colors.text.secondary,
+      color: tokens.colors.text.secondary,
     };
-    const statusConfig = STATUS_CONFIG[item.eventStatus];
 
-    const cardStyle: ViewStyle = index === history.length - 1
-      ? { ...styles.eventCard, ...styles.lastCard }
-      : styles.eventCard;
+    const resolvedStatus = statusConfig[item.eventStatus];
 
     return (
-      <Card
-        variant="outlined"
-        style={cardStyle}
-      >
+      <Card variant="outlined" style={styles.eventCard}>
         <View style={styles.eventRow}>
-          <View style={[styles.eventIcon, { backgroundColor: `${eventConfig.color}20` }]}>
-            <Ionicons name={eventConfig.icon} size={20} color={eventConfig.color} />
+          <View style={[styles.eventIcon, { backgroundColor: `${resolvedEvent.color}20` }]}>
+            <Ionicons name={resolvedEvent.icon} size={18} color={resolvedEvent.color} />
           </View>
 
           <View style={styles.eventContent}>
-            <View style={styles.eventHeader}>
-              <Text style={styles.eventLabel}>{eventConfig.label}</Text>
-              <View style={[styles.statusBadge, { backgroundColor: `${statusConfig.color}20` }]}>
-                <Ionicons name={statusConfig.icon} size={12} color={statusConfig.color} />
-                <Text style={[styles.statusText, { color: statusConfig.color }]}>
+            <View style={styles.eventTopRow}>
+              <Text style={styles.eventLabel}>{resolvedEvent.label}</Text>
+              <View style={[styles.statusBadge, { backgroundColor: `${resolvedStatus.color}20` }]}>
+                <Ionicons name={resolvedStatus.icon} size={12} color={resolvedStatus.color} />
+                <Text style={[styles.statusText, { color: resolvedStatus.color }]}> 
                   {item.eventStatus}
                 </Text>
               </View>
@@ -149,21 +151,18 @@ export const VerificationHistoryScreen: React.FC = () => {
 
             <Text style={styles.eventDate}>{formatDate(item.createdAt)}</Text>
 
-            {/* Show additional details if available */}
-            {item.eventData && Object.keys(item.eventData).length > 0 && (
-              <View style={styles.eventDetails}>
-                {item.eventData.result !== undefined && (
-                  <Text style={styles.detailText}>
-                    Result: {String(item.eventData.result)}
-                  </Text>
-                )}
-                {item.eventData.reason !== undefined && (
+            {item.eventData && Object.keys(item.eventData).length > 0 ? (
+              <View style={styles.detailBlock}>
+                {item.eventData.result !== undefined ? (
+                  <Text style={styles.detailText}>Result: {String(item.eventData.result)}</Text>
+                ) : null}
+                {item.eventData.reason !== undefined ? (
                   <Text style={styles.detailText}>
                     Reason: {String(item.eventData.reason).replace(/_/g, ' ')}
                   </Text>
-                )}
+                ) : null}
               </View>
-            )}
+            ) : null}
           </View>
         </View>
       </Card>
@@ -172,7 +171,7 @@ export const VerificationHistoryScreen: React.FC = () => {
 
   const renderEmpty = () => (
     <View style={styles.emptyContainer}>
-      <Ionicons name="document-text-outline" size={48} color={colors.text.muted} />
+      <Ionicons name="document-text-outline" size={46} color={tokens.colors.text.muted} />
       <Text style={styles.emptyTitle}>No Verification History</Text>
       <Text style={styles.emptyDescription}>
         Your verification events will appear here as you complete verification steps.
@@ -182,22 +181,42 @@ export const VerificationHistoryScreen: React.FC = () => {
 
   const renderLoading = () => (
     <View style={styles.loadingContainer}>
-      {[1, 2, 3].map((i) => (
-        <Skeleton key={i} width="100%" height={80} borderRadius={12} style={{ marginBottom: spacing.md }} />
+      {[1, 2, 3].map((row) => (
+        <Skeleton
+          key={row}
+          width="100%"
+          height={84}
+          borderRadius={12}
+          style={styles.loadingSkeleton}
+        />
       ))}
     </View>
   );
 
   return (
-    <View style={styles.container}>
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
-        <TouchableOpacity style={styles.backButton} onPress={handleBackPress}>
-          <Ionicons name="chevron-back" size={24} color={colors.text.primary} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Verification History</Text>
-        <View style={styles.placeholder} />
-      </View>
+    <ScreenScaffold
+      scrollable
+      hideHorizontalPadding
+      withBottomPadding={false}
+      style={styles.container}
+      contentContainerStyle={styles.contentContainer}
+    >
+      <Header
+        title="Verification History"
+        showBack
+        onBackPress={handleBackPress}
+        transparent
+      />
+      <SectionHeader
+        title="Event Timeline"
+        subtitle="Recent verification and status updates"
+      />
+
+      <InlineBanner
+        title="Verification access"
+        message="Every user must complete ID and photo verification before finalizing a booking."
+        variant="info"
+      />
 
       {isLoading && !refreshing ? (
         renderLoading()
@@ -206,69 +225,53 @@ export const VerificationHistoryScreen: React.FC = () => {
           data={history}
           renderItem={renderItem}
           keyExtractor={(item) => item.id}
+          scrollEnabled={false}
           contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
+          ItemSeparatorComponent={() => <View style={styles.separator} />}
           ListEmptyComponent={renderEmpty}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
               onRefresh={handleRefresh}
-              tintColor={colors.primary.blue}
+              tintColor={tokens.colors.accent.primary}
             />
           }
         />
       )}
-    </View>
+    </ScreenScaffold>
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background.primary,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.screenPadding,
-    paddingBottom: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border.light,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    ...typography.presets.h4,
-    color: colors.text.primary,
-  },
-  placeholder: {
-    width: 40,
-  },
-  listContent: {
-    padding: spacing.screenPadding,
-    paddingBottom: 100,
+  contentContainer: {
+    gap: spacing.lg,
+    paddingBottom: spacing.xxxl,
   },
   loadingContainer: {
-    padding: spacing.screenPadding,
+    gap: spacing.sm,
+  },
+  loadingSkeleton: {
+    marginBottom: spacing.xs,
+  },
+  listContent: {
+    paddingBottom: spacing.md,
+  },
+  separator: {
+    height: spacing.sm,
   },
   eventCard: {
-    marginBottom: spacing.md,
-  },
-  lastCard: {
-    marginBottom: 0,
+    padding: spacing.md,
   },
   eventRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
   },
   eventIcon: {
-    width: 40,
-    height: 40,
+    width: 38,
+    height: 38,
     borderRadius: spacing.radius.md,
     alignItems: 'center',
     justifyContent: 'center',
@@ -277,10 +280,11 @@ const styles = StyleSheet.create({
   eventContent: {
     flex: 1,
   },
-  eventHeader: {
+  eventTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: spacing.sm,
     marginBottom: spacing.xs,
   },
   eventLabel: {
@@ -299,18 +303,18 @@ const styles = StyleSheet.create({
   },
   statusText: {
     ...typography.presets.caption,
-    fontWeight: typography.weights.medium,
     textTransform: 'capitalize',
   },
   eventDate: {
     ...typography.presets.caption,
     color: colors.text.tertiary,
   },
-  eventDetails: {
+  detailBlock: {
     marginTop: spacing.sm,
-    paddingTop: spacing.sm,
     borderTopWidth: 1,
     borderTopColor: colors.border.subtle,
+    paddingTop: spacing.sm,
+    gap: spacing.xxs,
   },
   detailText: {
     ...typography.presets.caption,
@@ -318,16 +322,14 @@ const styles = StyleSheet.create({
     textTransform: 'capitalize',
   },
   emptyContainer: {
-    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: spacing.huge,
+    gap: spacing.sm,
   },
   emptyTitle: {
     ...typography.presets.h4,
     color: colors.text.secondary,
-    marginTop: spacing.lg,
-    marginBottom: spacing.sm,
   },
   emptyDescription: {
     ...typography.presets.body,

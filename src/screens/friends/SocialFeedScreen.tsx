@@ -3,17 +3,22 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-    ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, TextInput, TouchableOpacity, View
+  ActivityIndicator,
+  FlatList,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Avatar, EmptyFeed } from '../../components';
-import { RequirementsGate } from '../../components/RequirementsGate';
+import { Avatar, EmptyFeed, Header, InlineBanner, RequirementsGate, ScreenScaffold, SectionHeader } from '../../components';
 import { useRequirements } from '../../context/RequirementsContext';
 import { useTheme } from '../../context/ThemeContext';
 import {
-    createSocialFeedPost,
-    fetchSocialFeedPosts,
-    togglePostLike
+  createSocialFeedPost,
+  fetchSocialFeedPosts,
+  togglePostLike,
 } from '../../services/api/friendsApi';
 import type { ThemeTokens } from '../../theme/tokens';
 import { useThemedStyles } from '../../theme/useThemedStyles';
@@ -23,13 +28,8 @@ import { haptics } from '../../utils/haptics';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
-/**
- * SocialFeedScreen - Timeline of posts from friends
- * Subscription-gated: Pro required
- */
 const SocialFeedContent: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
-  const insets = useSafeAreaInsets();
   const { tokens } = useTheme();
   const styles = useThemedStyles(createStyles);
   const { colors } = tokens;
@@ -74,7 +74,7 @@ const SocialFeedContent: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    loadPosts();
+    void loadPosts();
   }, [loadPosts]);
 
   const handleBackPress = async () => {
@@ -88,7 +88,6 @@ const SocialFeedContent: React.FC = () => {
     const currentPost = posts.find((post) => post.id === postId);
     if (!currentPost) return;
 
-    // Optimistic update for snappier UI.
     setPosts((previousPosts) => previousPosts.map((post) => (
       post.id === postId
         ? {
@@ -106,7 +105,6 @@ const SocialFeedContent: React.FC = () => {
       return;
     }
 
-    // Refresh counts from server to keep comments/likes accurate.
     await loadPosts(true);
   };
 
@@ -162,9 +160,9 @@ const SocialFeedContent: React.FC = () => {
             <Text style={styles.postAuthorName}>
               {item.author.firstName} {item.author.lastName}
             </Text>
-            {item.author.verificationLevel !== 'basic' && (
-              <Ionicons name="checkmark-circle" size={14} color={colors.primary.blue} />
-            )}
+            {item.author.verificationLevel !== 'basic' ? (
+              <Ionicons name="checkmark-circle" size={14} color={colors.accent.primary} />
+            ) : null}
           </View>
           <Text style={styles.postTime}>{formatTimeAgo(item.createdAt)}</Text>
         </View>
@@ -175,19 +173,19 @@ const SocialFeedContent: React.FC = () => {
 
       <Text style={styles.postContent}>{item.content}</Text>
 
-      {item.type === 'event_share' && (
+      {item.type === 'event_share' ? (
         <View style={styles.eventPreview}>
-          <Ionicons name="calendar" size={16} color={colors.primary.blue} />
+          <Ionicons name="calendar" size={16} color={colors.accent.primary} />
           <Text style={styles.eventPreviewText}>Event shared</Text>
         </View>
-      )}
+      ) : null}
 
-      {item.type === 'achievement' && (
+      {item.type === 'achievement' ? (
         <View style={styles.achievementBadge}>
-          <Ionicons name="trophy" size={16} color={colors.primary.coral} />
+          <Ionicons name="trophy" size={16} color={colors.status.warning} />
           <Text style={styles.achievementText}>Achievement unlocked!</Text>
         </View>
-      )}
+      ) : null}
 
       <View style={styles.postStats}>
         <Text style={styles.statsText}>
@@ -196,18 +194,13 @@ const SocialFeedContent: React.FC = () => {
       </View>
 
       <View style={styles.postActions}>
-        <TouchableOpacity
-          style={styles.actionItem}
-          onPress={() => handleLikePress(item.id)}
-        >
+        <TouchableOpacity style={styles.actionItem} onPress={() => handleLikePress(item.id)}>
           <Ionicons
             name={item.isLikedByMe ? 'heart' : 'heart-outline'}
             size={22}
-            color={item.isLikedByMe ? colors.primary.coral : colors.text.tertiary}
+            color={item.isLikedByMe ? colors.status.error : colors.text.tertiary}
           />
-          <Text style={[styles.actionText, item.isLikedByMe && styles.actionTextActive]}>
-            Like
-          </Text>
+          <Text style={[styles.actionText, item.isLikedByMe && styles.actionTextActive]}>Like</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.actionItem}>
@@ -224,121 +217,111 @@ const SocialFeedContent: React.FC = () => {
   );
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={handleBackPress}>
-          <Ionicons name="chevron-back" size={24} color={colors.text.primary} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Feed</Text>
-        <TouchableOpacity
-          style={styles.headerRight}
-          onPress={() => canPost ? setShowComposer(true) : navigation.navigate('Subscription')}
-        >
-          <Ionicons
-            name="create-outline"
-            size={24}
-            color={canPost ? colors.primary.blue : colors.text.tertiary}
-          />
-        </TouchableOpacity>
-      </View>
-
-      {/* Post Composer */}
-      {showComposer && canPost && (
-        <View style={styles.composer}>
-          <TextInput
-            style={styles.composerInput}
-            placeholder="What's on your mind?"
-            placeholderTextColor={colors.text.tertiary}
-            value={newPostText}
-            onChangeText={setNewPostText}
-            multiline
-            maxLength={500}
-          />
-          <View style={styles.composerActions}>
-            <TouchableOpacity onPress={() => setShowComposer(false)}>
-              <Text style={styles.composerCancel}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.postButton,
-                (!newPostText.trim() || isSubmittingPost) && styles.postButtonDisabled,
-              ]}
-              onPress={handleCreatePost}
-              disabled={!newPostText.trim() || isSubmittingPost}
-            >
-              <Text style={styles.postButtonText}>
-                {isSubmittingPost ? 'Posting...' : 'Post'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
-
-      {/* Can't Post Banner */}
-      {!canPost && (
-        <TouchableOpacity
-          style={styles.upgradePrompt}
-          onPress={() => navigation.navigate('Subscription')}
-        >
-          <Ionicons name="lock-closed" size={16} color={colors.primary.coral} />
-          <Text style={styles.upgradePromptText}>
-            Upgrade to Pro to create posts
-          </Text>
-          <Ionicons name="chevron-forward" size={16} color={colors.text.tertiary} />
-        </TouchableOpacity>
-      )}
-
-      {/* Feed */}
-      <FlatList
-        data={posts}
-        renderItem={renderPost}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={[
-          styles.feedContent,
-          posts.length === 0 && styles.emptyFeedContent,
-        ]}
-        showsVerticalScrollIndicator={false}
-        refreshControl={(
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={() => loadPosts(true)}
-            tintColor={colors.primary.blue}
-          />
-        )}
-        ItemSeparatorComponent={() => <View style={styles.separator} />}
-        ListEmptyComponent={
-          isLoading
-            ? (
-              <View style={styles.loadingState}>
-                <ActivityIndicator size="large" color={colors.primary.blue} />
-                <Text style={styles.loadingText}>Loading feed...</Text>
-              </View>
-            )
-            : (
-              <EmptyFeed
-                onFindFriends={() => navigation.navigate('FriendMatching')}
-              />
-            )
-        }
+    <ScreenScaffold hideHorizontalPadding withBottomPadding={false} style={styles.container}>
+      <Header
+        title="Feed"
+        showBack
+        onBackPress={handleBackPress}
+        rightIcon="create-outline"
+        onRightPress={() => {
+          if (canPost) {
+            setShowComposer((value) => !value);
+          } else {
+            navigation.navigate('Subscription');
+          }
+        }}
+        transparent
       />
 
-      {error && (
+      <View style={styles.innerContent}>
+        <SectionHeader title="Social Feed" subtitle="Share updates with your friend network" />
+
+        {showComposer && canPost ? (
+          <View style={styles.composer}>
+            <TextInput
+              style={styles.composerInput}
+              placeholder="What's on your mind?"
+              placeholderTextColor={colors.text.tertiary}
+              value={newPostText}
+              onChangeText={setNewPostText}
+              multiline
+              maxLength={500}
+            />
+            <View style={styles.composerActions}>
+              <TouchableOpacity onPress={() => setShowComposer(false)}>
+                <Text style={styles.composerCancel}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.postButton,
+                  (!newPostText.trim() || isSubmittingPost) && styles.postButtonDisabled,
+                ]}
+                onPress={() => {
+                  void handleCreatePost();
+                }}
+                disabled={!newPostText.trim() || isSubmittingPost}
+              >
+                <Text style={styles.postButtonText}>{isSubmittingPost ? 'Posting...' : 'Post'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : null}
+
+        {!canPost ? (
+          <InlineBanner
+            title="Pro required to post"
+            message="Upgrade to Pro to create posts, groups, and events."
+            variant="warning"
+          />
+        ) : null}
+
+        <FlatList
+          data={posts}
+          renderItem={renderPost}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={[
+            styles.feedContent,
+            posts.length === 0 && styles.emptyFeedContent,
+          ]}
+          showsVerticalScrollIndicator={false}
+          refreshControl={(
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={() => {
+                void loadPosts(true);
+              }}
+              tintColor={colors.accent.primary}
+            />
+          )}
+          ItemSeparatorComponent={() => <View style={styles.separator} />}
+          ListEmptyComponent={
+            isLoading
+              ? (
+                <View style={styles.loadingState}>
+                  <ActivityIndicator size="large" color={colors.accent.primary} />
+                  <Text style={styles.loadingText}>Loading feed...</Text>
+                </View>
+              )
+              : (
+                <EmptyFeed onFindFriends={() => navigation.navigate('FriendMatching')} />
+              )
+          }
+        />
+      </View>
+
+      {error ? (
         <View style={styles.errorBanner}>
           <Ionicons name="alert-circle-outline" size={16} color={colors.status.error} />
           <Text style={styles.errorText}>{error}</Text>
         </View>
-      )}
-    </View>
+      ) : null}
+    </ScreenScaffold>
   );
 };
 
 export const SocialFeedScreen: React.FC = () => {
   return (
-    <RequirementsGate
-      feature="friends_feed"
-      modalTitle="Upgrade to View Feed"
-    >
+    <RequirementsGate feature="friends_feed" modalTitle="Upgrade to View Feed">
       <SocialFeedContent />
     </RequirementsGate>
   );
@@ -347,37 +330,18 @@ export const SocialFeedScreen: React.FC = () => {
 const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background.primary,
+    backgroundColor: colors.surface.level0,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  innerContent: {
+    flex: 1,
     paddingHorizontal: spacing.screenPadding,
-    paddingVertical: spacing.md,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: -spacing.sm,
-  },
-  headerTitle: {
-    ...typography.presets.h3,
-    color: colors.text.primary,
-  },
-  headerRight: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
+    gap: spacing.sm,
   },
   composer: {
-    backgroundColor: colors.background.card,
+    backgroundColor: colors.surface.level1,
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
     padding: spacing.md,
-    marginHorizontal: spacing.screenPadding,
-    marginBottom: spacing.md,
     borderRadius: spacing.radius.lg,
   },
   composerInput: {
@@ -397,7 +361,7 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     color: colors.text.tertiary,
   },
   postButton: {
-    backgroundColor: colors.primary.blue,
+    backgroundColor: colors.accent.primary,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
     borderRadius: spacing.radius.full,
@@ -409,24 +373,8 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     ...typography.presets.button,
     color: colors.text.primary,
   },
-  upgradePrompt: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    backgroundColor: colors.background.card,
-    paddingVertical: spacing.md,
-    marginHorizontal: spacing.screenPadding,
-    marginBottom: spacing.md,
-    borderRadius: spacing.radius.md,
-  },
-  upgradePromptText: {
-    ...typography.presets.caption,
-    color: colors.text.secondary,
-    flex: 1,
-  },
   feedContent: {
-    padding: spacing.screenPadding,
+    paddingBottom: spacing.massive,
   },
   emptyFeedContent: {
     flex: 1,
@@ -460,8 +408,10 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     flex: 1,
   },
   postCard: {
-    backgroundColor: colors.background.card,
+    backgroundColor: colors.surface.level1,
     borderRadius: spacing.radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
     padding: spacing.md,
   },
   postHeader: {
@@ -481,7 +431,7 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
   postAuthorName: {
     ...typography.presets.body,
     color: colors.text.primary,
-    fontWeight: '600',
+    fontWeight: typography.weights.semibold,
   },
   postTime: {
     ...typography.presets.caption,
@@ -500,7 +450,7 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    backgroundColor: colors.primary.blueSoft,
+    backgroundColor: colors.accent.soft,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
     borderRadius: spacing.radius.md,
@@ -509,13 +459,13 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
   },
   eventPreviewText: {
     ...typography.presets.caption,
-    color: colors.primary.blue,
+    color: colors.accent.primary,
   },
   achievementBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    backgroundColor: colors.status.errorLight,
+    backgroundColor: colors.status.warningLight,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
     borderRadius: spacing.radius.md,
@@ -524,12 +474,12 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
   },
   achievementText: {
     ...typography.presets.caption,
-    color: colors.primary.coral,
+    color: colors.status.warning,
   },
   postStats: {
     paddingBottom: spacing.sm,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border.light,
+    borderBottomColor: colors.border.subtle,
     marginBottom: spacing.sm,
   },
   statsText: {
@@ -551,7 +501,7 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     color: colors.text.tertiary,
   },
   actionTextActive: {
-    color: colors.primary.coral,
+    color: colors.status.error,
   },
   separator: {
     height: spacing.md,

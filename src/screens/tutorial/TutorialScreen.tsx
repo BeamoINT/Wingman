@@ -1,7 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { LinearGradient } from 'expo-linear-gradient';
 import React, { useRef, useState } from 'react';
 import {
   Dimensions,
@@ -12,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Button } from '../../components';
+import { Button, Header, ScreenScaffold } from '../../components';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import type { ThemeTokens } from '../../theme/tokens';
@@ -174,19 +173,16 @@ export const TutorialScreen: React.FC = () => {
   );
 
   return (
-    <LinearGradient
-      colors={[colors.background.primary, colors.background.secondary]}
-      style={styles.container}
-    >
-      <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}> 
-        {currentIndex < slides.length - 1 ? (
+    <ScreenScaffold hideHorizontalPadding withBottomPadding={false} style={styles.container}>
+      <Header
+        title="Getting Started"
+        transparent
+        rightComponent={currentIndex < slides.length - 1 ? (
           <TouchableOpacity onPress={handleSkip} style={styles.skipButton}>
             <Text style={styles.skipText}>Skip</Text>
           </TouchableOpacity>
-        ) : (
-          <View style={styles.skipButton} />
-        )}
-      </View>
+        ) : undefined}
+      />
 
       <FlatList
         ref={flatListRef}
@@ -213,22 +209,19 @@ export const TutorialScreen: React.FC = () => {
           icon={currentIndex === slides.length - 1 ? 'arrow-forward' : undefined}
         />
       </View>
-    </LinearGradient>
+    </ScreenScaffold>
   );
 };
 
 const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
   container: {
     flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    paddingHorizontal: spacing.screenPadding,
-    paddingBottom: spacing.md,
+    backgroundColor: colors.surface.level0,
   },
   skipButton: {
-    paddingVertical: spacing.sm,
+    minWidth: 56,
+    alignItems: 'flex-end',
+    paddingVertical: spacing.xs,
     paddingHorizontal: spacing.md,
   },
   skipText: {
@@ -267,7 +260,9 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
   },
   featuresContainer: {
     alignSelf: 'stretch',
-    backgroundColor: colors.background.card,
+    backgroundColor: colors.surface.level1,
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
     borderRadius: spacing.radius.lg,
     padding: spacing.lg,
   },
@@ -280,7 +275,7 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     width: 20,
     height: 20,
     borderRadius: 10,
-    backgroundColor: `${colors.primary.blue}20`,
+    backgroundColor: colors.accent.soft,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: spacing.sm,
@@ -306,7 +301,7 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
   },
   paginationDotActive: {
     width: 24,
-    backgroundColor: colors.primary.blue,
+    backgroundColor: colors.accent.primary,
   },
   footer: {
     paddingHorizontal: spacing.screenPadding,

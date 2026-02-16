@@ -48,7 +48,7 @@ export const PrerequisitesStep: React.FC<PrerequisitesStepProps> = ({
       <View style={styles.rows}>
         {prerequisites.map((item) => (
           <View key={item.label} style={styles.row}>
-            <View style={[styles.rowIcon, { backgroundColor: item.met ? colors.status.successLight : colors.background.tertiary }]}>
+            <View style={[styles.rowIcon, { backgroundColor: item.met ? colors.status.successLight : colors.surface.level2 }]}>
               <Ionicons
                 name={item.icon}
                 size={16}
@@ -117,7 +117,7 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
   rows: {
     borderRadius: spacing.radius.lg,
     borderWidth: 1,
-    borderColor: colors.border.light,
+    borderColor: colors.border.subtle,
     paddingHorizontal: spacing.md,
     backgroundColor: colors.surface.level1,
   },
@@ -133,7 +133,7 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     width: 32,
     height: 32,
     borderRadius: spacing.radius.round,
-    backgroundColor: colors.background.tertiary,
+    backgroundColor: colors.surface.level2,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -150,8 +150,8 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     paddingVertical: spacing.xs,
     borderRadius: spacing.radius.round,
     borderWidth: 1,
-    borderColor: colors.accent.primary,
-    backgroundColor: colors.primary.blueSoft,
+    borderColor: colors.border.subtle,
+    backgroundColor: colors.accent.soft,
   },
   completeText: {
     ...typography.presets.caption,

@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Card } from '../../../components';
@@ -37,18 +36,13 @@ export const WelcomeStep: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <LinearGradient
-        colors={colors.gradients.premium}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.hero}
-      >
-        <Ionicons name="people" size={40} color={colors.primary.darkBlack} />
+      <View style={styles.hero}>
+        <Ionicons name="people" size={40} color={colors.accent.primary} />
         <Text style={styles.heroTitle}>Become a Wingman</Text>
         <Text style={styles.heroSubtitle}>
           Earn money by being a great friend. Set your own hours, choose activities, and get paid for your time.
         </Text>
-      </LinearGradient>
+      </View>
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>How It Works</Text>
@@ -87,16 +81,18 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     padding: spacing.xl,
     alignItems: 'center',
     gap: spacing.sm,
+    backgroundColor: colors.surface.level1,
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
   },
   heroTitle: {
     ...typography.presets.h2,
-    color: colors.primary.darkBlack,
+    color: colors.text.primary,
     textAlign: 'center',
   },
   heroSubtitle: {
     ...typography.presets.body,
-    color: colors.primary.darkBlack,
-    opacity: 0.84,
+    color: colors.text.secondary,
     textAlign: 'center',
     lineHeight: 22,
   },

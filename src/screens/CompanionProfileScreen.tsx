@@ -1,13 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
-import { LinearGradient } from 'expo-linear-gradient';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
     ActivityIndicator, Alert, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Badge, Button, Card, Rating, SafetyBanner } from '../components';
+import { Badge, Button, Card, Header, Rating, SafetyBanner, ScreenScaffold, SectionHeader } from '../components';
 import { useFeatureGate } from '../components/RequirementsGate';
 import { useTheme } from '../context/ThemeContext';
 import type { CompanionData } from '../services/api/companions';
@@ -277,32 +276,58 @@ export const CompanionProfileScreen: React.FC = () => {
 
   if (isLoadingCompanion) {
     return (
-      <View style={styles.loadingScreen}>
-        <ActivityIndicator size="large" color={colors.primary.blue} />
-        <Text style={styles.loadingText}>Loading wingman profile...</Text>
-      </View>
+      <ScreenScaffold>
+        <Header title="Wingman Profile" showBack onBackPress={handleBackPress} transparent />
+        <View style={styles.loadingScreen}>
+          <ActivityIndicator size="large" color={colors.accent.primary} />
+          <Text style={styles.loadingText}>Loading wingman profile...</Text>
+        </View>
+      </ScreenScaffold>
     );
   }
 
   if (loadError || !companion) {
     return (
-      <View style={styles.loadingScreen}>
-        <Ionicons name="alert-circle" size={36} color={colors.status.error} />
-        <Text style={styles.errorTextCentered}>
-          {loadError || 'Wingman profile is unavailable.'}
-        </Text>
-        <TouchableOpacity
-          style={styles.retryButton}
-          onPress={() => loadCompanion()}
-        >
-          <Text style={styles.retryText}>Try Again</Text>
-        </TouchableOpacity>
-      </View>
+      <ScreenScaffold>
+        <Header title="Wingman Profile" showBack onBackPress={handleBackPress} transparent />
+        <View style={styles.loadingScreen}>
+          <Ionicons name="alert-circle" size={36} color={colors.status.error} />
+          <Text style={styles.errorTextCentered}>
+            {loadError || 'Wingman profile is unavailable.'}
+          </Text>
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={() => loadCompanion()}
+          >
+            <Text style={styles.retryText}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
+      </ScreenScaffold>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <ScreenScaffold hideHorizontalPadding withBottomPadding={false} style={styles.container}>
+      <Header
+        title="Wingman Profile"
+        showBack
+        onBackPress={handleBackPress}
+        transparent
+        rightComponent={(
+          <View style={styles.headerRight}>
+            <TouchableOpacity style={styles.headerButton} onPress={() => haptics.light()}>
+              <Ionicons name="share-outline" size={20} color={colors.text.primary} />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.headerButton} onPress={handleFavoritePress}>
+              <Ionicons
+                name={isFavorite ? 'heart' : 'heart-outline'}
+                size={20}
+                color={isFavorite ? colors.status.error : colors.text.primary}
+              />
+            </TouchableOpacity>
+          </View>
+        )}
+      />
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={{ paddingBottom: 120 }}
@@ -320,29 +345,6 @@ export const CompanionProfileScreen: React.FC = () => {
               <Ionicons name="person" size={80} color={colors.text.tertiary} />
             </View>
           )}
-          <LinearGradient
-            colors={['transparent', colors.surface.overlay]}
-            style={styles.heroGradient}
-          />
-
-          {/* Header Buttons */}
-          <View style={[styles.headerButtons, { top: insets.top + spacing.sm }]}>
-            <TouchableOpacity style={styles.headerButton} onPress={handleBackPress}>
-              <Ionicons name="chevron-back" size={24} color={colors.text.primary} />
-            </TouchableOpacity>
-            <View style={styles.headerRight}>
-              <TouchableOpacity style={styles.headerButton} onPress={() => haptics.light()}>
-                <Ionicons name="share-outline" size={22} color={colors.text.primary} />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.headerButton} onPress={handleFavoritePress}>
-                <Ionicons
-                  name={isFavorite ? 'heart' : 'heart-outline'}
-                  size={22}
-                  color={isFavorite ? colors.status.error : colors.text.primary}
-                />
-              </TouchableOpacity>
-            </View>
-          </View>
 
           {/* Online Status */}
           {companion.isOnline && (
@@ -468,9 +470,7 @@ export const CompanionProfileScreen: React.FC = () => {
 
           {/* Reviews */}
           <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Reviews</Text>
-            </View>
+            <SectionHeader title="Reviews" />
             {reviews.length > 0 ? (
               reviews.map((review) => (
                 <Card key={review.id} variant="outlined" style={styles.reviewCard}>
@@ -496,10 +496,7 @@ export const CompanionProfileScreen: React.FC = () => {
       </ScrollView>
 
       {/* Bottom Action Bar */}
-      <LinearGradient
-        colors={['transparent', colors.background.primary]}
-        style={[styles.bottomBar, { paddingBottom: insets.bottom + spacing.md }]}
-      >
+      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + spacing.md }]}>
         <View style={styles.priceContainer}>
           <Text style={styles.priceLabel}>From</Text>
           <Text style={styles.price}>${companion.hourlyRate}</Text>
@@ -507,7 +504,7 @@ export const CompanionProfileScreen: React.FC = () => {
         </View>
         <View style={styles.actionButtons}>
           <TouchableOpacity style={styles.messageButton} onPress={handleMessagePress}>
-            <Ionicons name="chatbubble-outline" size={22} color={colors.primary.blue} />
+            <Ionicons name="chatbubble-outline" size={22} color={colors.accent.primary} />
           </TouchableOpacity>
           <Button
             title="Book Now"
@@ -517,15 +514,15 @@ export const CompanionProfileScreen: React.FC = () => {
             style={styles.bookButton}
           />
         </View>
-      </LinearGradient>
-    </View>
+      </View>
+    </ScreenScaffold>
   );
 };
 
 const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background.primary,
+    backgroundColor: colors.surface.level0,
   },
   loadingScreen: {
     flex: 1,
@@ -559,40 +556,28 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     flex: 1,
   },
   heroContainer: {
-    height: 400,
+    height: 320,
     position: 'relative',
   },
   heroImage: {
     width: '100%',
     height: '100%',
-    backgroundColor: colors.background.tertiary,
+    backgroundColor: colors.surface.level2,
   },
   heroImageFallback: {
     width: '100%',
     height: '100%',
-    backgroundColor: colors.background.tertiary,
+    backgroundColor: colors.surface.level2,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  heroGradient: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 200,
-  },
-  headerButtons: {
-    position: 'absolute',
-    left: spacing.screenPadding,
-    right: spacing.screenPadding,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
   },
   headerButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: colors.surface.overlay,
+    backgroundColor: colors.surface.level1,
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -606,7 +591,9 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     left: spacing.screenPadding,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.surface.overlay,
+    backgroundColor: colors.surface.level1,
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: spacing.radius.round,
@@ -694,10 +681,12 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     gap: spacing.sm,
   },
   tag: {
-    backgroundColor: colors.background.tertiary,
+    backgroundColor: colors.surface.level2,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: spacing.radius.round,
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
   },
   tagText: {
     ...typography.presets.bodySmall,
@@ -716,24 +705,26 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    backgroundColor: colors.primary.blueSoft,
+    backgroundColor: colors.accent.soft,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: spacing.radius.round,
   },
   languageText: {
     ...typography.presets.bodySmall,
-    color: colors.primary.blue,
+    color: colors.accent.primary,
   },
   interestTag: {
-    backgroundColor: colors.verification.trustedLight,
+    backgroundColor: colors.surface.level2,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: spacing.radius.round,
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
   },
   interestText: {
     ...typography.presets.bodySmall,
-    color: colors.verification.trusted,
+    color: colors.text.secondary,
   },
   badgeCard: {
     width: 120,
@@ -809,7 +800,10 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.screenPadding,
-    paddingTop: spacing.xl,
+    paddingTop: spacing.lg,
+    backgroundColor: colors.surface.level0,
+    borderTopWidth: 1,
+    borderTopColor: colors.border.subtle,
   },
   priceContainer: {
     flexDirection: 'row',
@@ -837,11 +831,11 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: colors.background.card,
+    backgroundColor: colors.surface.level1,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: colors.primary.blue,
+    borderColor: colors.border.subtle,
   },
   bookButton: {
     paddingHorizontal: spacing.xxl,

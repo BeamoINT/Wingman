@@ -37,7 +37,7 @@ const getStatusConfig = (tokens: ThemeTokens): Record<VerificationStepStatus, {
   pending: {
     icon: 'ellipse-outline',
     color: tokens.colors.text.tertiary,
-    backgroundColor: tokens.colors.background.tertiary,
+    backgroundColor: tokens.colors.surface.level2,
   },
   failed: {
     icon: 'close-circle',
@@ -100,7 +100,7 @@ export const VerificationStepItem: React.FC<VerificationStepItemProps> = ({
               {step.actionLabel}
             </Text>
             {step.status !== 'in_progress' ? (
-              <Ionicons name="chevron-forward" size={16} color={tokens.colors.primary.blue} />
+              <Ionicons name="chevron-forward" size={16} color={tokens.colors.accent.primary} />
             ) : null}
           </TouchableOpacity>
         ) : null}
@@ -177,17 +177,19 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
   actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.primary.blueSoft,
+    backgroundColor: colors.accent.soft,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: spacing.radius.md,
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
   },
   actionButtonDisabled: {
-    backgroundColor: colors.background.tertiary,
+    backgroundColor: colors.surface.level2,
   },
   actionButtonText: {
     ...typography.presets.buttonSmall,
-    color: colors.primary.blue,
+    color: colors.accent.primary,
     marginRight: spacing.xs,
   },
   actionButtonTextDisabled: {

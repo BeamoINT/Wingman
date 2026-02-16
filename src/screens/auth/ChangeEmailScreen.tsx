@@ -1,7 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { LinearGradient } from 'expo-linear-gradient';
 import React, { useEffect, useRef, useState } from 'react';
 import {
     Alert, KeyboardAvoidingView,
@@ -10,7 +9,7 @@ import {
 } from 'react-native';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Button, Input } from '../../components';
+import { Button, Header, Input, ScreenScaffold } from '../../components';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import type { ThemeTokens } from '../../theme/tokens';
@@ -166,35 +165,31 @@ export const ChangeEmailScreen: React.FC = () => {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
+    <ScreenScaffold hideHorizontalPadding withBottomPadding={false}>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <Header
+          title={step === 'email' ? 'Change Email' : 'Verify New Email'}
+          showBack
+          onBackPress={handleBack}
+          transparent
+        />
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}>
-          <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-            <Ionicons name="chevron-back" size={24} color={colors.text.primary} />
-          </TouchableOpacity>
-        </View>
-
         <View style={styles.content}>
           <Animated.View entering={FadeIn.delay(100)} style={styles.iconContainer}>
-            <LinearGradient
-              colors={colors.gradients.premium}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.iconGradient}
-            >
+            <View style={styles.iconBadge}>
               <Ionicons
                 name={step === 'email' ? 'mail' : 'checkmark-circle'}
-                size={40}
-                color={colors.primary.black}
+                size={32}
+                color={colors.accent.primary}
               />
-            </LinearGradient>
+            </View>
           </Animated.View>
 
           <Animated.Text entering={FadeInDown.delay(200)} style={styles.title}>
@@ -281,31 +276,17 @@ export const ChangeEmailScreen: React.FC = () => {
           }
         />
       </View>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </ScreenScaffold>
   );
 };
 
 const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background.primary,
   },
   scrollContent: {
     flexGrow: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.screenPadding,
-    paddingBottom: spacing.md,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.background.tertiary,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   content: {
     flex: 1,
@@ -316,10 +297,13 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
   iconContainer: {
     marginBottom: spacing.xl,
   },
-  iconGradient: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+  iconBadge: {
+    width: 76,
+    height: 76,
+    borderRadius: spacing.radius.xl,
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
+    backgroundColor: colors.surface.level2,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -349,17 +333,17 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     width: 48,
     height: 56,
     borderRadius: spacing.radius.md,
-    backgroundColor: colors.background.tertiary,
-    borderWidth: 2,
-    borderColor: colors.border.light,
+    backgroundColor: colors.surface.level2,
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
     textAlign: 'center',
     fontSize: 24,
     fontWeight: '600',
     color: colors.text.primary,
   },
   codeInputFilled: {
-    borderColor: colors.primary.blue,
-    backgroundColor: colors.background.secondary,
+    borderColor: colors.accent.primary,
+    backgroundColor: colors.accent.soft,
   },
   codeInputError: {
     borderColor: colors.status.error,
@@ -389,7 +373,7 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
   },
   resendLink: {
     ...typography.presets.body,
-    color: colors.primary.blue,
+    color: colors.accent.primary,
     fontWeight: '600',
   },
   resendLinkDisabled: {
@@ -400,5 +384,6 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     paddingTop: spacing.md,
     borderTopWidth: 1,
     borderTopColor: colors.border.subtle,
+    backgroundColor: colors.surface.level0,
   },
 });

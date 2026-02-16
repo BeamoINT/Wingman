@@ -116,7 +116,7 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     borderRadius: spacing.radius.xl,
     backgroundColor: colors.surface.level1,
     borderWidth: 1,
-    borderColor: colors.border.light,
+    borderColor: colors.border.subtle,
   },
   preview: {
     width: '100%',
@@ -139,7 +139,7 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     borderRadius: spacing.radius.lg,
     borderWidth: 1,
     borderStyle: 'dashed',
-    borderColor: colors.border.light,
+    borderColor: colors.border.subtle,
     backgroundColor: colors.surface.level1,
     alignItems: 'center',
     justifyContent: 'center',

@@ -18,6 +18,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Header, ScreenScaffold } from '../../components';
 import { useTheme } from '../../context/ThemeContext';
 import { getLegalDocument, LEGAL_DOCUMENT_META } from '../../legal';
 import type { LegalDocumentType, LegalSection } from '../../legal/types';
@@ -114,18 +115,13 @@ export const LegalDocumentScreen: React.FC<LegalDocumentScreenProps> = ({
   );
 
   return (
-    <View style={styles.container}>
-      <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}> 
-        <TouchableOpacity style={styles.backButton} onPress={handleBackPress}>
-          <Ionicons name="chevron-back" size={24} color={colors.text.primary} />
-        </TouchableOpacity>
-        <View style={styles.headerTitleContainer}>
-          <Text style={styles.headerTitle} numberOfLines={1}>
-            {applyWingmanBranding(document.shortTitle)}
-          </Text>
-        </View>
-        <View style={styles.placeholder} />
-      </View>
+    <ScreenScaffold hideHorizontalPadding withBottomPadding={false} style={styles.container}>
+      <Header
+        title={applyWingmanBranding(document.shortTitle)}
+        showBack
+        onBackPress={handleBackPress}
+        transparent
+      />
 
       <ScrollView
         style={styles.scrollView}
@@ -172,7 +168,7 @@ export const LegalDocumentScreen: React.FC<LegalDocumentScreenProps> = ({
           </TouchableOpacity>
         </View>
       ) : null}
-    </View>
+    </ScreenScaffold>
   );
 };
 
@@ -190,30 +186,7 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     color: colors.text.secondary,
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.screenPadding,
-    paddingBottom: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border.light,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitleContainer: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  headerTitle: {
-    ...typography.presets.h4,
-    color: colors.text.primary,
-  },
-  placeholder: {
-    width: 40,
+    display: 'none',
   },
   scrollView: {
     flex: 1,
@@ -297,7 +270,7 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     right: 0,
     paddingHorizontal: spacing.screenPadding,
     paddingTop: spacing.md,
-    backgroundColor: colors.background.primary,
+    backgroundColor: colors.surface.level0,
     borderTopWidth: 1,
     borderTopColor: colors.border.light,
   },

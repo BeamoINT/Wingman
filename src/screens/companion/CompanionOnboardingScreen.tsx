@@ -23,7 +23,7 @@ import {
     Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Button, ProgressBar } from '../../components';
+import { Button, Header, ProgressBar, ScreenScaffold } from '../../components';
 import { useAuth } from '../../context/AuthContext';
 import { useRequirements } from '../../context/RequirementsContext';
 import { useTheme } from '../../context/ThemeContext';
@@ -497,20 +497,20 @@ export const CompanionOnboardingScreen: React.FC = () => {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
-        <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-          <Ionicons name="chevron-back" size={24} color={colors.text.primary} />
-        </TouchableOpacity>
+    <ScreenScaffold hideHorizontalPadding withBottomPadding={false}>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <Header
+          title={`Application ${currentStep}/${TOTAL_STEPS}`}
+          showBack
+          onBackPress={handleBack}
+          transparent
+        />
         <View style={styles.progressWrapper}>
           <ProgressBar currentStep={currentStep} totalSteps={TOTAL_STEPS} />
         </View>
-        <View style={styles.backButton} />
-      </View>
 
       {/* Content */}
       <ScrollView
@@ -549,7 +549,8 @@ export const CompanionOnboardingScreen: React.FC = () => {
           <Text style={styles.overlayText}>Uploading documents and submitting...</Text>
         </View>
       )}
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </ScreenScaffold>
   );
 };
 
@@ -560,23 +561,11 @@ export const CompanionOnboardingScreen: React.FC = () => {
 const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background.primary,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.screenPadding,
-    paddingBottom: spacing.md,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: colors.surface.level0,
   },
   progressWrapper: {
-    flex: 1,
-    marginHorizontal: spacing.md,
+    marginHorizontal: spacing.screenPadding,
+    marginBottom: spacing.md,
   },
   scrollView: {
     flex: 1,
@@ -589,8 +578,8 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     paddingHorizontal: spacing.screenPadding,
     paddingTop: spacing.md,
     borderTopWidth: 1,
-    borderTopColor: colors.border.light,
-    backgroundColor: colors.background.primary,
+    borderTopColor: colors.border.subtle,
+    backgroundColor: colors.surface.level0,
   },
 
   // Step containers

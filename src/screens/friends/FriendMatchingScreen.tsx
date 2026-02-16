@@ -11,15 +11,14 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Avatar } from '../../components';
+import { Avatar, Header, InlineBanner, ScreenScaffold } from '../../components';
 import { useAuth } from '../../context/AuthContext';
 import { useRequirements } from '../../context/RequirementsContext';
+import { useTheme } from '../../context/ThemeContext';
 import {
   fetchRankedFriendProfiles,
   sendConnectionRequest,
 } from '../../services/api/friendsApi';
-import { useTheme } from '../../context/ThemeContext';
 import type { ThemeTokens } from '../../theme/tokens';
 import { useThemedStyles } from '../../theme/useThemedStyles';
 import type { RootStackParamList } from '../../types';
@@ -32,7 +31,6 @@ const PAGE_SIZE = 20;
 
 const FriendMatchingContent: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
-  const insets = useSafeAreaInsets();
   const { tokens } = useTheme();
   const styles = useThemedStyles(createStyles);
   const { colors } = tokens;
@@ -104,7 +102,7 @@ const FriendMatchingContent: React.FC = () => {
   }, [offset]);
 
   useEffect(() => {
-    loadProfiles(true);
+    void loadProfiles(true);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleBackPress = async () => {
@@ -142,7 +140,7 @@ const FriendMatchingContent: React.FC = () => {
     if (!values.length) return null;
     return (
       <View style={styles.commonalityRow}>
-        <Ionicons name={icon} size={14} color={colors.primary.blue} />
+        <Ionicons name={icon} size={14} color={colors.accent.primary} />
         <Text style={styles.commonalityText}>
           {label}: {values.slice(0, 3).join(', ')}
         </Text>
@@ -160,21 +158,17 @@ const FriendMatchingContent: React.FC = () => {
     return (
       <View style={styles.profileCard}>
         <View style={styles.profileHeader}>
-          <Avatar
-            source={item.avatar}
-            name={name}
-            size="large"
-          />
+          <Avatar source={item.avatar} name={name} size="large" />
           <View style={styles.profileMeta}>
             <View style={styles.nameRow}>
               <Text style={styles.profileName}>{name}</Text>
               {item.verificationLevel !== 'basic' ? (
-                <Ionicons name="checkmark-circle" size={18} color={colors.primary.blue} />
+                <Ionicons name="checkmark-circle" size={18} color={colors.accent.primary} />
               ) : null}
             </View>
             <Text style={styles.locationText}>{locationText}</Text>
             <View style={styles.scorePill}>
-              <Ionicons name="sparkles-outline" size={14} color={colors.primary.blue} />
+              <Ionicons name="sparkles-outline" size={14} color={colors.accent.primary} />
               <Text style={styles.scoreText}>{score}% compatibility</Text>
             </View>
           </View>
@@ -202,11 +196,7 @@ const FriendMatchingContent: React.FC = () => {
               color={isPro ? colors.text.primary : colors.text.tertiary}
             />
             <Text style={[styles.requestButtonText, !isPro && styles.requestButtonTextLocked]}>
-              {isBusy
-                ? 'Sending...'
-                : isPro
-                  ? 'Send Request'
-                  : 'Pro Required'}
+              {isBusy ? 'Sending...' : isPro ? 'Send Request' : 'Pro Required'}
             </Text>
           </TouchableOpacity>
         </View>
@@ -218,31 +208,33 @@ const FriendMatchingContent: React.FC = () => {
     if (!isLoadingMore) return null;
     return (
       <View style={styles.footerLoading}>
-        <ActivityIndicator size="small" color={colors.primary.blue} />
+        <ActivityIndicator size="small" color={colors.accent.primary} />
       </View>
     );
-  }, [isLoadingMore, colors.primary.blue, styles.footerLoading]);
+  }, [isLoadingMore, colors.accent.primary, styles.footerLoading]);
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={handleBackPress}>
-          <Ionicons name="chevron-back" size={24} color={colors.text.primary} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Friend Matching</Text>
-        <TouchableOpacity style={styles.headerRight} onPress={() => navigation.navigate('FriendRequests')}>
-          <Ionicons name="mail-outline" size={20} color={colors.primary.blue} />
-        </TouchableOpacity>
-      </View>
+    <ScreenScaffold hideHorizontalPadding withBottomPadding={false} style={styles.container}>
+      <Header
+        title="Friend Matching"
+        showBack
+        onBackPress={handleBackPress}
+        rightIcon="mail-outline"
+        onRightPress={() => navigation.navigate('FriendRequests')}
+        transparent
+      />
 
       {!isPro ? (
-        <TouchableOpacity style={styles.previewBanner} onPress={handleUpgradePress}>
-          <Ionicons name="lock-closed-outline" size={18} color={colors.primary.coral} />
-          <Text style={styles.previewBannerText}>
-            You are in preview mode. Upgrade to Pro to send friend requests.
-          </Text>
-          <Ionicons name="chevron-forward" size={16} color={colors.text.tertiary} />
-        </TouchableOpacity>
+        <View style={styles.bannerWrap}>
+          <InlineBanner
+            title="Preview mode"
+            message="Upgrade to Pro to send friend requests and unlock full Friends features."
+            variant="warning"
+          />
+          <TouchableOpacity style={styles.upgradeButton} onPress={handleUpgradePress}>
+            <Text style={styles.upgradeButtonText}>Upgrade to Pro</Text>
+          </TouchableOpacity>
+        </View>
       ) : null}
 
       <FlatList
@@ -253,18 +245,18 @@ const FriendMatchingContent: React.FC = () => {
         showsVerticalScrollIndicator={false}
         refreshControl={(
           <RefreshControl
-            tintColor={colors.primary.blue}
+            tintColor={colors.accent.primary}
             refreshing={isRefreshing}
             onRefresh={() => {
               setOffset(0);
-              loadProfiles(true);
+              void loadProfiles(true);
             }}
           />
         )}
         onEndReachedThreshold={0.4}
         onEndReached={() => {
           if (!isLoading && !isRefreshing && !isLoadingMore && hasMore) {
-            loadProfiles(false);
+            void loadProfiles(false);
           }
         }}
         ListFooterComponent={listFooter}
@@ -273,7 +265,7 @@ const FriendMatchingContent: React.FC = () => {
           isLoading
             ? (
               <View style={styles.emptyState}>
-                <ActivityIndicator size="large" color={colors.primary.blue} />
+                <ActivityIndicator size="large" color={colors.accent.primary} />
                 <Text style={styles.emptyTitle}>Finding great friend matches...</Text>
               </View>
             )
@@ -290,17 +282,20 @@ const FriendMatchingContent: React.FC = () => {
                 <Text style={styles.emptySubtitle}>
                   {error || 'Check back soon for new friend recommendations.'}
                 </Text>
-                <TouchableOpacity style={styles.retryButton} onPress={() => {
-                  setOffset(0);
-                  loadProfiles(true);
-                }}>
+                <TouchableOpacity
+                  style={styles.retryButton}
+                  onPress={() => {
+                    setOffset(0);
+                    void loadProfiles(true);
+                  }}
+                >
                   <Text style={styles.retryButtonText}>Refresh</Text>
                 </TouchableOpacity>
               </View>
             )
         }
       />
-    </View>
+    </ScreenScaffold>
   );
 };
 
@@ -311,49 +306,22 @@ export const FriendMatchingScreen: React.FC = () => {
 const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background.primary,
+    backgroundColor: colors.surface.level0,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  bannerWrap: {
     paddingHorizontal: spacing.screenPadding,
-    paddingVertical: spacing.md,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: -spacing.sm,
-  },
-  headerTitle: {
-    ...typography.presets.h3,
-    color: colors.text.primary,
-  },
-  headerRight: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  previewBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
     gap: spacing.sm,
-    marginHorizontal: spacing.screenPadding,
-    marginBottom: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border.light,
-    backgroundColor: colors.background.card,
-    borderRadius: spacing.radius.md,
+  },
+  upgradeButton: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.accent.primary,
+    borderRadius: spacing.radius.full,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
-  previewBannerText: {
+  upgradeButtonText: {
     ...typography.presets.caption,
-    color: colors.text.secondary,
-    flex: 1,
+    color: colors.text.primary,
   },
   listContent: {
     paddingHorizontal: spacing.screenPadding,
@@ -365,8 +333,8 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
   profileCard: {
     borderRadius: spacing.radius.xl,
     borderWidth: 1,
-    borderColor: colors.border.light,
-    backgroundColor: colors.background.card,
+    borderColor: colors.border.subtle,
+    backgroundColor: colors.surface.level1,
     padding: spacing.md,
     gap: spacing.sm,
   },
@@ -397,14 +365,14 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    backgroundColor: colors.primary.blueSoft,
+    backgroundColor: colors.accent.soft,
     borderRadius: spacing.radius.full,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
   },
   scoreText: {
     ...typography.presets.caption,
-    color: colors.primary.blue,
+    color: colors.accent.primary,
   },
   profileBio: {
     ...typography.presets.body,
@@ -432,15 +400,15 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    backgroundColor: colors.primary.blue,
+    backgroundColor: colors.accent.primary,
     borderRadius: spacing.radius.full,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
   requestButtonLocked: {
-    backgroundColor: colors.surface.level1,
+    backgroundColor: colors.surface.level2,
     borderWidth: 1,
-    borderColor: colors.border.light,
+    borderColor: colors.border.subtle,
   },
   requestButtonText: {
     ...typography.presets.button,
@@ -471,7 +439,7 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
   },
   retryButton: {
     marginTop: spacing.sm,
-    backgroundColor: colors.primary.blue,
+    backgroundColor: colors.accent.primary,
     borderRadius: spacing.radius.full,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,

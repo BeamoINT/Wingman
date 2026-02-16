@@ -11,8 +11,14 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Avatar, PillTabs, RequirementsGate } from '../../components';
+import {
+  Avatar,
+  Header,
+  PillTabs,
+  RequirementsGate,
+  ScreenScaffold,
+  SectionHeader,
+} from '../../components';
 import { useTheme } from '../../context/ThemeContext';
 import {
   fetchConnectionInbox,
@@ -30,7 +36,6 @@ type RequestTab = 'incoming' | 'outgoing' | 'connected';
 
 const FriendRequestsContent: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
-  const insets = useSafeAreaInsets();
   const { tokens } = useTheme();
   const { colors } = tokens;
   const styles = useThemedStyles(createStyles);
@@ -53,7 +58,13 @@ const FriendRequestsContent: React.FC = () => {
 
     setError(null);
     try {
-      const { incoming: incomingRows, outgoing: outgoingRows, accepted, error: inboxError } = await fetchConnectionInbox();
+      const {
+        incoming: incomingRows,
+        outgoing: outgoingRows,
+        accepted,
+        error: inboxError,
+      } = await fetchConnectionInbox();
+
       if (inboxError) {
         setError(inboxError.message);
         setIncoming([]);
@@ -75,7 +86,7 @@ const FriendRequestsContent: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    loadInbox();
+    void loadInbox();
   }, [loadInbox]);
 
   const handleBackPress = async () => {
@@ -159,11 +170,7 @@ const FriendRequestsContent: React.FC = () => {
     return (
       <View style={styles.requestCard}>
         <View style={styles.requestHeader}>
-          <Avatar
-            source={item.otherProfile?.avatar}
-            name={name}
-            size="medium"
-          />
+          <Avatar source={item.otherProfile?.avatar} name={name} size="medium" />
           <View style={styles.requestContent}>
             <Text style={styles.requestName}>{name}</Text>
             <Text style={styles.requestSubtitle} numberOfLines={2}>{subtitle}</Text>
@@ -213,73 +220,73 @@ const FriendRequestsContent: React.FC = () => {
   };
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={handleBackPress}>
-          <Ionicons name="chevron-back" size={24} color={colors.text.primary} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Friend Requests</Text>
-        <View style={styles.headerRight} />
-      </View>
+    <ScreenScaffold hideHorizontalPadding withBottomPadding={false} style={styles.container}>
+      <Header title="Friend Requests" showBack onBackPress={handleBackPress} transparent />
 
-      <View style={styles.tabs}>
-        <PillTabs
-          items={[
-            { id: 'incoming', label: 'Incoming', count: incoming.length },
-            { id: 'outgoing', label: 'Outgoing', count: outgoing.length },
-            { id: 'connected', label: 'Connected', count: connected.length },
-          ]}
-          activeId={activeTab}
-          onChange={(value) => setActiveTab(value as RequestTab)}
+      <View style={styles.innerContent}>
+        <SectionHeader title="Connections" subtitle="Manage requests and active chats" />
+
+        <View style={styles.tabs}>
+          <PillTabs
+            items={[
+              { id: 'incoming', label: 'Incoming', count: incoming.length },
+              { id: 'outgoing', label: 'Outgoing', count: outgoing.length },
+              { id: 'connected', label: 'Connected', count: connected.length },
+            ]}
+            activeId={activeTab}
+            onChange={(value) => setActiveTab(value as RequestTab)}
+          />
+        </View>
+
+        <FlatList
+          data={data}
+          renderItem={renderItem}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          refreshControl={(
+            <RefreshControl
+              tintColor={colors.accent.primary}
+              refreshing={isRefreshing}
+              onRefresh={() => {
+                void loadInbox(true);
+              }}
+            />
+          )}
+          ItemSeparatorComponent={() => <View style={styles.separator} />}
+          ListEmptyComponent={
+            isLoading
+              ? (
+                <View style={styles.emptyState}>
+                  <ActivityIndicator size="large" color={colors.accent.primary} />
+                  <Text style={styles.emptyTitle}>Loading requests...</Text>
+                </View>
+              )
+              : (
+                <View style={styles.emptyState}>
+                  <Ionicons
+                    name={error ? 'alert-circle-outline' : 'people-outline'}
+                    size={52}
+                    color={error ? colors.status.error : colors.text.tertiary}
+                  />
+                  <Text style={styles.emptyTitle}>
+                    {error
+                      ? 'Unable to load requests'
+                      : activeTab === 'incoming'
+                        ? 'No incoming requests'
+                        : activeTab === 'outgoing'
+                          ? 'No outgoing requests'
+                          : 'No connections yet'}
+                  </Text>
+                  <Text style={styles.emptySubtitle}>
+                    {error || 'Start connecting with relevant friends from the Match tab.'}
+                  </Text>
+                </View>
+              )
+          }
         />
       </View>
-
-      <FlatList
-        data={data}
-        renderItem={renderItem}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
-        refreshControl={(
-          <RefreshControl
-            tintColor={colors.primary.blue}
-            refreshing={isRefreshing}
-            onRefresh={() => loadInbox(true)}
-          />
-        )}
-        ItemSeparatorComponent={() => <View style={styles.separator} />}
-        ListEmptyComponent={
-          isLoading
-            ? (
-              <View style={styles.emptyState}>
-                <ActivityIndicator size="large" color={colors.primary.blue} />
-                <Text style={styles.emptyTitle}>Loading requests...</Text>
-              </View>
-            )
-            : (
-              <View style={styles.emptyState}>
-                <Ionicons
-                  name={error ? 'alert-circle-outline' : 'people-outline'}
-                  size={52}
-                  color={error ? colors.status.error : colors.text.tertiary}
-                />
-                <Text style={styles.emptyTitle}>
-                  {error
-                    ? 'Unable to load requests'
-                    : activeTab === 'incoming'
-                      ? 'No incoming requests'
-                      : activeTab === 'outgoing'
-                        ? 'No outgoing requests'
-                        : 'No connections yet'}
-                </Text>
-                <Text style={styles.emptySubtitle}>
-                  {error || 'Start connecting with relevant friends from the Match tab.'}
-                </Text>
-              </View>
-            )
-        }
-      />
-    </View>
+    </ScreenScaffold>
   );
 };
 
@@ -294,45 +301,27 @@ export const FriendRequestsScreen: React.FC = () => {
 const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background.primary,
+    backgroundColor: colors.surface.level0,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  innerContent: {
+    flex: 1,
     paddingHorizontal: spacing.screenPadding,
-    paddingVertical: spacing.md,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: -spacing.sm,
-  },
-  headerTitle: {
-    ...typography.presets.h3,
-    color: colors.text.primary,
-  },
-  headerRight: {
-    width: 40,
+    gap: spacing.sm,
   },
   tabs: {
-    paddingHorizontal: spacing.screenPadding,
-    marginBottom: spacing.sm,
+    marginBottom: spacing.xs,
   },
   listContent: {
-    paddingHorizontal: spacing.screenPadding,
     paddingBottom: spacing.massive,
   },
   separator: {
     height: spacing.md,
   },
   requestCard: {
-    backgroundColor: colors.background.card,
+    backgroundColor: colors.surface.level1,
     borderRadius: spacing.radius.xl,
     borderWidth: 1,
-    borderColor: colors.border.light,
+    borderColor: colors.border.subtle,
     padding: spacing.md,
     gap: spacing.md,
   },
@@ -360,7 +349,7 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     gap: spacing.sm,
   },
   primaryAction: {
-    backgroundColor: colors.primary.blue,
+    backgroundColor: colors.accent.primary,
     borderRadius: spacing.radius.full,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
@@ -370,9 +359,9 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     color: colors.text.primary,
   },
   secondaryAction: {
-    backgroundColor: colors.surface.level1,
+    backgroundColor: colors.surface.level2,
     borderWidth: 1,
-    borderColor: colors.border.light,
+    borderColor: colors.border.subtle,
     borderRadius: spacing.radius.full,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,

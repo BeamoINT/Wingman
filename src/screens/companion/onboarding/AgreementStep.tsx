@@ -72,7 +72,7 @@ export const AgreementStep: React.FC<AgreementStepProps> = ({ accepted, onToggle
 
       <TouchableOpacity style={styles.checkboxRow} onPress={onToggleAccepted} activeOpacity={0.7}>
         <View style={[styles.checkbox, accepted && styles.checkboxChecked]}>
-          {accepted ? <Ionicons name="checkmark" size={14} color={colors.primary.darkBlack} /> : null}
+          {accepted ? <Ionicons name="checkmark" size={14} color={colors.surface.level0} /> : null}
         </View>
         <Text style={styles.checkboxLabel}>
           I have read, understood, and agree to the Wingman Service Agreement.

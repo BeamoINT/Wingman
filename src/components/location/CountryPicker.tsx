@@ -95,13 +95,13 @@ export const CountryPicker: React.FC<CountryPickerProps> = ({
             <Ionicons
               name="checkmark-circle"
               size={22}
-              color={tokens.colors.primary.blue}
+              color={tokens.colors.accent.primary}
             />
           ) : null}
         </TouchableOpacity>
       );
     },
-    [selectedCode, handleSelect, styles, tokens.colors.primary.blue],
+    [selectedCode, handleSelect, styles, tokens.colors.accent.primary],
   );
 
   const renderSectionHeader = useCallback(
@@ -201,11 +201,13 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.background.tertiary,
+    backgroundColor: colors.surface.level2,
     borderRadius: spacing.radius.lg,
     paddingHorizontal: spacing.md,
     marginHorizontal: spacing.lg,
     marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
   },
   searchInput: {
     flex: 1,
@@ -218,7 +220,7 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     paddingHorizontal: spacing.lg,
   },
   sectionHeader: {
-    backgroundColor: colors.background.elevated,
+    backgroundColor: colors.surface.level1,
     paddingVertical: spacing.sm,
     paddingTop: spacing.md,
   },
@@ -232,10 +234,10 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     alignItems: 'center',
     paddingVertical: spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border.light,
+    borderBottomColor: colors.border.subtle,
   },
   countryItemSelected: {
-    backgroundColor: colors.primary.blueSoft,
+    backgroundColor: colors.accent.soft,
   },
   flag: {
     fontSize: 28,

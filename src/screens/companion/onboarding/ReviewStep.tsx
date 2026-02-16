@@ -29,7 +29,7 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({ data, idTypes }) => {
         Review your application before submitting. You can go back to edit anything.
       </Text>
 
-      <Card variant="gradient" style={styles.summaryCard}>
+      <Card variant="outlined" style={styles.summaryCard}>
         <Text style={styles.summaryTitle}>Application Summary</Text>
 
         <View style={styles.summaryRow}>

@@ -88,7 +88,7 @@ export const CitySearch: React.FC<CitySearchProps> = ({
         <Ionicons
           name="location"
           size={20}
-          color={tokens.colors.primary.blue}
+          color={tokens.colors.accent.primary}
           style={styles.locationIcon}
         />
         <View style={styles.predictionInfo}>
@@ -98,11 +98,11 @@ export const CitySearch: React.FC<CitySearchProps> = ({
           </Text>
         </View>
         {isLoadingDetails ? (
-          <ActivityIndicator size="small" color={tokens.colors.primary.blue} />
+          <ActivityIndicator size="small" color={tokens.colors.accent.primary} />
         ) : null}
       </TouchableOpacity>
     ),
-    [handleSelect, isLoadingDetails, styles, tokens.colors.primary.blue],
+    [handleSelect, isLoadingDetails, styles, tokens.colors.accent.primary],
   );
 
   const keyExtractor = useCallback((item: PlacePrediction) => item.placeId, []);
@@ -111,7 +111,7 @@ export const CitySearch: React.FC<CitySearchProps> = ({
     if (isSearching) {
       return (
         <View style={styles.emptyContainer}>
-          <ActivityIndicator size="large" color={tokens.colors.primary.blue} />
+          <ActivityIndicator size="large" color={tokens.colors.accent.primary} />
           <Text style={styles.emptyText}>Searching...</Text>
         </View>
       );
@@ -186,7 +186,7 @@ export const CitySearch: React.FC<CitySearchProps> = ({
 
         {isLoadingDetails ? (
           <View style={styles.loadingOverlay}>
-            <ActivityIndicator size="large" color={tokens.colors.primary.blue} />
+            <ActivityIndicator size="large" color={tokens.colors.accent.primary} />
             <Text style={styles.loadingText}>Getting city details...</Text>
           </View>
         ) : null}
@@ -233,11 +233,13 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.background.tertiary,
+    backgroundColor: colors.surface.level2,
     borderRadius: spacing.radius.lg,
     paddingHorizontal: spacing.md,
     marginHorizontal: spacing.lg,
     marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
   },
   searchInput: {
     flex: 1,
@@ -254,7 +256,7 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     alignItems: 'center',
     paddingVertical: spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border.light,
+    borderBottomColor: colors.border.subtle,
   },
   locationIcon: {
     marginRight: spacing.md,

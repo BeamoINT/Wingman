@@ -193,7 +193,7 @@ export const SafetyScreen: React.FC = () => {
           subtitle="Protection through the full booking lifecycle"
         />
 
-        <Card variant="gradient" style={styles.timelineCard}>
+        <Card variant="outlined" style={styles.timelineCard}>
           {[
             {
               title: 'Before Your Booking',
@@ -277,7 +277,7 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     width: 36,
     height: 36,
     borderRadius: spacing.radius.md,
-    backgroundColor: colors.primary.blueSoft,
+    backgroundColor: colors.accent.soft,
     alignItems: 'center',
     justifyContent: 'center',
   },
