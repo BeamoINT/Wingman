@@ -12,14 +12,12 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { configureReanimatedLogger, ReanimatedLogLevel } from 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ErrorBoundary, LoadingScreen } from './src/components';
-import { requiresNativeBuild } from './src/config/runtime';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { NetworkProvider } from './src/context/NetworkContext';
 import { RequirementsProvider } from './src/context/RequirementsContext';
 import { ThemeProvider, useTheme } from './src/context/ThemeContext';
 import { VerificationProvider } from './src/context/VerificationContext';
 import { RootNavigator } from './src/navigation';
-import { UnsupportedRuntimeScreen } from './src/screens/system/UnsupportedRuntimeScreen';
 import { captureError, initializeSentry } from './src/services/monitoring/sentry';
 
 // Disable strict mode warnings for shared value reads during render
@@ -146,12 +144,7 @@ export default function App() {
       <ErrorBoundary onError={handleError}>
         <SafeAreaProvider>
           <ThemeProvider>
-            {requiresNativeBuild ? (
-              <>
-                <StatusBar style="light" />
-                <UnsupportedRuntimeScreen />
-              </>
-            ) : !fontsReady ? (
+            {!fontsReady ? (
               <LoadingScreen message={loadingMessage} />
             ) : (
               <NetworkProvider>
