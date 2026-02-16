@@ -39,6 +39,7 @@ const MESSAGE_ENCRYPTION_VERSION = 'x25519-xsalsa20poly1305-v1';
 const ENCRYPTED_MESSAGE_PREVIEW = 'Encrypted message';
 const STORE_PREFIX = 'wingman_msg_keypair_v1_';
 const PEER_KEY_FINGERPRINT_PREFIX = 'wingman_msg_peer_fingerprint_v1_';
+const PEER_DEVICE_KEY_FINGERPRINT_PREFIX = 'wingman_msg_peer_device_fingerprint_v2_';
 const PROFILE_PUBLIC_KEY_COLUMN = 'message_encryption_public_key';
 const PROFILE_VERSION_COLUMN = 'message_encryption_key_version';
 const PROFILE_UPDATED_AT_COLUMN = 'message_encryption_updated_at';
@@ -79,6 +80,10 @@ function getStoreKey(userId: string): string {
 
 function getPeerFingerprintStoreKey(userId: string): string {
   return `${PEER_KEY_FINGERPRINT_PREFIX}${userId}`;
+}
+
+function getPeerDeviceFingerprintStoreKey(userId: string): string {
+  return `${PEER_DEVICE_KEY_FINGERPRINT_PREFIX}${userId}`;
 }
 
 function assertValidPublicKey(keyBase64: string): void {
@@ -391,6 +396,81 @@ export async function pinAndCheckPeerPublicKeys(
   return {
     changedUserIds: Array.from(changedUserIds),
     pinnedUserIds: Array.from(pinnedUserIds),
+  };
+}
+
+type PeerDeviceFingerprintMap = Record<string, string>;
+
+async function loadPeerDeviceFingerprints(ownerUserId: string): Promise<PeerDeviceFingerprintMap> {
+  const raw = await SecureStore.getItemAsync(getPeerDeviceFingerprintStoreKey(ownerUserId), SECURE_STORE_OPTIONS);
+  if (!raw) {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as PeerDeviceFingerprintMap;
+    if (!parsed || typeof parsed !== 'object') {
+      return {};
+    }
+    return parsed;
+  } catch {
+    return {};
+  }
+}
+
+async function savePeerDeviceFingerprints(ownerUserId: string, fingerprints: PeerDeviceFingerprintMap): Promise<void> {
+  await SecureStore.setItemAsync(
+    getPeerDeviceFingerprintStoreKey(ownerUserId),
+    JSON.stringify(fingerprints),
+    SECURE_STORE_OPTIONS
+  );
+}
+
+export function makePeerDeviceFingerprintKey(userId: string, deviceId: string): string {
+  return `${userId}:${deviceId}`;
+}
+
+export async function pinAndCheckPeerDevicePublicKeys(
+  ownerUserId: string,
+  peerDevicePublicKeys: Record<string, string>
+): Promise<{ changedDeviceIds: string[]; pinnedDeviceIds: string[] }> {
+  if (!ownerUserId) {
+    throw new SecureMessagingError('identity_unavailable', 'User is not authenticated.');
+  }
+
+  const fingerprintStore = await loadPeerDeviceFingerprints(ownerUserId);
+  const changedDeviceIds = new Set<string>();
+  const pinnedDeviceIds = new Set<string>();
+  let hasUpdates = false;
+
+  for (const [deviceCompositeId, publicKey] of Object.entries(peerDevicePublicKeys)) {
+    if (!deviceCompositeId || !publicKey) {
+      continue;
+    }
+
+    assertValidPublicKey(publicKey);
+    const fingerprint = await getPublicKeyFingerprint(publicKey);
+    const existing = fingerprintStore[deviceCompositeId];
+
+    if (!existing) {
+      fingerprintStore[deviceCompositeId] = fingerprint;
+      pinnedDeviceIds.add(deviceCompositeId);
+      hasUpdates = true;
+      continue;
+    }
+
+    if (existing !== fingerprint) {
+      changedDeviceIds.add(deviceCompositeId);
+    }
+  }
+
+  if (hasUpdates) {
+    await savePeerDeviceFingerprints(ownerUserId, fingerprintStore);
+  }
+
+  return {
+    changedDeviceIds: Array.from(changedDeviceIds),
+    pinnedDeviceIds: Array.from(pinnedDeviceIds),
   };
 }
 

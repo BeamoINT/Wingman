@@ -12,6 +12,7 @@ import { RequirementsGate } from '../../components/RequirementsGate';
 import { useTheme } from '../../context/ThemeContext';
 import { useRequirements } from '../../context/RequirementsContext';
 import { fetchFriendGroups, joinFriendGroup, leaveFriendGroup } from '../../services/api/friendsApi';
+import { getOrCreateGroupConversation } from '../../services/api/messages';
 import type { ThemeTokens } from '../../theme/tokens';
 import { useThemedStyles } from '../../theme/useThemedStyles';
 import type { RootStackParamList } from '../../types';
@@ -146,6 +147,17 @@ const GroupsContent: React.FC = () => {
     }
   };
 
+  const handleOpenGroupChat = async (groupId: string) => {
+    await haptics.light();
+    const { conversation, error: conversationError } = await getOrCreateGroupConversation(groupId);
+    if (conversationError || !conversation?.id) {
+      setError(conversationError?.message || 'Unable to open group chat right now.');
+      return;
+    }
+
+    navigation.navigate('Chat', { conversationId: conversation.id });
+  };
+
   const renderGroup = ({ item }: { item: Group }) => (
     <TouchableOpacity style={styles.groupCard}>
       {item.coverImage ? (
@@ -179,16 +191,25 @@ const GroupsContent: React.FC = () => {
             <Text style={styles.memberCountText}>{item.memberCount} members</Text>
           </View>
           {item.isMember ? (
-            <TouchableOpacity
-              style={styles.leaveButton}
-              onPress={() => handleLeaveGroup(item.id)}
-              disabled={busyGroupId === item.id}
-            >
-              <Text style={styles.leaveButtonText}>
-                {busyGroupId === item.id ? 'Updating...' : 'Joined'}
-              </Text>
-              <Ionicons name="checkmark" size={14} color={colors.status.success} />
-            </TouchableOpacity>
+            <View style={styles.memberActions}>
+              <TouchableOpacity
+                style={styles.chatButton}
+                onPress={() => handleOpenGroupChat(item.id)}
+              >
+                <Ionicons name="chatbubble-ellipses-outline" size={14} color={colors.primary.blue} />
+                <Text style={styles.chatButtonText}>Open Chat</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.leaveButton}
+                onPress={() => handleLeaveGroup(item.id)}
+                disabled={busyGroupId === item.id}
+              >
+                <Text style={styles.leaveButtonText}>
+                  {busyGroupId === item.id ? 'Updating...' : 'Joined'}
+                </Text>
+                <Ionicons name="checkmark" size={14} color={colors.status.success} />
+              </TouchableOpacity>
+            </View>
           ) : item.isPendingApproval ? (
             <View style={styles.pendingButton}>
               <Text style={styles.pendingButtonText}>Pending</Text>
@@ -392,6 +413,25 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
   memberCountText: {
     ...typography.presets.caption,
     color: colors.text.tertiary,
+  },
+  memberActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  chatButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    backgroundColor: colors.primary.blueSoft,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: spacing.radius.full,
+  },
+  chatButtonText: {
+    ...typography.presets.caption,
+    color: colors.primary.blue,
+    fontWeight: '600',
   },
   joinButton: {
     backgroundColor: colors.primary.blue,

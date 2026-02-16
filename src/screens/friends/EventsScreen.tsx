@@ -15,6 +15,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { useRequirements } from '../../context/RequirementsContext';
 import { fetchFriendEvents, setEventRsvp } from '../../services/api/friendsApi';
+import { getOrCreateEventConversation } from '../../services/api/messages';
 import type { ThemeTokens } from '../../theme/tokens';
 import { useThemedStyles } from '../../theme/useThemedStyles';
 import type { RootStackParamList } from '../../types';
@@ -124,6 +125,17 @@ const EventsContent: React.FC = () => {
     } finally {
       setUpdatingEventId(null);
     }
+  };
+
+  const handleOpenEventChat = async (eventId: string) => {
+    await haptics.light();
+    const { conversation, error: conversationError } = await getOrCreateEventConversation(eventId);
+    if (conversationError || !conversation?.id) {
+      setError(conversationError?.message || 'Unable to open event chat right now.');
+      return;
+    }
+
+    navigation.navigate('Chat', { conversationId: conversation.id });
   };
 
   const formatEventDate = (dateStr: string) => {
@@ -261,6 +273,16 @@ const EventsContent: React.FC = () => {
               Interested
             </Text>
           </TouchableOpacity>
+
+          {(item.rsvpStatus === 'going' || item.rsvpStatus === 'interested' || item.hostId === user?.id) ? (
+            <TouchableOpacity
+              style={styles.chatButton}
+              onPress={() => handleOpenEventChat(item.id)}
+            >
+              <Ionicons name="chatbubble-ellipses-outline" size={16} color={colors.primary.blue} />
+              <Text style={styles.chatButtonText}>Open Chat</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       </View>
     </TouchableOpacity>
@@ -514,6 +536,7 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
   rsvpButtons: {
     flexDirection: 'row',
     gap: spacing.sm,
+    flexWrap: 'wrap',
   },
   rsvpButton: {
     flex: 1,
@@ -541,6 +564,22 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
   },
   rsvpButtonTextInterested: {
     color: colors.primary.coral,
+  },
+  chatButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    flex: 1,
+    minWidth: 110,
+    paddingVertical: spacing.sm,
+    borderRadius: spacing.radius.full,
+    backgroundColor: colors.primary.blueSoft,
+  },
+  chatButtonText: {
+    ...typography.presets.caption,
+    color: colors.primary.blue,
+    fontWeight: '600',
   },
   separator: {
     height: spacing.md,

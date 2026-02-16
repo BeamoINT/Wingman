@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Session, User as SupabaseUser } from '@supabase/supabase-js';
 import * as SecureStore from 'expo-secure-store';
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { getOrCreateDeviceIdentity, heartbeatDeviceIdentity } from '../services/crypto/deviceIdentity';
 import { getMessagingIdentity } from '../services/crypto/messagingEncryption';
 import { supabase } from '../services/supabase';
 import type { SignupData, User } from '../types';
@@ -153,7 +154,10 @@ function toFallbackAppUser(sessionUser: SupabaseUser, existingUser?: User | null
 
 async function primeSecureMessagingIdentity(userId: string): Promise<void> {
   try {
-    await getMessagingIdentity(userId);
+    await Promise.all([
+      getMessagingIdentity(userId),
+      getOrCreateDeviceIdentity(userId),
+    ]);
   } catch (error) {
     safeLog('Secure messaging identity setup failed', { error: String(error) });
   }
@@ -334,6 +338,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       subscription.unsubscribe();
     };
   }, [fetchUserProfile]);
+
+  useEffect(() => {
+    if (!supabaseUser?.id) {
+      return;
+    }
+
+    const heartbeat = () => {
+      void heartbeatDeviceIdentity(supabaseUser.id).catch((error) => {
+        safeLog('Secure messaging device heartbeat failed', { error: String(error) });
+      });
+    };
+
+    heartbeat();
+    const interval = setInterval(heartbeat, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [supabaseUser?.id]);
 
   const updateSignupData = useCallback((data: Partial<SignupData>) => {
     setSignupData(prev => ({ ...prev, ...data }));

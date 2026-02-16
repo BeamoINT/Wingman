@@ -155,10 +155,37 @@ export interface Review {
 export interface Conversation {
   id: string;
   participants: User[];
+  kind?: 'direct' | 'group' | 'event';
+  title?: string;
+  avatarUrl?: string;
+  memberCount?: number;
+  groupId?: string;
+  eventId?: string;
   lastMessage?: Message;
   unreadCount: number;
   createdAt: string;
   updatedAt: string;
+}
+
+export type MessageKind = 'text' | 'image' | 'video' | 'system' | 'booking-request';
+
+export interface MessageAttachment {
+  id?: string;
+  mediaKind: 'image' | 'video';
+  bucket: string;
+  objectPath: string;
+  thumbnailObjectPath?: string;
+  mediaKeyBase64?: string;
+  mediaNonceBase64?: string;
+  thumbnailKeyBase64?: string;
+  thumbnailNonceBase64?: string;
+  ciphertextSizeBytes: number;
+  originalSizeBytes?: number;
+  durationMs?: number;
+  width?: number;
+  height?: number;
+  sha256: string;
+  decryptedUri?: string;
 }
 
 export interface Message {
@@ -166,7 +193,12 @@ export interface Message {
   conversationId: string;
   sender: User;
   content: string;
+  messageKind?: MessageKind;
   type: 'text' | 'image' | 'booking-request' | 'system';
+  attachments?: MessageAttachment[];
+  senderDeviceId?: string;
+  encryptionVersion?: string;
+  replyToMessageId?: string;
   isRead: boolean;
   createdAt: string;
 }

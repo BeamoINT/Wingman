@@ -4,17 +4,25 @@ import type { NativeStackNavigationProp, NativeStackScreenProps } from '@react-n
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator, Alert, FlatList, KeyboardAvoidingView,
-    Platform, RefreshControl, StyleSheet, Text, TextInput,
+    Image, Linking, Platform, RefreshControl, StyleSheet, Text, TextInput,
     TouchableOpacity, View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar, EmptyChat, EmptyState, RequirementsGate } from '../components';
+import { supportsNativeMediaCompression } from '../config/runtime';
 import { useAuth } from '../context/AuthContext';
 import type { ConversationData, MessageData } from '../services/api/messages';
 import {
     fetchConversationById,
-    fetchMessages, markMessagesAsRead, sendMessage, subscribeToMessages
+    fetchMessages,
+    markMessagesAsRead,
+    resolveMessageAttachmentUri,
+    sendImageMessageV2,
+    sendMessage,
+    sendVideoMessageV2,
+    subscribeToMessages
 } from '../services/api/messages';
+import { MediaPickerError, pickImageForMessaging, pickVideoForMessaging } from '../services/media/picker';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 import { typography } from '../theme/typography';
@@ -25,6 +33,8 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Chat'>;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 function transformConversationData(data: ConversationData, currentUserId: string): Conversation {
+  const kind = data.kind || 'direct';
+  const isDirect = kind === 'direct';
   const isParticipantOneCurrent = data.participant_1 === currentUserId;
   const otherProfile = isParticipantOneCurrent
     ? data.participant_2_profile
@@ -33,23 +43,40 @@ function transformConversationData(data: ConversationData, currentUserId: string
     ? data.participant_2
     : data.participant_1;
 
-  const participant: User = {
-    id: otherProfile?.id || otherParticipantId || '',
-    firstName: otherProfile?.first_name || 'Wingman',
-    lastName: otherProfile?.last_name || '',
-    email: otherProfile?.email || '',
-    avatar: otherProfile?.avatar_url || undefined,
-    isVerified: (
-      !!otherProfile?.id_verified
-      || otherProfile?.verification_level === 'verified'
-      || otherProfile?.verification_level === 'premium'
-    ),
-    isPremium: (otherProfile?.subscription_tier || 'free') !== 'free',
-    createdAt: otherProfile?.created_at || data.created_at,
-  };
+  const participant: User = isDirect
+    ? {
+      id: otherProfile?.id || otherParticipantId || '',
+      firstName: otherProfile?.first_name || 'Wingman',
+      lastName: otherProfile?.last_name || '',
+      email: otherProfile?.email || '',
+      avatar: otherProfile?.avatar_url || undefined,
+      isVerified: (
+        !!otherProfile?.id_verified
+        || otherProfile?.verification_level === 'verified'
+        || otherProfile?.verification_level === 'premium'
+      ),
+      isPremium: (otherProfile?.subscription_tier || 'free') !== 'free',
+      createdAt: otherProfile?.created_at || data.created_at,
+    }
+    : {
+      id: data.id,
+      firstName: data.title || (kind === 'group' ? 'Group Chat' : 'Event Chat'),
+      lastName: '',
+      email: '',
+      avatar: data.avatar_url || undefined,
+      isVerified: true,
+      isPremium: false,
+      createdAt: data.created_at,
+    };
 
   return {
     id: data.id,
+    kind,
+    title: data.title,
+    avatarUrl: data.avatar_url,
+    memberCount: data.member_count,
+    groupId: data.group_id,
+    eventId: data.event_id,
     participants: [participant],
     lastMessage: data.last_message_preview
       ? {
@@ -122,7 +149,30 @@ function transformMessageData(
     conversationId: data.conversation_id,
     sender,
     content: data.content,
+    messageKind: (data.message_kind || data.type || 'text')
+      .replace(/_/g, '-') as Message['messageKind'],
     type: data.type === 'booking_request' ? 'booking-request' : data.type,
+    attachments: data.attachments?.map((attachment) => ({
+      id: attachment.id,
+      mediaKind: attachment.media_kind,
+      bucket: attachment.bucket,
+      objectPath: attachment.object_path,
+      thumbnailObjectPath: attachment.thumbnail_object_path,
+      mediaKeyBase64: attachment.media_key_base64,
+      mediaNonceBase64: attachment.media_nonce_base64,
+      thumbnailKeyBase64: attachment.thumbnail_key_base64,
+      thumbnailNonceBase64: attachment.thumbnail_nonce_base64,
+      ciphertextSizeBytes: attachment.ciphertext_size_bytes,
+      originalSizeBytes: attachment.original_size_bytes,
+      durationMs: attachment.duration_ms,
+      width: attachment.width,
+      height: attachment.height,
+      sha256: attachment.sha256,
+      decryptedUri: attachment.decrypted_uri,
+    })),
+    senderDeviceId: data.sender_device_id,
+    encryptionVersion: data.ciphertext_version || data.encryption_version,
+    replyToMessageId: data.reply_to_message_id,
     isRead: data.is_read,
     createdAt: data.created_at,
   };
@@ -157,6 +207,9 @@ const ChatScreenContent: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [isSendingMedia, setIsSendingMedia] = useState(false);
+  const [mediaProgressText, setMediaProgressText] = useState<string | null>(null);
+  const [resolvingAttachmentPath, setResolvingAttachmentPath] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const conversationId = route.params.conversationId;
@@ -278,7 +331,7 @@ const ChatScreenContent: React.FC = () => {
 
   const handleSend = useCallback(async () => {
     const content = inputText.trim();
-    if (!content || isSending) return;
+    if (!content || isSending || isSendingMedia) return;
 
     setIsSending(true);
     setInputText('');
@@ -320,12 +373,180 @@ const ChatScreenContent: React.FC = () => {
     } finally {
       setIsSending(false);
     }
-  }, [conversationId, inputText, isSending, otherParticipant, scrollToBottom, user?.id]);
+  }, [conversationId, inputText, isSending, isSendingMedia, otherParticipant, scrollToBottom, user?.id]);
+
+  const handleSendImage = useCallback(async () => {
+    if (isSending || isSendingMedia) {
+      return;
+    }
+
+    try {
+      await haptics.light();
+      const selected = await pickImageForMessaging();
+      setIsSendingMedia(true);
+      setMediaProgressText('Compressing and encrypting image...');
+
+      const result = await sendImageMessageV2({
+        conversationId,
+        localUri: selected.uri,
+        caption: inputText.trim() || undefined,
+        width: selected.width,
+        height: selected.height,
+      });
+
+      if (result.error || !result.message) {
+        Alert.alert('Image Failed', result.error?.message || 'Unable to send image right now.');
+        return;
+      }
+
+      setInputText('');
+      const transformed = transformMessageData(
+        result.message,
+        user?.id || '',
+        otherParticipant || undefined,
+      );
+
+      setMessages((prev) => {
+        if (prev.some((existing) => existing.id === transformed.id)) {
+          return prev;
+        }
+        return sortMessagesByTime([...prev, transformed]);
+      });
+
+      scrollToBottom();
+    } catch (error) {
+      if (error instanceof MediaPickerError && error.code === 'cancelled') {
+        return;
+      }
+      Alert.alert('Image Failed', error instanceof Error ? error.message : 'Unable to send image right now.');
+    } finally {
+      setIsSendingMedia(false);
+      setMediaProgressText(null);
+    }
+  }, [conversationId, inputText, isSending, isSendingMedia, otherParticipant, scrollToBottom, user?.id]);
+
+  const handleSendVideo = useCallback(async () => {
+    if (isSending || isSendingMedia) {
+      return;
+    }
+
+    if (!supportsNativeMediaCompression) {
+      Alert.alert(
+        'Development Build Required',
+        'Video messaging needs a development or production build. Expo Go does not support compressed video messaging.',
+      );
+      return;
+    }
+
+    try {
+      await haptics.light();
+      const selected = await pickVideoForMessaging();
+      setIsSendingMedia(true);
+      setMediaProgressText('Compressing, encrypting, and uploading video...');
+
+      const result = await sendVideoMessageV2({
+        conversationId,
+        localUri: selected.uri,
+        caption: inputText.trim() || undefined,
+        durationMs: selected.durationMs,
+        width: selected.width,
+        height: selected.height,
+      });
+
+      if (result.error || !result.message) {
+        Alert.alert('Video Failed', result.error?.message || 'Unable to send video right now.');
+        return;
+      }
+
+      setInputText('');
+      const transformed = transformMessageData(
+        result.message,
+        user?.id || '',
+        otherParticipant || undefined,
+      );
+
+      setMessages((prev) => {
+        if (prev.some((existing) => existing.id === transformed.id)) {
+          return prev;
+        }
+        return sortMessagesByTime([...prev, transformed]);
+      });
+
+      scrollToBottom();
+    } catch (error) {
+      if (error instanceof MediaPickerError && error.code === 'cancelled') {
+        return;
+      }
+      Alert.alert('Video Failed', error instanceof Error ? error.message : 'Unable to send video right now.');
+    } finally {
+      setIsSendingMedia(false);
+      setMediaProgressText(null);
+    }
+  }, [conversationId, inputText, isSending, isSendingMedia, otherParticipant, scrollToBottom, user?.id]);
+
+  const handleOpenAttachment = useCallback(async (messageId: string, attachmentIndex: number) => {
+    const targetMessage = messages.find((message) => message.id === messageId);
+    const attachment = targetMessage?.attachments?.[attachmentIndex];
+    if (!attachment) {
+      return;
+    }
+
+    if (attachment.decryptedUri) {
+      if (attachment.mediaKind === 'video') {
+        await Linking.openURL(attachment.decryptedUri);
+      }
+      return;
+    }
+
+    setResolvingAttachmentPath(attachment.objectPath);
+    try {
+      const decryptedUri = await resolveMessageAttachmentUri({
+        media_kind: attachment.mediaKind,
+        bucket: attachment.bucket,
+        object_path: attachment.objectPath,
+        thumbnail_object_path: attachment.thumbnailObjectPath,
+        ciphertext_size_bytes: attachment.ciphertextSizeBytes,
+        original_size_bytes: attachment.originalSizeBytes,
+        duration_ms: attachment.durationMs,
+        width: attachment.width,
+        height: attachment.height,
+        sha256: attachment.sha256,
+        media_key_base64: attachment.mediaKeyBase64,
+        media_nonce_base64: attachment.mediaNonceBase64,
+      });
+
+      setMessages((previous) => previous.map((message) => {
+        if (message.id !== messageId || !message.attachments) {
+          return message;
+        }
+
+        const updatedAttachments = [...message.attachments];
+        updatedAttachments[attachmentIndex] = {
+          ...updatedAttachments[attachmentIndex],
+          decryptedUri,
+        };
+
+        return {
+          ...message,
+          attachments: updatedAttachments,
+        };
+      }));
+
+      if (attachment.mediaKind === 'video') {
+        await Linking.openURL(decryptedUri);
+      }
+    } catch (error) {
+      Alert.alert('Media Unavailable', error instanceof Error ? error.message : 'Unable to open this media right now.');
+    } finally {
+      setResolvingAttachmentPath(null);
+    }
+  }, [messages]);
 
   const renderMessage = ({ item, index }: { item: Message; index: number }) => {
     const isMe = item.sender.id === (user?.id || '');
     const previous = index > 0 ? messages[index - 1] : null;
     const showAvatar = !isMe && (!previous || previous.sender.id !== item.sender.id);
+    const showSenderName = !isMe && conversation?.kind !== 'direct' && (!previous || previous.sender.id !== item.sender.id);
 
     return (
       <View style={[styles.messageRow, isMe && styles.messageRowMe]}>
@@ -342,7 +563,51 @@ const ChatScreenContent: React.FC = () => {
         )}
 
         <View style={[styles.messageBubble, isMe ? styles.messageBubbleMe : styles.messageBubbleOther]}>
+          {showSenderName ? (
+            <Text style={styles.senderNameText}>
+              {`${item.sender.firstName || 'User'} ${item.sender.lastName || ''}`.trim()}
+            </Text>
+          ) : null}
           <Text style={[styles.messageText, isMe && styles.messageTextMe]}>{item.content}</Text>
+
+          {(item.attachments || []).map((attachment, attachmentIndex) => {
+            const isResolving = resolvingAttachmentPath === attachment.objectPath;
+            const isImage = attachment.mediaKind === 'image';
+            const hasImagePreview = isImage && !!attachment.decryptedUri;
+
+            return (
+              <TouchableOpacity
+                key={`${item.id}:${attachment.objectPath}:${attachmentIndex}`}
+                style={styles.attachmentCard}
+                onPress={() => handleOpenAttachment(item.id, attachmentIndex)}
+                activeOpacity={0.85}
+              >
+                {hasImagePreview ? (
+                  <Image
+                    source={{ uri: attachment.decryptedUri }}
+                    style={styles.attachmentImage}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View style={styles.attachmentPlaceholder}>
+                    <Ionicons
+                      name={attachment.mediaKind === 'video' ? 'videocam' : 'image'}
+                      size={20}
+                      color={isMe ? colors.text.primary : colors.text.secondary}
+                    />
+                    <Text style={[styles.attachmentLabel, isMe && styles.attachmentLabelMe]}>
+                      {isResolving
+                        ? 'Decrypting...'
+                        : attachment.mediaKind === 'video'
+                          ? 'Tap to decrypt video'
+                          : 'Tap to decrypt image'}
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            );
+          })}
+
           <Text style={[styles.messageTime, isMe && styles.messageTimeMe]}>{formatTime(item.createdAt)}</Text>
         </View>
       </View>
@@ -374,7 +639,14 @@ const ChatScreenContent: React.FC = () => {
     );
   }
 
-  const participantName = `${otherParticipant?.firstName || 'Wingman'} ${otherParticipant?.lastName || ''}`.trim();
+  const conversationKind = conversation.kind || 'direct';
+  const participantName = conversationKind === 'direct'
+    ? `${otherParticipant?.firstName || 'Wingman'} ${otherParticipant?.lastName || ''}`.trim()
+    : conversation.title || (conversationKind === 'group' ? 'Group Chat' : 'Event Chat');
+  const headerStatus = conversationKind === 'direct'
+    ? (otherParticipant?.isVerified ? 'ID & photo verified' : 'In-app conversation')
+    : `${conversation.memberCount || 0} members - ${conversationKind === 'group' ? 'Group' : 'Event'} chat`;
+  const isComposerBusy = isSending || isSendingMedia;
 
   return (
     <KeyboardAvoidingView
@@ -389,17 +661,15 @@ const ChatScreenContent: React.FC = () => {
 
         <View style={styles.headerProfile}>
           <Avatar
-            source={otherParticipant?.avatar}
+            source={otherParticipant?.avatar || conversation.avatarUrl}
             name={participantName}
             size="small"
-            showVerified
+            showVerified={conversationKind === 'direct'}
             verificationLevel={otherParticipant?.isPremium ? 'premium' : otherParticipant?.isVerified ? 'verified' : 'basic'}
           />
           <View style={styles.headerInfo}>
             <Text style={styles.headerName} numberOfLines={1}>{participantName || 'Wingman'}</Text>
-            <Text style={styles.headerStatus}>
-              {otherParticipant?.isVerified ? 'ID & photo verified' : 'In-app conversation'}
-            </Text>
+            <Text style={styles.headerStatus}>{headerStatus}</Text>
           </View>
         </View>
       </View>
@@ -407,7 +677,7 @@ const ChatScreenContent: React.FC = () => {
       <View style={styles.safetyTip}>
         <Ionicons name="lock-closed" size={14} color={colors.primary.blue} />
         <Text style={styles.safetyTipText}>
-          End-to-end encrypted: only you and this Wingman can read these messages.
+          End-to-end encrypted: only authorized chat members can read these messages.
           {' '}Wingman cannot access message content.
         </Text>
       </View>
@@ -438,37 +708,63 @@ const ChatScreenContent: React.FC = () => {
       />
 
       <View style={[styles.inputContainer, { paddingBottom: insets.bottom + spacing.sm }]}>
-        <View style={styles.inputWrapper}>
-          <TextInput
-            style={styles.input}
-            placeholder="Type a message..."
-            placeholderTextColor={colors.text.tertiary}
-            value={inputText}
-            onChangeText={setInputText}
-            multiline
-            maxLength={2000}
-            editable={!isSending}
-          />
+        <View style={styles.inputRow}>
+          <TouchableOpacity
+            style={styles.composeActionButton}
+            onPress={handleSendImage}
+            disabled={isComposerBusy}
+          >
+            <Ionicons name="image" size={20} color={isComposerBusy ? colors.text.tertiary : colors.text.primary} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.composeActionButton}
+            onPress={handleSendVideo}
+            disabled={isComposerBusy || !supportsNativeMediaCompression}
+          >
+            <Ionicons
+              name="videocam"
+              size={20}
+              color={(isComposerBusy || !supportsNativeMediaCompression) ? colors.text.tertiary : colors.text.primary}
+            />
+          </TouchableOpacity>
+
+          <View style={styles.inputWrapper}>
+            <TextInput
+              style={styles.input}
+              placeholder="Type a message..."
+              placeholderTextColor={colors.text.tertiary}
+              value={inputText}
+              onChangeText={setInputText}
+              multiline
+              maxLength={2000}
+              editable={!isComposerBusy}
+            />
+          </View>
+
+          <TouchableOpacity
+            style={[
+              styles.sendButton,
+              inputText.trim() && !isComposerBusy && styles.sendButtonActive,
+            ]}
+            onPress={handleSend}
+            disabled={!inputText.trim() || isComposerBusy}
+          >
+            {isComposerBusy ? (
+              <ActivityIndicator size="small" color={colors.text.primary} />
+            ) : (
+              <Ionicons
+                name="send"
+                size={20}
+                color={inputText.trim() ? colors.text.primary : colors.text.tertiary}
+              />
+            )}
+          </TouchableOpacity>
         </View>
 
-        <TouchableOpacity
-          style={[
-            styles.sendButton,
-            inputText.trim() && !isSending && styles.sendButtonActive,
-          ]}
-          onPress={handleSend}
-          disabled={!inputText.trim() || isSending}
-        >
-          {isSending ? (
-            <ActivityIndicator size="small" color={colors.text.primary} />
-          ) : (
-            <Ionicons
-              name="send"
-              size={20}
-              color={inputText.trim() ? colors.text.primary : colors.text.tertiary}
-            />
-          )}
-        </TouchableOpacity>
+        {mediaProgressText ? (
+          <Text style={styles.mediaProgressText}>{mediaProgressText}</Text>
+        ) : null}
       </View>
     </KeyboardAvoidingView>
   );
@@ -594,6 +890,42 @@ const styles = StyleSheet.create({
   messageTextMe: {
     color: colors.text.primary,
   },
+  senderNameText: {
+    ...typography.presets.caption,
+    color: colors.text.tertiary,
+    marginBottom: spacing.xs / 2,
+    fontWeight: typography.weights.semibold,
+  },
+  attachmentCard: {
+    marginTop: spacing.xs,
+    borderRadius: spacing.radius.md,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: colors.border.light,
+  },
+  attachmentImage: {
+    width: 220,
+    height: 150,
+    backgroundColor: colors.background.tertiary,
+  },
+  attachmentPlaceholder: {
+    width: 220,
+    minHeight: 60,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    gap: spacing.xs,
+    backgroundColor: colors.background.tertiary,
+  },
+  attachmentLabel: {
+    ...typography.presets.caption,
+    color: colors.text.secondary,
+    textAlign: 'center',
+  },
+  attachmentLabelMe: {
+    color: colors.text.primary,
+  },
   messageTime: {
     ...typography.presets.caption,
     color: colors.text.tertiary,
@@ -605,14 +937,25 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
   },
   inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
+    gap: spacing.xs,
     paddingHorizontal: spacing.screenPadding,
     paddingTop: spacing.sm,
     borderTopWidth: 1,
     borderTopColor: colors.border.light,
     backgroundColor: colors.background.primary,
+  },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
     gap: spacing.sm,
+  },
+  composeActionButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.background.tertiary,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   inputWrapper: {
     flex: 1,
@@ -641,5 +984,11 @@ const styles = StyleSheet.create({
   },
   sendButtonActive: {
     backgroundColor: colors.primary.blue,
+  },
+  mediaProgressText: {
+    ...typography.presets.caption,
+    color: colors.text.tertiary,
+    marginTop: 2,
+    paddingLeft: 4,
   },
 });

@@ -24,6 +24,8 @@ function toNumber(value: unknown, fallback = 0): number {
 }
 
 function transformConversationData(data: ConversationData, currentUserId: string): Conversation {
+  const kind = data.kind || 'direct';
+  const isDirect = kind === 'direct';
   const isParticipantOneCurrent = data.participant_1 === currentUserId;
   const otherProfile = isParticipantOneCurrent
     ? data.participant_2_profile
@@ -32,23 +34,40 @@ function transformConversationData(data: ConversationData, currentUserId: string
     ? data.participant_2
     : data.participant_1;
 
-  const participant: User = {
-    id: otherProfile?.id || otherParticipantId || '',
-    firstName: otherProfile?.first_name || 'User',
-    lastName: otherProfile?.last_name || '',
-    email: otherProfile?.email || '',
-    avatar: otherProfile?.avatar_url || undefined,
-    isVerified: (
-      !!otherProfile?.id_verified
-      || otherProfile?.verification_level === 'verified'
-      || otherProfile?.verification_level === 'premium'
-    ),
-    isPremium: (otherProfile?.subscription_tier || 'free') !== 'free',
-    createdAt: otherProfile?.created_at || data.created_at,
-  };
+  const participant: User = isDirect
+    ? {
+      id: otherProfile?.id || otherParticipantId || '',
+      firstName: otherProfile?.first_name || 'User',
+      lastName: otherProfile?.last_name || '',
+      email: otherProfile?.email || '',
+      avatar: otherProfile?.avatar_url || undefined,
+      isVerified: (
+        !!otherProfile?.id_verified
+        || otherProfile?.verification_level === 'verified'
+        || otherProfile?.verification_level === 'premium'
+      ),
+      isPremium: (otherProfile?.subscription_tier || 'free') !== 'free',
+      createdAt: otherProfile?.created_at || data.created_at,
+    }
+    : {
+      id: data.id,
+      firstName: data.title || (kind === 'group' ? 'Group Chat' : 'Event Chat'),
+      lastName: '',
+      email: '',
+      avatar: data.avatar_url || undefined,
+      isVerified: true,
+      isPremium: false,
+      createdAt: data.created_at,
+    };
 
   return {
     id: data.id,
+    kind,
+    title: data.title,
+    avatarUrl: data.avatar_url,
+    memberCount: data.member_count,
+    groupId: data.group_id,
+    eventId: data.event_id,
     participants: [participant],
     lastMessage: data.last_message_preview
       ? {
@@ -150,9 +169,10 @@ export const MessagesScreen: React.FC = () => {
 
     return conversations.filter((conversation) => {
       const participant = conversation.participants[0];
-      const displayName = `${participant?.firstName || ''} ${participant?.lastName || ''}`
-        .trim()
-        .toLowerCase();
+      const displayName = (conversation.kind === 'direct'
+        ? `${participant?.firstName || ''} ${participant?.lastName || ''}`.trim()
+        : conversation.title || participant?.firstName || ''
+      ).toLowerCase();
       const lastMessage = (conversation.lastMessage?.content || '').toLowerCase();
 
       return displayName.includes(query) || lastMessage.includes(query);
@@ -171,6 +191,10 @@ export const MessagesScreen: React.FC = () => {
   const renderConversationItem = ({ item }: { item: Conversation }) => {
     const participant = item.participants[0];
     const hasUnread = item.unreadCount > 0;
+    const contextLabel = item.kind === 'group' ? 'Group' : item.kind === 'event' ? 'Event' : null;
+    const displayName = item.kind === 'direct'
+      ? `${participant?.firstName || 'User'} ${participant?.lastName || ''}`.trim()
+      : item.title || participant?.firstName || 'Chat';
 
     return (
       <TouchableOpacity
@@ -179,18 +203,25 @@ export const MessagesScreen: React.FC = () => {
         activeOpacity={0.75}
       >
         <Avatar
-          source={participant?.avatar}
-          name={`${participant?.firstName || ''} ${participant?.lastName || ''}`.trim()}
+          source={participant?.avatar || item.avatarUrl}
+          name={displayName}
           size="medium"
-          showVerified
+          showVerified={item.kind === 'direct'}
           verificationLevel={participant?.isPremium ? 'premium' : participant?.isVerified ? 'verified' : 'basic'}
         />
 
         <View style={styles.conversationContent}>
           <View style={styles.conversationHeader}>
-            <Text style={[styles.participantName, hasUnread && styles.unreadName]} numberOfLines={1}>
-              {`${participant?.firstName || 'User'} ${participant?.lastName || ''}`.trim()}
-            </Text>
+            <View style={styles.nameRow}>
+              <Text style={[styles.participantName, hasUnread && styles.unreadName]} numberOfLines={1}>
+                {displayName}
+              </Text>
+              {contextLabel ? (
+                <View style={styles.contextBadge}>
+                  <Text style={styles.contextBadgeText}>{contextLabel}</Text>
+                </View>
+              ) : null}
+            </View>
             <Text style={[styles.timeText, hasUnread && styles.unreadTime]}>
               {formatRelativeTime(item.updatedAt)}
             </Text>
@@ -380,10 +411,28 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: spacing.sm,
   },
+  nameRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
   participantName: {
     ...typography.presets.h4,
     color: colors.text.primary,
     flex: 1,
+  },
+  contextBadge: {
+    backgroundColor: colors.background.tertiary,
+    borderRadius: spacing.radius.full,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 2,
+  },
+  contextBadgeText: {
+    ...typography.presets.caption,
+    color: colors.text.tertiary,
+    fontSize: 10,
+    fontWeight: '600',
   },
   unreadName: {
     fontWeight: typography.weights.semibold,

@@ -1,12 +1,36 @@
 /**
- * Messages API Service
- * Handles messaging and conversation operations with Supabase.
+ * Messages API Service (v2-first)
  *
- * This implementation is resilient to partially migrated schemas where
- * foreign key relationships may be missing from PostgREST schema cache.
+ * - Full E2EE for text/image/video via per-device key boxes (v2).
+ * - Group/event conversation support via conversation_members.
+ * - Backward-compatible fallback read/send for legacy v1 direct conversations.
  */
 
-import { supabase } from '../supabase';
+import { messagingFeatureFlags } from '../../config/featureFlags';
+import {
+  createMediaUploadUrl,
+  downloadEncryptedMediaToCache,
+  getMediaDownloadUrl,
+  uploadEncryptedMediaFile,
+} from './messageMedia';
+import {
+  DeviceIdentityError,
+  fetchRecipientDeviceIdentities,
+  getOrCreateDeviceIdentity,
+} from '../crypto/deviceIdentity';
+import {
+  decryptMediaFileToCache,
+  encryptMediaFile,
+  MediaCryptoError,
+} from '../crypto/mediaCrypto';
+import {
+  createClientMessageId,
+  createEncryptedMessageEnvelope,
+  decryptMessageEnvelopeForDevice,
+  MessageCryptoV2Error,
+  type MessageKeyBoxPayload,
+  type RecipientDevice,
+} from '../crypto/messageCryptoV2';
 import {
   decryptMessageFromSender,
   encryptMessageForRecipient,
@@ -14,10 +38,19 @@ import {
   getEncryptedMessagePreview,
   getMessageEncryptionVersion,
   getMessagingIdentity,
+  makePeerDeviceFingerprintKey,
+  pinAndCheckPeerDevicePublicKeys,
   pinAndCheckPeerPublicKeys,
   type MessagingIdentity,
-  SecureMessagingError
+  SecureMessagingError,
 } from '../crypto/messagingEncryption';
+import {
+  compressImageForMessaging,
+  compressVideoForMessaging,
+  MediaCompressionError,
+} from '../media/compression';
+import { generateVideoThumbnailForMessaging } from '../media/thumbnails';
+import { supabase } from '../supabase';
 import type { ProfileData } from './profiles';
 
 type QueryError = {
@@ -25,181 +58,152 @@ type QueryError = {
   message?: string | null;
 };
 
-type ConversationParticipantPair = readonly [string, string];
-type ParticipantTablePair = readonly [string, string];
+type RawRecord = Record<string, unknown>;
 
-type ConversationParticipantTableConfig = {
-  conversationColumn: string;
-  userColumn: string;
-  lastReadColumn?: string;
-};
+type ConversationKind = 'direct' | 'group' | 'event';
+type MessageKind = 'text' | 'image' | 'video' | 'system' | 'booking_request';
 
-const CONVERSATION_PARTICIPANT_COLUMN_PAIRS: ConversationParticipantPair[] = [
-  ['participant_1', 'participant_2'],
-  ['user_1', 'user_2'],
-  ['member_1', 'member_2'],
-] as const;
+export interface MessageAttachmentData {
+  id?: string;
+  message_id?: string;
+  conversation_id?: string;
+  sender_user_id?: string;
+  media_kind: 'image' | 'video';
+  bucket: string;
+  object_path: string;
+  ciphertext_size_bytes: number;
+  original_size_bytes?: number;
+  duration_ms?: number;
+  width?: number;
+  height?: number;
+  sha256: string;
+  thumbnail_object_path?: string;
+  media_key_base64?: string;
+  media_nonce_base64?: string;
+  thumbnail_key_base64?: string;
+  thumbnail_nonce_base64?: string;
+  decrypted_uri?: string;
+  decrypted_thumbnail_uri?: string;
+}
 
-const CONVERSATION_PARTICIPANTS_TABLE = 'conversation_participants';
-const CONVERSATION_PARTICIPANTS_TABLE_PAIRS: ParticipantTablePair[] = [
-  ['conversation_id', 'user_id'],
-  ['conversation_id', 'participant_id'],
-  ['conversation_id', 'profile_id'],
-  ['conversation_id', 'member_id'],
-  ['thread_id', 'user_id'],
-  ['thread_id', 'participant_id'],
-  ['thread_id', 'profile_id'],
-  ['thread_id', 'member_id'],
-] as const;
-const CONVERSATION_PARTICIPANTS_LAST_READ_COLUMNS = ['last_read_at', 'read_at'] as const;
-
-const MESSAGE_CONVERSATION_COLUMNS = ['conversation_id', 'thread_id'] as const;
-const MESSAGE_SENDER_COLUMNS = ['sender_id', 'user_id', 'author_id'] as const;
-const MESSAGE_ENCRYPTION_REQUIRED_COLUMNS = [
-  'encrypted_for_participant_1',
-  'encrypted_for_participant_2',
-  'encryption_nonce_p1',
-  'encryption_nonce_p2',
-  'encryption_sender_public_key',
-  'encryption_version',
-] as const;
-const ENCRYPTED_MESSAGE_PREVIEW = getEncryptedMessagePreview();
-const MESSAGE_ENCRYPTION_VERSION = getMessageEncryptionVersion();
-const MESSAGE_KEY_CHANGED_PLACEHOLDER = 'Message unavailable: safety key changed.';
-
-let conversationParticipantsConfigCache: ConversationParticipantTableConfig | null | undefined;
-const conversationParticipantCache = new Map<string, {
+export interface ConversationData {
+  id: string;
   participant_1: string;
   participant_2: string;
-}>();
+  booking_id?: string;
+  last_message_at?: string;
+  last_message_preview?: string;
+  created_at: string;
+  updated_at?: string;
+  kind?: ConversationKind;
+  title?: string;
+  avatar_url?: string;
+  member_count?: number;
+  group_id?: string;
+  event_id?: string;
+  participant_1_profile?: ProfileData;
+  participant_2_profile?: ProfileData;
+  unread_count?: number;
+}
+
+export interface MessageData {
+  id: string;
+  conversation_id: string;
+  sender_id: string;
+  sender_user_id?: string;
+  sender_device_id?: string;
+  content: string;
+  encrypted_for_participant_1?: string;
+  encrypted_for_participant_2?: string;
+  encryption_nonce_p1?: string;
+  encryption_nonce_p2?: string;
+  encryption_sender_public_key?: string;
+  encryption_version?: string;
+  message_kind?: MessageKind;
+  ciphertext?: string;
+  ciphertext_nonce?: string;
+  ciphertext_version?: string;
+  preview_ciphertext?: string;
+  preview_nonce?: string;
+  client_message_id?: string;
+  reply_to_message_id?: string;
+  type: 'text' | 'image' | 'booking_request' | 'system';
+  is_read: boolean;
+  read_at?: string;
+  created_at: string;
+  sender?: ProfileData;
+  attachments?: MessageAttachmentData[];
+}
+
+type ConversationMemberRow = {
+  conversation_id: string;
+  user_id: string;
+  role?: string;
+  last_read_at?: string;
+  left_at?: string | null;
+};
+
+type MessageKeyBoxRow = {
+  message_id: string;
+  recipient_user_id: string;
+  recipient_device_id: string;
+  wrapped_key: string;
+  wrapped_key_nonce: string;
+  sender_public_key: string;
+  sender_key_version: string;
+};
+
+type MediaPayloadAttachment = {
+  bucket: string;
+  objectPath: string;
+  mediaKind: 'image' | 'video';
+  mediaKeyBase64: string;
+  mediaNonceBase64: string;
+  thumbnailObjectPath?: string;
+  thumbnailKeyBase64?: string;
+  thumbnailNonceBase64?: string;
+};
+
+type MediaMessagePayload = {
+  text?: string;
+  attachments: MediaPayloadAttachment[];
+};
+
+const ENCRYPTED_MESSAGE_PREVIEW = getEncryptedMessagePreview();
+const MESSAGE_KEY_CHANGED_PLACEHOLDER = 'Message unavailable: safety key changed.';
+const LEGACY_ENCRYPTION_VERSION = getMessageEncryptionVersion();
+let messagingV2SupportCache: boolean | null = null;
 
 function toNumber(value: unknown, fallback = 0): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function isMissingColumnError(error: unknown, table: string, column?: string): boolean {
-  const typedError = error as QueryError | null | undefined;
-  if (typedError?.code !== '42703') return false;
-
-  const message = String(typedError.message || '').toLowerCase();
-  if (column) {
-    return (
-      message.includes(`column ${table}.${column}`.toLowerCase()) ||
-      message.includes(`column ${column}`.toLowerCase())
-    );
-  }
-
-  return message.includes(`column ${table}.`);
+function getString(value: unknown, fallback = ''): string {
+  return typeof value === 'string' ? value : fallback;
 }
 
-function isMissingTableError(error: unknown, table: string): boolean {
-  const typedError = error as QueryError | null | undefined;
-  if (typedError?.code !== 'PGRST205') return false;
-
-  const message = String(typedError.message || '').toLowerCase();
-  return message.includes(table.toLowerCase());
+function getOptionalString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim().length > 0 ? value : undefined;
 }
 
-function extractMissingColumn(error: unknown): string | null {
-  const typedError = error as QueryError | null | undefined;
-  if (typedError?.code !== '42703') return null;
+function normalizeMessageKind(value: unknown): MessageKind {
+  const normalized = String(value || 'text').trim().toLowerCase().replace(/-/g, '_');
 
-  const message = String(typedError.message || '');
-  const directColumnMatch = message.match(/column\s+([a-zA-Z0-9_]+)\s+does not exist/i);
-  if (directColumnMatch?.[1]) {
-    return directColumnMatch[1];
-  }
-
-  const scopedColumnMatch = message.match(/column\s+([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+)\s+does not exist/i);
-  if (scopedColumnMatch?.[2]) {
-    return scopedColumnMatch[2];
-  }
-
-  return null;
-}
-
-function extractNotNullColumn(error: unknown): string | null {
-  const typedError = error as QueryError | null | undefined;
-  if (typedError?.code !== '23502') return null;
-
-  const message = String(typedError.message || '');
-  const match = message.match(/null value in column "([a-zA-Z0-9_]+)"/i);
-  return match?.[1] || null;
-}
-
-function defaultConversationValueForColumn(column: string, nowIso: string): unknown {
-  switch (column) {
-    case 'created_at':
-    case 'updated_at':
-      return nowIso;
-    case 'last_message_at':
-      return null;
-    case 'status':
-      return 'active';
-    case 'type':
-      return 'direct';
+  switch (normalized) {
+    case 'text':
+    case 'image':
+    case 'video':
+    case 'system':
+    case 'booking_request':
+      return normalized;
     default:
-      return undefined;
+      return 'text';
   }
-}
-
-function isRelationshipError(error: unknown): boolean {
-  const typedError = error as QueryError | null | undefined;
-  const code = String(typedError?.code || '');
-  const message = String(typedError?.message || '').toLowerCase();
-
-  return (
-    code.startsWith('PGRST') &&
-    (message.includes('relationship') || message.includes('foreign key') || message.includes('schema cache'))
-  );
-}
-
-function normalizeProfile(rawProfile: unknown): ProfileData | undefined {
-  const profileObject = Array.isArray(rawProfile) ? rawProfile[0] : rawProfile;
-  if (!profileObject || typeof profileObject !== 'object') {
-    return undefined;
-  }
-
-  const profile = profileObject as Record<string, unknown>;
-  const now = new Date().toISOString();
-
-  return {
-    id: typeof profile.id === 'string' ? profile.id : '',
-    first_name: typeof profile.first_name === 'string' ? profile.first_name : '',
-    last_name: typeof profile.last_name === 'string' ? profile.last_name : '',
-    email: typeof profile.email === 'string' ? profile.email : '',
-    phone: typeof profile.phone === 'string' ? profile.phone : undefined,
-    avatar_url: typeof profile.avatar_url === 'string' ? profile.avatar_url : undefined,
-    bio: typeof profile.bio === 'string' ? profile.bio : undefined,
-    date_of_birth: typeof profile.date_of_birth === 'string' ? profile.date_of_birth : undefined,
-    gender: typeof profile.gender === 'string' ? profile.gender : undefined,
-    city: typeof profile.city === 'string' ? profile.city : undefined,
-    state: typeof profile.state === 'string' ? profile.state : undefined,
-    country: typeof profile.country === 'string' ? profile.country : undefined,
-    email_verified: !!profile.email_verified,
-    phone_verified: !!profile.phone_verified,
-    id_verified: !!profile.id_verified,
-    verification_level: typeof profile.verification_level === 'string'
-      ? profile.verification_level
-      : 'basic',
-    terms_accepted: !!profile.terms_accepted,
-    privacy_accepted: !!profile.privacy_accepted,
-    age_confirmed: !!profile.age_confirmed,
-    subscription_tier: typeof profile.subscription_tier === 'string'
-      ? profile.subscription_tier
-      : 'free',
-    created_at: typeof profile.created_at === 'string' ? profile.created_at : now,
-    updated_at: typeof profile.updated_at === 'string' ? profile.updated_at : now,
-  };
 }
 
 function normalizeMessageType(value: unknown): MessageData['type'] {
-  const normalized = String(value || 'text')
-    .trim()
-    .toLowerCase()
-    .replace(/-/g, '_');
-
+  const normalized = String(value || 'text').trim().toLowerCase().replace(/-/g, '_');
   switch (normalized) {
     case 'text':
     case 'image':
@@ -211,154 +215,179 @@ function normalizeMessageType(value: unknown): MessageData['type'] {
   }
 }
 
-function pickParticipantPairFromRow(row: Record<string, unknown>): ConversationParticipantPair {
-  for (const pair of CONVERSATION_PARTICIPANT_COLUMN_PAIRS) {
-    if (pair[0] in row || pair[1] in row) {
-      return pair;
-    }
+function normalizeConversationKind(value: unknown): ConversationKind {
+  const normalized = String(value || 'direct').trim().toLowerCase();
+  if (normalized === 'group' || normalized === 'event') {
+    return normalized;
   }
-
-  return CONVERSATION_PARTICIPANT_COLUMN_PAIRS[0];
+  return 'direct';
 }
 
-function normalizeConversation(
-  rawConversation: unknown,
-  participantPair?: ConversationParticipantPair
-): ConversationData {
-  const conversation = (rawConversation || {}) as Record<string, unknown>;
-  const pair = participantPair || pickParticipantPairFromRow(conversation);
+function normalizeProfile(rawProfile: unknown): ProfileData | undefined {
+  const value = Array.isArray(rawProfile) ? rawProfile[0] : rawProfile;
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+
+  const profile = value as RawRecord;
   const now = new Date().toISOString();
 
-  const participant1 = typeof conversation[pair[0]] === 'string' ? conversation[pair[0]] as string : '';
-  const participant2 = typeof conversation[pair[1]] === 'string' ? conversation[pair[1]] as string : '';
-
-  const createdAt =
-    typeof conversation.created_at === 'string'
-      ? conversation.created_at
-      : typeof conversation.updated_at === 'string'
-        ? conversation.updated_at
-        : now;
-
-  const lastMessageAt =
-    typeof conversation.last_message_at === 'string'
-      ? conversation.last_message_at
-      : undefined;
-
-  const preview =
-    typeof conversation.last_message_preview === 'string'
-      ? conversation.last_message_preview
-      : typeof conversation.last_message === 'string'
-        ? conversation.last_message
-        : undefined;
-
   return {
-    id: typeof conversation.id === 'string' ? conversation.id : '',
-    participant_1: participant1,
-    participant_2: participant2,
-    booking_id: typeof conversation.booking_id === 'string' ? conversation.booking_id : undefined,
-    last_message_at: lastMessageAt,
-    last_message_preview: preview,
-    created_at: createdAt,
-    participant_1_profile: normalizeProfile(conversation.participant_1_profile),
-    participant_2_profile: normalizeProfile(conversation.participant_2_profile),
-    unread_count: Math.max(0, Math.round(toNumber(conversation.unread_count, 0))),
+    id: getString(profile.id),
+    first_name: getString(profile.first_name),
+    last_name: getString(profile.last_name),
+    email: getString(profile.email),
+    phone: getOptionalString(profile.phone),
+    avatar_url: getOptionalString(profile.avatar_url),
+    bio: getOptionalString(profile.bio),
+    date_of_birth: getOptionalString(profile.date_of_birth),
+    gender: getOptionalString(profile.gender),
+    city: getOptionalString(profile.city),
+    state: getOptionalString(profile.state),
+    country: getOptionalString(profile.country),
+    email_verified: profile.email_verified === true,
+    phone_verified: profile.phone_verified === true,
+    id_verified: profile.id_verified === true,
+    verification_level: getString(profile.verification_level, 'basic'),
+    terms_accepted: profile.terms_accepted === true,
+    privacy_accepted: profile.privacy_accepted === true,
+    age_confirmed: profile.age_confirmed === true,
+    electronic_signature_consent: profile.electronic_signature_consent === true,
+    electronic_signature_consent_at: getOptionalString(profile.electronic_signature_consent_at) ?? null,
+    marketing_opt_in: profile.marketing_opt_in === true,
+    subscription_tier: getString(profile.subscription_tier, 'free'),
+    created_at: getString(profile.created_at, now),
+    updated_at: getString(profile.updated_at, now),
   };
 }
 
-function normalizeMessage(rawMessage: unknown): MessageData {
-  const message = (rawMessage || {}) as Record<string, unknown>;
+function normalizeConversation(row: RawRecord): ConversationData {
   const now = new Date().toISOString();
+  return {
+    id: getString(row.id),
+    participant_1: getString(row.participant_1),
+    participant_2: getString(row.participant_2),
+    booking_id: getOptionalString(row.booking_id),
+    last_message_at: getOptionalString(row.last_message_at),
+    last_message_preview: getOptionalString(row.last_message_preview),
+    created_at: getString(row.created_at, now),
+    updated_at: getOptionalString(row.updated_at),
+    kind: normalizeConversationKind(row.kind),
+    title: getOptionalString(row.title),
+    avatar_url: getOptionalString(row.avatar_url),
+    member_count: undefined,
+    group_id: getOptionalString(row.group_id),
+    event_id: getOptionalString(row.event_id),
+    unread_count: 0,
+  };
+}
 
-  const conversationId =
-    typeof message.conversation_id === 'string'
-      ? message.conversation_id
-      : typeof message.thread_id === 'string'
-        ? (message.thread_id as string)
-        : '';
+function normalizeAttachment(row: RawRecord): MessageAttachmentData {
+  return {
+    id: getOptionalString(row.id),
+    message_id: getOptionalString(row.message_id),
+    conversation_id: getOptionalString(row.conversation_id),
+    sender_user_id: getOptionalString(row.sender_user_id),
+    media_kind: getString(row.media_kind) === 'video' ? 'video' : 'image',
+    bucket: getString(row.bucket),
+    object_path: getString(row.object_path),
+    ciphertext_size_bytes: Math.max(0, Math.round(toNumber(row.ciphertext_size_bytes, 0))),
+    original_size_bytes: toNumber(row.original_size_bytes, 0) || undefined,
+    duration_ms: toNumber(row.duration_ms, 0) || undefined,
+    width: toNumber(row.width, 0) || undefined,
+    height: toNumber(row.height, 0) || undefined,
+    sha256: getString(row.sha256),
+    thumbnail_object_path: getOptionalString(row.thumbnail_object_path),
+  };
+}
 
-  const senderId =
-    typeof message.sender_id === 'string'
-      ? message.sender_id
-      : typeof message.user_id === 'string'
-        ? (message.user_id as string)
-        : typeof message.author_id === 'string'
-          ? (message.author_id as string)
-          : '';
+function normalizeMessage(row: RawRecord): MessageData {
+  const now = new Date().toISOString();
+  const senderId = getString(row.sender_user_id) || getString(row.sender_id);
 
   return {
-    id: typeof message.id === 'string' ? message.id : '',
-    conversation_id: conversationId,
+    id: getString(row.id),
+    conversation_id: getString(row.conversation_id),
     sender_id: senderId,
-    content: typeof message.content === 'string' ? message.content : '',
-    encrypted_for_participant_1: typeof message.encrypted_for_participant_1 === 'string'
-      ? message.encrypted_for_participant_1
-      : undefined,
-    encrypted_for_participant_2: typeof message.encrypted_for_participant_2 === 'string'
-      ? message.encrypted_for_participant_2
-      : undefined,
-    encryption_nonce_p1: typeof message.encryption_nonce_p1 === 'string'
-      ? message.encryption_nonce_p1
-      : undefined,
-    encryption_nonce_p2: typeof message.encryption_nonce_p2 === 'string'
-      ? message.encryption_nonce_p2
-      : undefined,
-    encryption_sender_public_key: typeof message.encryption_sender_public_key === 'string'
-      ? message.encryption_sender_public_key
-      : undefined,
-    encryption_version: typeof message.encryption_version === 'string'
-      ? message.encryption_version
-      : undefined,
-    type: normalizeMessageType(message.type),
-    is_read: typeof message.is_read === 'boolean' ? message.is_read : false,
-    read_at: typeof message.read_at === 'string' ? message.read_at : undefined,
-    created_at: typeof message.created_at === 'string' ? message.created_at : now,
-    sender: normalizeProfile(message.sender),
+    sender_user_id: getOptionalString(row.sender_user_id),
+    sender_device_id: getOptionalString(row.sender_device_id),
+    content: getString(row.content),
+    encrypted_for_participant_1: getOptionalString(row.encrypted_for_participant_1),
+    encrypted_for_participant_2: getOptionalString(row.encrypted_for_participant_2),
+    encryption_nonce_p1: getOptionalString(row.encryption_nonce_p1),
+    encryption_nonce_p2: getOptionalString(row.encryption_nonce_p2),
+    encryption_sender_public_key: getOptionalString(row.encryption_sender_public_key),
+    encryption_version: getOptionalString(row.encryption_version),
+    message_kind: normalizeMessageKind(row.message_kind),
+    ciphertext: getOptionalString(row.ciphertext),
+    ciphertext_nonce: getOptionalString(row.ciphertext_nonce),
+    ciphertext_version: getOptionalString(row.ciphertext_version),
+    preview_ciphertext: getOptionalString(row.preview_ciphertext),
+    preview_nonce: getOptionalString(row.preview_nonce),
+    client_message_id: getOptionalString(row.client_message_id),
+    reply_to_message_id: getOptionalString(row.reply_to_message_id),
+    type: normalizeMessageType(row.type),
+    is_read: row.is_read === true,
+    read_at: getOptionalString(row.read_at),
+    created_at: getString(row.created_at, now),
+    sender: normalizeProfile(row.sender),
   };
 }
 
 function uniqueIds(values: string[]): string[] {
-  return Array.from(new Set(values.filter((id) => !!id)));
+  return Array.from(new Set(values.filter(Boolean)));
 }
 
-function resolveParticipants(
-  existingParticipant1: string,
-  existingParticipant2: string,
-  availableParticipantIds: string[],
-  currentUserId: string
-): { participant_1: string; participant_2: string } {
-  const available = uniqueIds(availableParticipantIds);
-
-  let participant1 = existingParticipant1 || '';
-  let participant2 = existingParticipant2 || '';
-
-  if (!participant1 && currentUserId && available.includes(currentUserId)) {
-    participant1 = currentUserId;
+function isMissingSchemaError(error: unknown, entity?: string): boolean {
+  const typed = (error || {}) as QueryError;
+  const code = String(typed.code || '').toUpperCase();
+  if (code === '42P01' || code === '42703' || code === 'PGRST205') {
+    return true;
   }
 
-  if (!participant1) {
-    participant1 = available[0] || '';
+  if (!entity) {
+    return false;
   }
 
-  if (!participant2) {
-    participant2 = available.find((id) => id !== participant1) || '';
+  const message = String(typed.message || '').toLowerCase();
+  return message.includes(entity.toLowerCase());
+}
+
+async function getCurrentUserId(): Promise<{ userId: string | null; error: Error | null }> {
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser();
+
+  if (error) {
+    return { userId: null, error: new Error(error.message || 'Authentication failed') };
   }
 
-  if (!participant1 && participant2) {
-    participant1 = available.find((id) => id !== participant2) || participant2;
+  if (!user?.id) {
+    return { userId: null, error: new Error('Not authenticated') };
   }
 
-  if (participant1 && participant2 && participant1 === participant2) {
-    participant2 = available.find((id) => id !== participant1) || '';
+  return { userId: user.id, error: null };
+}
+
+async function isMessagingV2Available(): Promise<boolean> {
+  if (!messagingFeatureFlags.messagesV2Enabled) {
+    return false;
   }
 
-  if (!participant1 && currentUserId) {
-    participant1 = currentUserId;
+  if (messagingV2SupportCache !== null) {
+    return messagingV2SupportCache;
   }
 
-  return {
-    participant_1: participant1,
-    participant_2: participant2,
-  };
+  const checks = await Promise.all([
+    supabase.from('conversation_members').select('conversation_id').limit(1),
+    supabase.from('message_device_identities').select('device_id').limit(1),
+    supabase.from('messages').select('ciphertext,ciphertext_nonce,message_kind').limit(1),
+  ]);
+
+  const hasMissing = checks.some((result) => isMissingSchemaError(result.error));
+  messagingV2SupportCache = !hasMissing;
+  return messagingV2SupportCache;
 }
 
 async function fetchProfilesByIds(ids: string[]): Promise<Record<string, ProfileData>> {
@@ -373,13 +402,13 @@ async function fetchProfilesByIds(ids: string[]): Promise<Record<string, Profile
     .in('id', unique);
 
   if (error) {
-    console.error('Error fetching profiles for conversations/messages:', error);
+    console.error('Error fetching profiles:', error);
     return {};
   }
 
   const map: Record<string, ProfileData> = {};
-  (data || []).forEach((profileRaw) => {
-    const profile = normalizeProfile(profileRaw);
+  (data || []).forEach((row) => {
+    const profile = normalizeProfile(row);
     if (profile?.id) {
       map[profile.id] = profile;
     }
@@ -388,359 +417,338 @@ async function fetchProfilesByIds(ids: string[]): Promise<Record<string, Profile
   return map;
 }
 
-async function getConversationParticipantsTableConfig(): Promise<ConversationParticipantTableConfig | null> {
-  if (conversationParticipantsConfigCache !== undefined) {
-    return conversationParticipantsConfigCache;
-  }
-
-  for (const pair of CONVERSATION_PARTICIPANTS_TABLE_PAIRS) {
-    for (const lastReadColumn of [...CONVERSATION_PARTICIPANTS_LAST_READ_COLUMNS, null]) {
-      const selectColumns = [pair[0], pair[1]];
-      if (lastReadColumn) {
-        selectColumns.push(lastReadColumn);
-      }
-
-      const { error } = await supabase
-        .from(CONVERSATION_PARTICIPANTS_TABLE)
-        .select(selectColumns.join(','))
-        .limit(1);
-
-      if (!error) {
-        conversationParticipantsConfigCache = {
-          conversationColumn: pair[0],
-          userColumn: pair[1],
-          lastReadColumn: lastReadColumn || undefined,
-        };
-        return conversationParticipantsConfigCache;
-      }
-
-      if (isMissingTableError(error, CONVERSATION_PARTICIPANTS_TABLE)) {
-        conversationParticipantsConfigCache = null;
-        return null;
-      }
-
-      if (lastReadColumn && isMissingColumnError(error, CONVERSATION_PARTICIPANTS_TABLE, lastReadColumn)) {
-        continue;
-      }
-
-      if (
-        isMissingColumnError(error, CONVERSATION_PARTICIPANTS_TABLE, pair[0]) ||
-        isMissingColumnError(error, CONVERSATION_PARTICIPANTS_TABLE, pair[1])
-      ) {
-        break;
-      }
-
-      console.error('Error detecting conversation participants table config:', error);
-      conversationParticipantsConfigCache = null;
-      return null;
-    }
-  }
-
-  conversationParticipantsConfigCache = null;
-  return null;
-}
-
-async function fetchConversationParticipantRowsForUser(userId: string): Promise<{
-  rows: Array<Record<string, unknown>>;
-  config: ConversationParticipantTableConfig | null;
-  error: Error | null;
-}> {
-  const config = await getConversationParticipantsTableConfig();
-  if (!config) {
-    return { rows: [], config: null, error: null };
-  }
-
-  const selectColumns = [config.conversationColumn, config.userColumn];
-  if (config.lastReadColumn) {
-    selectColumns.push(config.lastReadColumn);
-  }
-
-  const { data, error } = await supabase
-    .from(CONVERSATION_PARTICIPANTS_TABLE)
-    .select(selectColumns.join(','))
-    .eq(config.userColumn, userId);
-
-  if (!error) {
-    return {
-      rows: (data || []) as unknown as Array<Record<string, unknown>>,
-      config,
-      error: null,
-    };
-  }
-
-  if (config.lastReadColumn && isMissingColumnError(error, CONVERSATION_PARTICIPANTS_TABLE, config.lastReadColumn)) {
-    conversationParticipantsConfigCache = {
-      conversationColumn: config.conversationColumn,
-      userColumn: config.userColumn,
-    };
-    return fetchConversationParticipantRowsForUser(userId);
-  }
-
-  if (isMissingTableError(error, CONVERSATION_PARTICIPANTS_TABLE)) {
-    conversationParticipantsConfigCache = null;
-    return { rows: [], config: null, error: null };
-  }
-
-  console.error('Error fetching conversation participant rows for user:', error);
-  return {
-    rows: [],
-    config,
-    error: new Error(error.message || 'Failed to fetch conversation participants'),
-  };
-}
-
-async function fetchConversationParticipantRowsByConversationIds(
-  conversationIds: string[],
-  providedConfig?: ConversationParticipantTableConfig | null
-): Promise<{
-  rows: Array<Record<string, unknown>>;
-  config: ConversationParticipantTableConfig | null;
-  error: Error | null;
-}> {
+async function fetchConversationRowsByIds(conversationIds: string[]): Promise<RawRecord[]> {
   const ids = uniqueIds(conversationIds);
   if (ids.length === 0) {
-    return { rows: [], config: providedConfig || null, error: null };
-  }
-
-  const config = providedConfig || await getConversationParticipantsTableConfig();
-  if (!config) {
-    return { rows: [], config: null, error: null };
-  }
-
-  const selectColumns = [config.conversationColumn, config.userColumn];
-  if (config.lastReadColumn) {
-    selectColumns.push(config.lastReadColumn);
+    return [];
   }
 
   const { data, error } = await supabase
-    .from(CONVERSATION_PARTICIPANTS_TABLE)
-    .select(selectColumns.join(','))
-    .in(config.conversationColumn, ids);
+    .from('conversations')
+    .select('*')
+    .in('id', ids)
+    .order('updated_at', { ascending: false, nullsFirst: false });
 
   if (!error) {
-    return {
-      rows: (data || []) as unknown as Array<Record<string, unknown>>,
-      config,
-      error: null,
-    };
+    return (data || []) as RawRecord[];
   }
 
-  if (config.lastReadColumn && isMissingColumnError(error, CONVERSATION_PARTICIPANTS_TABLE, config.lastReadColumn)) {
-    conversationParticipantsConfigCache = {
-      conversationColumn: config.conversationColumn,
-      userColumn: config.userColumn,
-    };
-    return fetchConversationParticipantRowsByConversationIds(ids, conversationParticipantsConfigCache);
+  if (isMissingSchemaError(error, 'updated_at')) {
+    const fallback = await supabase
+      .from('conversations')
+      .select('*')
+      .in('id', ids)
+      .order('last_message_at', { ascending: false, nullsFirst: false });
+
+    if (!fallback.error) {
+      return (fallback.data || []) as RawRecord[];
+    }
+
+    console.error('Error fetching conversations by IDs (fallback):', fallback.error);
+    return [];
   }
 
-  if (isMissingTableError(error, CONVERSATION_PARTICIPANTS_TABLE)) {
-    conversationParticipantsConfigCache = null;
-    return { rows: [], config: null, error: null };
-  }
-
-  console.error('Error fetching conversation participant rows by conversation IDs:', error);
-  return {
-    rows: [],
-    config,
-    error: new Error(error.message || 'Failed to fetch conversation participants'),
-  };
+  console.error('Error fetching conversations by IDs:', error);
+  return [];
 }
 
-function buildParticipantMap(
-  rows: Array<Record<string, unknown>>,
-  config: ConversationParticipantTableConfig
-): Record<string, string[]> {
-  const map: Record<string, string[]> = {};
+async function fetchLegacyDirectConversationRows(userId: string): Promise<RawRecord[]> {
+  const { data, error } = await supabase
+    .from('conversations')
+    .select('*')
+    .or(`participant_1.eq.${userId},participant_2.eq.${userId}`)
+    .order('last_message_at', { ascending: false, nullsFirst: false });
 
-  rows.forEach((row) => {
-    const conversationId =
-      typeof row[config.conversationColumn] === 'string'
-        ? row[config.conversationColumn] as string
-        : '';
-    const participantId =
-      typeof row[config.userColumn] === 'string'
-        ? row[config.userColumn] as string
-        : '';
+  if (!error) {
+    return (data || []) as RawRecord[];
+  }
 
-    if (!conversationId || !participantId) return;
+  if (isMissingSchemaError(error, 'last_message_at')) {
+    const fallback = await supabase
+      .from('conversations')
+      .select('*')
+      .or(`participant_1.eq.${userId},participant_2.eq.${userId}`)
+      .order('created_at', { ascending: false, nullsFirst: false });
 
-    if (!map[conversationId]) {
-      map[conversationId] = [];
+    if (!fallback.error) {
+      return (fallback.data || []) as RawRecord[];
     }
 
-    if (!map[conversationId].includes(participantId)) {
-      map[conversationId].push(participantId);
+    console.error('Error fetching direct conversations (fallback):', fallback.error);
+    return [];
+  }
+
+  console.error('Error fetching direct conversations:', error);
+  return [];
+}
+
+async function fetchConversationMembers(conversationIds: string[]): Promise<ConversationMemberRow[]> {
+  const ids = uniqueIds(conversationIds);
+  if (ids.length === 0) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from('conversation_members')
+    .select('conversation_id,user_id,role,last_read_at,left_at')
+    .in('conversation_id', ids)
+    .is('left_at', null);
+
+  if (error) {
+    if (!isMissingSchemaError(error, 'conversation_members')) {
+      console.error('Error fetching conversation members:', error);
     }
+    return [];
+  }
+
+  return (data || []) as ConversationMemberRow[];
+}
+
+async function fetchLatestMessageByConversation(conversationIds: string[]): Promise<Record<string, MessageData>> {
+  const ids = uniqueIds(conversationIds);
+  const map: Record<string, MessageData> = {};
+  if (ids.length === 0) {
+    return map;
+  }
+
+  const { data, error } = await supabase
+    .from('messages')
+    .select('*')
+    .in('conversation_id', ids)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching latest messages by conversation:', error);
+    return map;
+  }
+
+  (data || []).forEach((row) => {
+    const message = normalizeMessage(row as RawRecord);
+    if (!message.conversation_id || map[message.conversation_id]) {
+      return;
+    }
+    map[message.conversation_id] = message;
   });
 
   return map;
 }
 
-function isMissingRequiredMessageEncryptionColumn(error: unknown): boolean {
-  return MESSAGE_ENCRYPTION_REQUIRED_COLUMNS.some((column) => (
-    isMissingColumnError(error, 'messages', column)
-  ));
+async function countUnreadMessages(
+  conversationId: string,
+  currentUserId: string,
+  lastReadAt?: string,
+): Promise<number> {
+  let query = supabase
+    .from('messages')
+    .select('id', { count: 'exact', head: true })
+    .eq('conversation_id', conversationId)
+    .neq('sender_user_id', currentUserId);
+
+  if (lastReadAt) {
+    query = query.gt('created_at', lastReadAt);
+  }
+
+  const { count, error } = await query;
+  if (!error) {
+    return Math.max(0, Math.round(toNumber(count, 0)));
+  }
+
+  if (isMissingSchemaError(error, 'sender_user_id')) {
+    let legacyQuery = supabase
+      .from('messages')
+      .select('id', { count: 'exact', head: true })
+      .eq('conversation_id', conversationId)
+      .neq('sender_id', currentUserId);
+
+    if (lastReadAt) {
+      legacyQuery = legacyQuery.gt('created_at', lastReadAt);
+    }
+
+    const legacy = await legacyQuery;
+    return Math.max(0, Math.round(toNumber(legacy.count, 0)));
+  }
+
+  console.error('Error counting unread messages:', error);
+  return 0;
 }
 
-async function resolveConversationParticipants(
+function mergeConversationParticipants(
+  conversation: ConversationData,
+  members: ConversationMemberRow[],
+  currentUserId: string,
+): ConversationData {
+  if (members.length === 0) {
+    return conversation;
+  }
+
+  const participantIds = uniqueIds(members.map((member) => member.user_id));
+
+  const normalized = { ...conversation };
+
+  if (normalized.kind === 'direct') {
+    const otherId = participantIds.find((id) => id !== currentUserId) || participantIds[0] || '';
+    normalized.participant_1 = currentUserId;
+    normalized.participant_2 = otherId;
+  } else {
+    normalized.participant_1 = participantIds[0] || normalized.participant_1;
+    normalized.participant_2 = participantIds[1] || normalized.participant_2;
+  }
+
+  normalized.member_count = participantIds.length;
+  return normalized;
+}
+
+function buildConversationTitle(
+  conversation: ConversationData,
+  profileMap: Record<string, ProfileData>,
+  members: ConversationMemberRow[],
+  currentUserId: string,
+): string | undefined {
+  if (conversation.kind === 'group' || conversation.kind === 'event') {
+    return conversation.title || undefined;
+  }
+
+  const otherUserId = members
+    .map((member) => member.user_id)
+    .find((id) => id !== currentUserId)
+    || (conversation.participant_1 === currentUserId ? conversation.participant_2 : conversation.participant_1);
+
+  const profile = profileMap[otherUserId || ''];
+  if (!profile) {
+    return undefined;
+  }
+
+  return `${profile.first_name || 'User'} ${profile.last_name || ''}`.trim();
+}
+
+async function hydrateConversationRows(
+  rows: RawRecord[],
+  currentUserId: string,
+): Promise<ConversationData[]> {
+  const conversations = rows.map((row) => normalizeConversation(row));
+  const conversationIds = conversations.map((conversation) => conversation.id).filter(Boolean);
+
+  const members = await fetchConversationMembers(conversationIds);
+  const membersByConversation = members.reduce<Record<string, ConversationMemberRow[]>>((acc, member) => {
+    if (!acc[member.conversation_id]) {
+      acc[member.conversation_id] = [];
+    }
+    acc[member.conversation_id].push(member);
+    return acc;
+  }, {});
+
+  const memberUserIds = members.map((member) => member.user_id);
+  const participantIds = conversations.flatMap((conversation) => [conversation.participant_1, conversation.participant_2]);
+  const profileMap = await fetchProfilesByIds([...memberUserIds, ...participantIds]);
+
+  const latestMessages = await fetchLatestMessageByConversation(conversationIds);
+
+  const hydrated: ConversationData[] = [];
+
+  for (const conversation of conversations) {
+    const conversationMembers = membersByConversation[conversation.id] || [];
+    const merged = mergeConversationParticipants(conversation, conversationMembers, currentUserId);
+    const ownMember = conversationMembers.find((member) => member.user_id === currentUserId);
+
+    const unreadCount = await countUnreadMessages(
+      merged.id,
+      currentUserId,
+      ownMember?.last_read_at,
+    );
+
+    const latest = latestMessages[merged.id];
+    const title = buildConversationTitle(merged, profileMap, conversationMembers, currentUserId);
+
+    hydrated.push({
+      ...merged,
+      title,
+      last_message_at: latest?.created_at || merged.last_message_at,
+      last_message_preview: latest ? ENCRYPTED_MESSAGE_PREVIEW : merged.last_message_preview,
+      participant_1_profile: profileMap[merged.participant_1],
+      participant_2_profile: profileMap[merged.participant_2],
+      unread_count: unreadCount,
+    });
+  }
+
+  hydrated.sort((a, b) => {
+    const aTime = new Date(a.last_message_at || a.created_at).getTime();
+    const bTime = new Date(b.last_message_at || b.created_at).getTime();
+    return bTime - aTime;
+  });
+
+  return hydrated;
+}
+
+async function resolveLegacyConversationParticipants(
   conversationId: string,
-  currentUserId: string
 ): Promise<{ participant_1: string; participant_2: string } | null> {
-  if (!conversationId) return null;
+  const { data, error } = await supabase
+    .from('conversations')
+    .select('participant_1,participant_2')
+    .eq('id', conversationId)
+    .maybeSingle();
 
-  const cached = conversationParticipantCache.get(conversationId);
-  if (cached?.participant_1 && cached?.participant_2) {
-    return cached;
-  }
-
-  let participant1 = '';
-  let participant2 = '';
-
-  for (const pair of CONVERSATION_PARTICIPANT_COLUMN_PAIRS) {
-    const { data, error } = await supabase
-      .from('conversations')
-      .select(`${pair[0]},${pair[1]}`)
-      .eq('id', conversationId)
-      .maybeSingle();
-
-    if (!error && data) {
-      const row = data as unknown as Record<string, unknown>;
-      participant1 = typeof row[pair[0]] === 'string' ? row[pair[0]] as string : '';
-      participant2 = typeof row[pair[1]] === 'string' ? row[pair[1]] as string : '';
-      break;
-    }
-
-    if (
-      isMissingColumnError(error, 'conversations', pair[0]) ||
-      isMissingColumnError(error, 'conversations', pair[1])
-    ) {
-      continue;
-    }
-
-    if (error) {
-      console.error('Error resolving conversation participants from conversations table:', error);
-      break;
-    }
-  }
-
-  const joinRowsResult = await fetchConversationParticipantRowsByConversationIds([conversationId]);
-  if (joinRowsResult.error) {
-    console.error('Error resolving conversation participants from join table:', joinRowsResult.error);
-  }
-
-  const participantIds = joinRowsResult.config
-    ? buildParticipantMap(joinRowsResult.rows, joinRowsResult.config)[conversationId] || []
-    : [];
-
-  const resolved = resolveParticipants(
-    participant1,
-    participant2,
-    participantIds,
-    currentUserId
-  );
-
-  if (!resolved.participant_1 || !resolved.participant_2) {
+  if (error || !data) {
     return null;
   }
 
-  conversationParticipantCache.set(conversationId, resolved);
-  return resolved;
+  const participant1 = getString((data as RawRecord).participant_1);
+  const participant2 = getString((data as RawRecord).participant_2);
+  if (!participant1 || !participant2) {
+    return null;
+  }
+
+  return {
+    participant_1: participant1,
+    participant_2: participant2,
+  };
 }
 
-function messageHasEncryptedPayload(message: MessageData): boolean {
-  return !!(
-    message.encrypted_for_participant_1 ||
-    message.encrypted_for_participant_2 ||
-    message.encryption_nonce_p1 ||
-    message.encryption_nonce_p2 ||
-    message.encryption_sender_public_key
+function messageHasLegacyEncryptedPayload(message: MessageData): boolean {
+  return Boolean(
+    message.encrypted_for_participant_1
+    || message.encrypted_for_participant_2
+    || message.encryption_nonce_p1
+    || message.encryption_nonce_p2
+    || message.encryption_sender_public_key,
   );
 }
 
-function decryptMessageContentForCurrentUser(
-  message: MessageData,
-  currentUserId: string,
-  participants: { participant_1: string; participant_2: string },
-  identity: MessagingIdentity
-): string {
-  if (!messageHasEncryptedPayload(message)) {
-    return message.content;
-  }
-
-  if (message.encryption_version && message.encryption_version !== MESSAGE_ENCRYPTION_VERSION) {
-    return ENCRYPTED_MESSAGE_PREVIEW;
-  }
-
-  const isParticipant1 = participants.participant_1 === currentUserId;
-  const isParticipant2 = participants.participant_2 === currentUserId;
-
-  if (!isParticipant1 && !isParticipant2) {
-    return ENCRYPTED_MESSAGE_PREVIEW;
-  }
-
-  const ciphertext = isParticipant1
-    ? message.encrypted_for_participant_1
-    : message.encrypted_for_participant_2;
-  const nonce = isParticipant1
-    ? message.encryption_nonce_p1
-    : message.encryption_nonce_p2;
-  const senderPublicKey = message.encryption_sender_public_key || '';
-
-  if (!ciphertext || !nonce || !senderPublicKey) {
-    return ENCRYPTED_MESSAGE_PREVIEW;
-  }
-
-  const decrypted = decryptMessageFromSender(
-    ciphertext,
-    nonce,
-    senderPublicKey,
-    identity.secretKey
-  );
-
-  return decrypted || ENCRYPTED_MESSAGE_PREVIEW;
-}
-
-async function decryptMessagesForCurrentUser(
+async function decryptLegacyV1Messages(
   messages: MessageData[],
   conversationId: string,
-  currentUserId: string
+  currentUserId: string,
 ): Promise<MessageData[]> {
-  if (!conversationId || !currentUserId || messages.length === 0) {
+  if (!messages.some((message) => messageHasLegacyEncryptedPayload(message))) {
     return messages;
   }
 
-  if (!messages.some((message) => messageHasEncryptedPayload(message))) {
-    return messages;
-  }
-
-  const participants = await resolveConversationParticipants(conversationId, currentUserId);
+  const participants = await resolveLegacyConversationParticipants(conversationId);
   if (!participants) {
-    return messages.map((message) => (
-      messageHasEncryptedPayload(message)
-        ? { ...message, content: ENCRYPTED_MESSAGE_PREVIEW }
-        : message
-    ));
+    return messages.map((message) => ({
+      ...message,
+      content: messageHasLegacyEncryptedPayload(message)
+        ? ENCRYPTED_MESSAGE_PREVIEW
+        : message.content,
+    }));
   }
 
   let identity: MessagingIdentity;
   try {
     identity = await getMessagingIdentity(currentUserId, { syncProfile: false });
   } catch (error) {
-    console.error('Error loading local messaging identity for decrypt:', error);
-    return messages.map((message) => (
-      messageHasEncryptedPayload(message)
-        ? { ...message, content: ENCRYPTED_MESSAGE_PREVIEW }
-        : message
-    ));
+    console.error('Error loading legacy messaging identity:', error);
+    return messages.map((message) => ({
+      ...message,
+      content: messageHasLegacyEncryptedPayload(message)
+        ? ENCRYPTED_MESSAGE_PREVIEW
+        : message.content,
+    }));
   }
 
   const senderPublicKeys: Record<string, string> = {};
   messages.forEach((message) => {
-    if (
-      message.sender_id &&
-      message.sender_id !== currentUserId &&
-      message.encryption_sender_public_key
-    ) {
+    if (message.sender_id && message.sender_id !== currentUserId && message.encryption_sender_public_key) {
       senderPublicKeys[message.sender_id] = message.encryption_sender_public_key;
     }
   });
@@ -750,1092 +758,745 @@ async function decryptMessagesForCurrentUser(
     const evaluation = await pinAndCheckPeerPublicKeys(currentUserId, senderPublicKeys);
     changedSenderIds = new Set(evaluation.changedUserIds);
   } catch (error) {
-    console.error('Error verifying sender safety keys:', error);
+    console.error('Error pinning legacy peer keys:', error);
   }
 
-  return messages.map((message) => ({
-    ...message,
-    content: changedSenderIds.has(message.sender_id)
-      ? MESSAGE_KEY_CHANGED_PLACEHOLDER
-      : decryptMessageContentForCurrentUser(message, currentUserId, participants, identity),
-  }));
-}
-
-async function buildEncryptedPayloadForMessage(
-  conversationId: string,
-  currentUserId: string,
-  plaintext: string
-): Promise<Record<string, string>> {
-  const participants = await resolveConversationParticipants(conversationId, currentUserId);
-  if (!participants) {
-    throw new Error('Unable to resolve conversation participants for secure messaging.');
-  }
-
-  if (participants.participant_1 !== currentUserId && participants.participant_2 !== currentUserId) {
-    throw new Error('You are not a participant in this conversation.');
-  }
-
-  const identity = await getMessagingIdentity(currentUserId);
-  const publicKeyMap = await fetchMessagingPublicKeys([
-    participants.participant_1,
-    participants.participant_2,
-  ]);
-
-  const participant1Key = publicKeyMap[participants.participant_1];
-  const participant2Key = publicKeyMap[participants.participant_2];
-
-  if (!participant1Key || !participant2Key) {
-    throw new SecureMessagingError(
-      'missing_public_key',
-      'Secure messaging is still initializing for this conversation. Ask both users to open Messages and try again.'
-    );
-  }
-
-  const peerParticipantId = participants.participant_1 === currentUserId
-    ? participants.participant_2
-    : participants.participant_1;
-  const peerKey = publicKeyMap[peerParticipantId];
-
-  if (!peerParticipantId || !peerKey) {
-    throw new SecureMessagingError(
-      'missing_public_key',
-      'Recipient secure messaging key is missing.'
-    );
-  }
-
-  const keyEvaluation = await pinAndCheckPeerPublicKeys(currentUserId, {
-    [peerParticipantId]: peerKey,
-  });
-
-  if (keyEvaluation.changedUserIds.length > 0) {
-    throw new SecureMessagingError(
-      'key_changed',
-      'Safety key changed for this conversation. Messaging is blocked until the key is verified.'
-    );
-  }
-
-  const encryptedForParticipant1 = encryptMessageForRecipient(
-    plaintext,
-    participant1Key,
-    identity.secretKey
-  );
-  const encryptedForParticipant2 = encryptMessageForRecipient(
-    plaintext,
-    participant2Key,
-    identity.secretKey
-  );
-
-  return {
-    encrypted_for_participant_1: encryptedForParticipant1.ciphertextBase64,
-    encrypted_for_participant_2: encryptedForParticipant2.ciphertextBase64,
-    encryption_nonce_p1: encryptedForParticipant1.nonceBase64,
-    encryption_nonce_p2: encryptedForParticipant2.nonceBase64,
-    encryption_sender_public_key: identity.publicKeyBase64,
-    encryption_version: MESSAGE_ENCRYPTION_VERSION,
-  };
-}
-
-async function countUnreadMessages(
-  conversationId: string,
-  currentUserId: string
-): Promise<number> {
-  if (!conversationId || !currentUserId) return 0;
-
-  for (const conversationColumn of MESSAGE_CONVERSATION_COLUMNS) {
-    let missingConversationColumn = false;
-
-    for (const senderColumn of MESSAGE_SENDER_COLUMNS) {
-      for (const withReadFilter of [true, false]) {
-        let query = supabase
-          .from('messages')
-          .select('*', { count: 'exact', head: true })
-          .eq(conversationColumn, conversationId)
-          .neq(senderColumn, currentUserId);
-
-        if (withReadFilter) {
-          query = query.eq('is_read', false);
-        }
-
-        const { count, error } = await query;
-
-        if (!error) {
-          return withReadFilter ? (count || 0) : 0;
-        }
-
-        if (isMissingColumnError(error, 'messages', conversationColumn)) {
-          missingConversationColumn = true;
-          break;
-        }
-
-        if (isMissingColumnError(error, 'messages', senderColumn)) {
-          continue;
-        }
-
-        if (withReadFilter && isMissingColumnError(error, 'messages', 'is_read')) {
-          continue;
-        }
-
-        console.error('Error counting unread messages:', error);
-        return 0;
-      }
-
-      if (missingConversationColumn) {
-        break;
-      }
+  return messages.map((message) => {
+    if (!messageHasLegacyEncryptedPayload(message)) {
+      return message;
     }
 
-    if (!missingConversationColumn) {
-      break;
-    }
-  }
-
-  return 0;
-}
-
-async function fetchLatestMessageMap(
-  conversationIds: string[]
-): Promise<Record<string, { created_at: string }>> {
-  const result: Record<string, { created_at: string }> = {};
-  const ids = uniqueIds(conversationIds);
-
-  if (ids.length === 0) {
-    return result;
-  }
-
-  for (const conversationColumn of MESSAGE_CONVERSATION_COLUMNS) {
-    let missingConversationColumn = false;
-
-    for (const includeOrdering of [true, false]) {
-      let query = supabase
-        .from('messages')
-        .select(`${conversationColumn},created_at`)
-        .in(conversationColumn, ids);
-
-      if (includeOrdering) {
-        query = query.order('created_at', { ascending: false });
-      }
-
-      const { data, error } = await query;
-
-      if (!error) {
-        const rows = (data || []) as Array<Record<string, unknown>>;
-
-        rows.forEach((row) => {
-          const convId = typeof row[conversationColumn] === 'string' ? row[conversationColumn] as string : '';
-          if (!convId || result[convId]) {
-            return;
-          }
-
-          const createdAt = typeof row.created_at === 'string' ? row.created_at : '';
-          result[convId] = { created_at: createdAt };
-        });
-
-        return result;
-      }
-
-      if (isMissingColumnError(error, 'messages', conversationColumn)) {
-        missingConversationColumn = true;
-        break;
-      }
-
-      if (includeOrdering && isMissingColumnError(error, 'messages', 'created_at')) {
-        continue;
-      }
-
-      console.error('Error fetching latest message preview fallback:', error);
-      return result;
-    }
-
-    if (!missingConversationColumn) {
-      break;
-    }
-  }
-
-  return result;
-}
-
-async function fetchCounterpartyIdsByConversation(
-  conversationIds: string[],
-  currentUserId: string
-): Promise<Record<string, string>> {
-  const result: Record<string, string> = {};
-  const ids = uniqueIds(conversationIds);
-  if (ids.length === 0 || !currentUserId) {
-    return result;
-  }
-
-  for (const conversationColumn of MESSAGE_CONVERSATION_COLUMNS) {
-    let missingConversationColumn = false;
-
-    for (const senderColumn of MESSAGE_SENDER_COLUMNS) {
-      for (const includeOrdering of [true, false]) {
-        let query = supabase
-          .from('messages')
-          .select(`${conversationColumn},${senderColumn},created_at`)
-          .in(conversationColumn, ids)
-          .neq(senderColumn, currentUserId);
-
-        if (includeOrdering) {
-          query = query.order('created_at', { ascending: false });
-        }
-
-        const { data, error } = await query;
-
-        if (!error) {
-          const rows = (data || []) as Array<Record<string, unknown>>;
-          rows.forEach((row) => {
-            const convId = typeof row[conversationColumn] === 'string' ? row[conversationColumn] as string : '';
-            const senderId = typeof row[senderColumn] === 'string' ? row[senderColumn] as string : '';
-            if (!convId || !senderId || result[convId]) {
-              return;
-            }
-            result[convId] = senderId;
-          });
-          return result;
-        }
-
-        if (isMissingColumnError(error, 'messages', conversationColumn)) {
-          missingConversationColumn = true;
-          break;
-        }
-
-        if (isMissingColumnError(error, 'messages', senderColumn)) {
-          break;
-        }
-
-        if (includeOrdering && isMissingColumnError(error, 'messages', 'created_at')) {
-          continue;
-        }
-
-        return result;
-      }
-
-      if (missingConversationColumn) {
-        break;
-      }
-    }
-
-    if (!missingConversationColumn) {
-      break;
-    }
-  }
-
-  return result;
-}
-
-async function fetchConversationRowsForUserDirect(userId: string): Promise<{
-  rows: Array<Record<string, unknown>>;
-  pair: ConversationParticipantPair | null;
-  error: Error | null;
-}> {
-  for (const pair of CONVERSATION_PARTICIPANT_COLUMN_PAIRS) {
-    for (const orderByLastMessage of [true, false]) {
-      let query = supabase
-        .from('conversations')
-        .select('*')
-        .or(`${pair[0]}.eq.${userId},${pair[1]}.eq.${userId}`);
-
-      query = query.order(orderByLastMessage ? 'last_message_at' : 'created_at', {
-        ascending: false,
-        nullsFirst: false,
-      });
-
-      const { data, error } = await query;
-
-      if (!error) {
-        return {
-          rows: (data || []) as Array<Record<string, unknown>>,
-          pair,
-          error: null,
-        };
-      }
-
-      if (
-        isMissingColumnError(error, 'conversations', pair[0]) ||
-        isMissingColumnError(error, 'conversations', pair[1])
-      ) {
-        break;
-      }
-
-      if (orderByLastMessage && isMissingColumnError(error, 'conversations', 'last_message_at')) {
-        continue;
-      }
-
-      console.error('Error fetching conversation rows (direct columns):', error);
+    if (changedSenderIds.has(message.sender_id)) {
       return {
-        rows: [],
-        pair: null,
-        error: new Error(error.message || 'Failed to fetch conversations'),
-      };
-    }
-  }
-
-  return {
-    rows: [],
-    pair: null,
-    error: new Error('No supported participant columns found for conversations'),
-  };
-}
-
-async function fetchConversationRowsByIds(conversationIds: string[]): Promise<{
-  rows: Array<Record<string, unknown>>;
-  error: Error | null;
-}> {
-  const ids = uniqueIds(conversationIds);
-  if (ids.length === 0) {
-    return { rows: [], error: null };
-  }
-
-  for (const orderByLastMessage of [true, false]) {
-    let query = supabase
-      .from('conversations')
-      .select('*')
-      .in('id', ids);
-
-    if (orderByLastMessage) {
-      query = query.order('last_message_at', { ascending: false, nullsFirst: false });
-    }
-
-    const { data, error } = await query;
-    if (!error) {
-      return {
-        rows: (data || []) as Array<Record<string, unknown>>,
-        error: null,
+        ...message,
+        content: MESSAGE_KEY_CHANGED_PLACEHOLDER,
       };
     }
 
-    if (orderByLastMessage && isMissingColumnError(error, 'conversations', 'last_message_at')) {
-      continue;
-    }
-
-    console.error('Error fetching conversation rows by IDs:', error);
-    return { rows: [], error: new Error(error.message || 'Failed to fetch conversations') };
-  }
-
-  return { rows: [], error: null };
-}
-
-async function finalizeConversations(
-  baseConversations: ConversationData[],
-  currentUserId: string
-): Promise<ConversationData[]> {
-  let conversations = [...baseConversations];
-
-  const missingParticipantsIds = conversations
-    .filter((conversation) => !conversation.participant_1 || !conversation.participant_2)
-    .map((conversation) => conversation.id);
-
-  if (missingParticipantsIds.length > 0) {
-    const { rows, config, error } = await fetchConversationParticipantRowsByConversationIds(missingParticipantsIds);
-    if (!error && config) {
-      const participantMap = buildParticipantMap(rows, config);
-      conversations = conversations.map((conversation) => {
-        const resolved = resolveParticipants(
-          conversation.participant_1,
-          conversation.participant_2,
-          participantMap[conversation.id] || [],
-          currentUserId
-        );
-
-        return {
-          ...conversation,
-          participant_1: resolved.participant_1,
-          participant_2: resolved.participant_2,
-        };
-      });
-    }
-  }
-
-  const stillMissingParticipantIds = conversations
-    .filter((conversation) => !conversation.participant_1 || !conversation.participant_2)
-    .map((conversation) => conversation.id);
-
-  if (stillMissingParticipantIds.length > 0) {
-    const counterpartyByConversation = await fetchCounterpartyIdsByConversation(
-      stillMissingParticipantIds,
-      currentUserId
-    );
-
-    conversations = conversations.map((conversation) => {
-      if (conversation.participant_1 && conversation.participant_2) {
-        return conversation;
-      }
-
-      const resolved = resolveParticipants(
-        conversation.participant_1,
-        conversation.participant_2,
-        [
-          conversation.participant_1,
-          conversation.participant_2,
-          counterpartyByConversation[conversation.id],
-        ],
-        currentUserId
-      );
-
+    if (message.encryption_version && message.encryption_version !== LEGACY_ENCRYPTION_VERSION) {
       return {
-        ...conversation,
-        participant_1: resolved.participant_1,
-        participant_2: resolved.participant_2,
+        ...message,
+        content: ENCRYPTED_MESSAGE_PREVIEW,
       };
-    });
-  }
+    }
 
-  const participantIds = conversations.flatMap((conversation) => [
-    conversation.participant_1,
-    conversation.participant_2,
-  ]);
-  const profileMap = await fetchProfilesByIds(participantIds);
+    const isParticipant1 = participants.participant_1 === currentUserId;
+    const ciphertext = isParticipant1
+      ? message.encrypted_for_participant_1
+      : message.encrypted_for_participant_2;
+    const nonce = isParticipant1
+      ? message.encryption_nonce_p1
+      : message.encryption_nonce_p2;
 
-  const hydrated = conversations.map((conversation) => ({
-    ...conversation,
-    participant_1_profile: profileMap[conversation.participant_1],
-    participant_2_profile: profileMap[conversation.participant_2],
-  }));
+    if (!ciphertext || !nonce || !message.encryption_sender_public_key) {
+      return {
+        ...message,
+        content: ENCRYPTED_MESSAGE_PREVIEW,
+      };
+    }
 
-  const conversationIds = hydrated.map((conversation) => conversation.id).filter(Boolean);
-  const [unreadCounts, latestMessageMap] = await Promise.all([
-    Promise.all(
-      conversationIds.map((conversationId) => countUnreadMessages(conversationId, currentUserId))
-    ),
-    fetchLatestMessageMap(conversationIds),
-  ]);
-
-  const withUnreadAndPreview = hydrated.map((conversation, index) => {
-    const fallbackLatest = latestMessageMap[conversation.id];
-    const hasMessage = !!(
-      conversation.last_message_at ||
-      fallbackLatest?.created_at ||
-      conversation.last_message_preview
+    const decrypted = decryptMessageFromSender(
+      ciphertext,
+      nonce,
+      message.encryption_sender_public_key,
+      identity.secretKey,
     );
 
     return {
-      ...conversation,
-      unread_count: unreadCounts[index] || 0,
-      last_message_preview: hasMessage ? ENCRYPTED_MESSAGE_PREVIEW : undefined,
-      last_message_at: conversation.last_message_at || fallbackLatest?.created_at || undefined,
+      ...message,
+      content: decrypted || ENCRYPTED_MESSAGE_PREVIEW,
     };
   });
-
-  withUnreadAndPreview.forEach((conversation) => {
-    if (conversation.id && conversation.participant_1 && conversation.participant_2) {
-      conversationParticipantCache.set(conversation.id, {
-        participant_1: conversation.participant_1,
-        participant_2: conversation.participant_2,
-      });
-    }
-  });
-
-  withUnreadAndPreview.sort((a, b) => {
-    const aTime = new Date(a.last_message_at || a.created_at).getTime();
-    const bTime = new Date(b.last_message_at || b.created_at).getTime();
-    return bTime - aTime;
-  });
-
-  return withUnreadAndPreview;
 }
 
-async function fetchConversationsViaParticipantJoinTable(
-  currentUserId: string
-): Promise<{ conversations: ConversationData[]; error: Error | null }> {
-  const { rows: ownParticipantRows, config, error: participantError } =
-    await fetchConversationParticipantRowsForUser(currentUserId);
-
-  if (participantError) {
-    return { conversations: [], error: participantError };
-  }
-
-  if (!config) {
-    return {
-      conversations: [],
-      error: new Error('No supported participant schema found for conversations'),
-    };
-  }
-
-  const conversationIds = uniqueIds(
-    ownParticipantRows.map((row) => {
-      return typeof row[config.conversationColumn] === 'string'
-        ? row[config.conversationColumn] as string
-        : '';
-    })
-  );
-
-  if (conversationIds.length === 0) {
-    return { conversations: [], error: null };
-  }
-
-  const { rows: conversationRows, error: conversationsError } = await fetchConversationRowsByIds(conversationIds);
-  if (conversationsError) {
-    return { conversations: [], error: conversationsError };
-  }
-
-  const { rows: participantRows, error: participantRowsError } =
-    await fetchConversationParticipantRowsByConversationIds(conversationIds, config);
-
-  if (participantRowsError) {
-    return { conversations: [], error: participantRowsError };
-  }
-
-  const participantMap = buildParticipantMap(participantRows, config);
-
-  const baseConversations = conversationRows.map((row) => {
-    const normalized = normalizeConversation(row);
-    const resolved = resolveParticipants(
-      normalized.participant_1,
-      normalized.participant_2,
-      participantMap[normalized.id] || [],
-      currentUserId
-    );
-
-    return {
-      ...normalized,
-      participant_1: resolved.participant_1,
-      participant_2: resolved.participant_2,
-    };
-  });
-
-  const conversations = await finalizeConversations(baseConversations, currentUserId);
-  return { conversations, error: null };
-}
-
-async function hydrateConversationRow(
-  row: Record<string, unknown>,
-  currentUserId: string
-): Promise<ConversationData> {
-  const pair = pickParticipantPairFromRow(row);
-  let conversation = normalizeConversation(row, pair);
-
-  if (!conversation.participant_1 || !conversation.participant_2) {
-    const { rows, config } = await fetchConversationParticipantRowsByConversationIds([conversation.id]);
-    if (config) {
-      const participantMap = buildParticipantMap(rows, config);
-      const resolved = resolveParticipants(
-        conversation.participant_1,
-        conversation.participant_2,
-        participantMap[conversation.id] || [],
-        currentUserId
-      );
-
-      conversation = {
-        ...conversation,
-        participant_1: resolved.participant_1,
-        participant_2: resolved.participant_2,
-      };
-    }
-  }
-
-  if (!conversation.participant_1 || !conversation.participant_2) {
-    const counterparty = await fetchCounterpartyIdsByConversation([conversation.id], currentUserId);
-    const resolved = resolveParticipants(
-      conversation.participant_1,
-      conversation.participant_2,
-      [
-        conversation.participant_1,
-        conversation.participant_2,
-        counterparty[conversation.id],
-      ],
-      currentUserId
-    );
-
-    conversation = {
-      ...conversation,
-      participant_1: resolved.participant_1,
-      participant_2: resolved.participant_2,
-    };
-  }
-
-  const profileMap = await fetchProfilesByIds([conversation.participant_1, conversation.participant_2]);
-  conversation = {
-    ...conversation,
-    participant_1_profile: profileMap[conversation.participant_1],
-    participant_2_profile: profileMap[conversation.participant_2],
-    unread_count: await countUnreadMessages(conversation.id, currentUserId),
-  };
-
-  if (!conversation.last_message_preview || !conversation.last_message_at) {
-    const latestMap = await fetchLatestMessageMap([conversation.id]);
-    const latest = latestMap[conversation.id];
-
-    if (latest) {
-      conversation = {
-        ...conversation,
-        last_message_preview: ENCRYPTED_MESSAGE_PREVIEW,
-        last_message_at: conversation.last_message_at || latest.created_at,
-      };
-    }
-  }
-
-  if (conversation.id && conversation.participant_1 && conversation.participant_2) {
-    conversationParticipantCache.set(conversation.id, {
-      participant_1: conversation.participant_1,
-      participant_2: conversation.participant_2,
-    });
-  }
-
-  return conversation;
-}
-
-async function updateConversationLastMessage(conversationId: string): Promise<void> {
-  const now = new Date().toISOString();
-  const preview = ENCRYPTED_MESSAGE_PREVIEW;
-
-  const payloads: Array<Record<string, unknown>> = [
-    { last_message_at: now, last_message_preview: preview },
-    { last_message_at: now },
-    { last_message_preview: preview },
-  ];
-
-  for (const payload of payloads) {
-    const { error } = await supabase
-      .from('conversations')
-      .update(payload)
-      .eq('id', conversationId);
-
-    if (!error) {
-      return;
-    }
-
-    const missingColumn = extractMissingColumn(error);
-    if (missingColumn && missingColumn in payload) {
-      continue;
-    }
-
-    // Conversation preview update should not block sending a message.
-    console.error('Error updating conversation last message metadata:', error);
-    return;
-  }
-}
-
-async function fetchMessageById(messageId: string, currentUserId?: string): Promise<MessageData | null> {
-  for (const includeSenderRelation of [true, false]) {
-    const { data, error } = includeSenderRelation
-      ? await supabase
-        .from('messages')
-        .select(`
-          *,
-          sender:profiles!messages_sender_id_fkey(*)
-        `)
-        .eq('id', messageId)
-        .maybeSingle()
-      : await supabase
-        .from('messages')
-        .select('*')
-        .eq('id', messageId)
-        .maybeSingle();
-
-    if (!error) {
-      const normalized = data ? normalizeMessage(data) : null;
-      if (!normalized) return null;
-
-      if (!normalized.sender) {
-        const senderMap = await fetchProfilesByIds([normalized.sender_id]);
-        normalized.sender = normalized.sender_id ? senderMap[normalized.sender_id] : undefined;
-      }
-
-      if (currentUserId && normalized.conversation_id) {
-        const decrypted = await decryptMessagesForCurrentUser(
-          [normalized],
-          normalized.conversation_id,
-          currentUserId
-        );
-        return decrypted[0] || normalized;
-      }
-
-      return normalized;
-    }
-
-    if (includeSenderRelation && isRelationshipError(error)) {
-      continue;
-    }
-
-    console.error('Error fetching message by id:', error);
-    return null;
-  }
-
-  return null;
-}
-
-async function findExistingConversationViaDirectColumns(
-  userId: string,
-  otherUserId: string
-): Promise<ConversationData | null> {
-  for (const pair of CONVERSATION_PARTICIPANT_COLUMN_PAIRS) {
-    const { data, error } = await supabase
-      .from('conversations')
-      .select('*')
-      .or(`and(${pair[0]}.eq.${userId},${pair[1]}.eq.${otherUserId}),and(${pair[0]}.eq.${otherUserId},${pair[1]}.eq.${userId})`)
-      .limit(1)
-      .maybeSingle();
-
-    if (!error && data) {
-      const normalized = normalizeConversation(data, pair);
-      const profileMap = await fetchProfilesByIds([normalized.participant_1, normalized.participant_2]);
-
-      return {
-        ...normalized,
-        participant_1_profile: profileMap[normalized.participant_1],
-        participant_2_profile: profileMap[normalized.participant_2],
-      };
-    }
-
-    if (isMissingColumnError(error, 'conversations', pair[0]) || isMissingColumnError(error, 'conversations', pair[1])) {
-      continue;
-    }
-
-    if (error) {
-      console.error('Error finding existing conversation (direct columns):', error);
+function parseMediaMessagePayload(content: string): MediaMessagePayload | null {
+  try {
+    const parsed = JSON.parse(content) as { text?: unknown; attachments?: unknown };
+    if (!parsed || typeof parsed !== 'object') {
       return null;
     }
-  }
 
-  return null;
-}
+    const attachments: MediaPayloadAttachment[] = [];
+    if (Array.isArray(parsed.attachments)) {
+      parsed.attachments.forEach((attachment) => {
+        const typed = (attachment || {}) as Record<string, unknown>;
+        const mediaKind = getString(typed.mediaKind) === 'video' ? 'video' : 'image';
+        const bucket = getString(typed.bucket);
+        const objectPath = getString(typed.objectPath);
+        const mediaKeyBase64 = getString(typed.mediaKeyBase64);
+        const mediaNonceBase64 = getString(typed.mediaNonceBase64);
 
-async function findExistingConversationViaParticipantJoinTable(
-  userId: string,
-  otherUserId: string
-): Promise<ConversationData | null> {
-  const config = await getConversationParticipantsTableConfig();
-  if (!config) {
-    return null;
-  }
+        if (!bucket || !objectPath || !mediaKeyBase64 || !mediaNonceBase64) {
+          return;
+        }
 
-  const { data: ownRows, error: ownRowsError } = await supabase
-    .from(CONVERSATION_PARTICIPANTS_TABLE)
-    .select(config.conversationColumn)
-    .eq(config.userColumn, userId);
+        const parsedAttachment: MediaPayloadAttachment = {
+          bucket,
+          objectPath,
+          mediaKind,
+          mediaKeyBase64,
+          mediaNonceBase64,
+          thumbnailObjectPath: getOptionalString(typed.thumbnailObjectPath),
+          thumbnailKeyBase64: getOptionalString(typed.thumbnailKeyBase64),
+          thumbnailNonceBase64: getOptionalString(typed.thumbnailNonceBase64),
+        };
 
-  if (ownRowsError) {
-    console.error('Error finding existing conversation (join table, own rows):', ownRowsError);
-    return null;
-  }
+        attachments.push(parsedAttachment);
+      });
+    }
 
-  const ownConversationIds = uniqueIds(
-    (ownRows || []).map((row) => {
-      const typedRow = row as unknown as Record<string, unknown>;
-      return typeof typedRow[config.conversationColumn] === 'string'
-        ? typedRow[config.conversationColumn] as string
-        : '';
-    })
-  );
-
-  if (ownConversationIds.length === 0) {
-    return null;
-  }
-
-  const { data: matchRows, error: matchError } = await supabase
-    .from(CONVERSATION_PARTICIPANTS_TABLE)
-    .select(config.conversationColumn)
-    .eq(config.userColumn, otherUserId)
-    .in(config.conversationColumn, ownConversationIds)
-    .limit(1)
-    .maybeSingle();
-
-  if (matchError) {
-    console.error('Error finding existing conversation (join table, match rows):', matchError);
-    return null;
-  }
-
-  const conversationId =
-    matchRows && typeof (matchRows as unknown as Record<string, unknown>)[config.conversationColumn] === 'string'
-      ? (matchRows as unknown as Record<string, unknown>)[config.conversationColumn] as string
-      : '';
-
-  if (!conversationId) {
-    return null;
-  }
-
-  const { conversation } = await fetchConversationById(conversationId);
-  return conversation;
-}
-
-async function createConversationViaDirectColumns(
-  currentUserId: string,
-  otherUserId: string
-): Promise<{ conversation: ConversationData | null; error: Error | null }> {
-  for (const pair of CONVERSATION_PARTICIPANT_COLUMN_PAIRS) {
-    const payload: Record<string, unknown> = {
-      [pair[0]]: currentUserId,
-      [pair[1]]: otherUserId,
+    return {
+      text: getOptionalString(parsed.text),
+      attachments,
     };
+  } catch {
+    return null;
+  }
+}
 
-    let attempts = 0;
-    while (attempts < 8) {
-      attempts += 1;
+function mergeMediaAttachments(
+  storedAttachments: MessageAttachmentData[],
+  payload: MediaMessagePayload | null,
+): MessageAttachmentData[] {
+  if (storedAttachments.length === 0) {
+    return [];
+  }
 
-      const { data, error } = await supabase
-        .from('conversations')
-        .insert(payload)
-        .select('*')
-        .maybeSingle();
+  const payloadByPath = new Map<string, MediaPayloadAttachment>();
+  payload?.attachments.forEach((attachment) => {
+    payloadByPath.set(attachment.objectPath, attachment);
+  });
 
-      if (!error && data) {
-        const normalized = normalizeConversation(data, pair);
-        const profileMap = await fetchProfilesByIds([normalized.participant_1, normalized.participant_2]);
+  return storedAttachments.map((attachment) => {
+    const payloadAttachment = payloadByPath.get(attachment.object_path);
+    if (!payloadAttachment) {
+      return attachment;
+    }
 
+    return {
+      ...attachment,
+      media_key_base64: payloadAttachment.mediaKeyBase64,
+      media_nonce_base64: payloadAttachment.mediaNonceBase64,
+      thumbnail_key_base64: payloadAttachment.thumbnailKeyBase64,
+      thumbnail_nonce_base64: payloadAttachment.thumbnailNonceBase64,
+    };
+  });
+}
+
+async function fetchMessageKeyBoxesForDevice(
+  messageIds: string[],
+  currentUserId: string,
+  deviceId: string,
+): Promise<Record<string, MessageKeyBoxRow>> {
+  const ids = uniqueIds(messageIds);
+  if (ids.length === 0) {
+    return {};
+  }
+
+  const { data, error } = await supabase
+    .from('message_key_boxes')
+    .select('message_id,recipient_user_id,recipient_device_id,wrapped_key,wrapped_key_nonce,sender_public_key,sender_key_version')
+    .in('message_id', ids)
+    .eq('recipient_user_id', currentUserId)
+    .eq('recipient_device_id', deviceId);
+
+  if (error) {
+    if (!isMissingSchemaError(error, 'message_key_boxes')) {
+      console.error('Error fetching message key boxes:', error);
+    }
+    return {};
+  }
+
+  return (data || []).reduce<Record<string, MessageKeyBoxRow>>((acc, row) => {
+    const keyBox = row as MessageKeyBoxRow;
+    if (keyBox?.message_id) {
+      acc[keyBox.message_id] = keyBox;
+    }
+    return acc;
+  }, {});
+}
+
+async function fetchMessageAttachmentsByMessageId(messageIds: string[]): Promise<Record<string, MessageAttachmentData[]>> {
+  const ids = uniqueIds(messageIds);
+  if (ids.length === 0) {
+    return {};
+  }
+
+  const { data, error } = await supabase
+    .from('message_attachments')
+    .select('*')
+    .in('message_id', ids)
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    if (!isMissingSchemaError(error, 'message_attachments')) {
+      console.error('Error fetching message attachments:', error);
+    }
+    return {};
+  }
+
+  return (data || []).reduce<Record<string, MessageAttachmentData[]>>((acc, row) => {
+    const attachment = normalizeAttachment(row as RawRecord);
+    if (!attachment.message_id) {
+      return acc;
+    }
+
+    if (!acc[attachment.message_id]) {
+      acc[attachment.message_id] = [];
+    }
+
+    acc[attachment.message_id].push(attachment);
+    return acc;
+  }, {});
+}
+
+async function decryptMessagesForCurrentUser(
+  rawMessages: MessageData[],
+  conversationId: string,
+  currentUserId: string,
+): Promise<MessageData[]> {
+  if (rawMessages.length === 0) {
+    return rawMessages;
+  }
+
+  let v2Identity: Awaited<ReturnType<typeof getOrCreateDeviceIdentity>> | null = null;
+  let keyBoxesByMessageId: Record<string, MessageKeyBoxRow> = {};
+  let attachmentMap: Record<string, MessageAttachmentData[]> = {};
+  let changedDeviceFingerprints = new Set<string>();
+
+  if (await isMessagingV2Available()) {
+    try {
+      v2Identity = await getOrCreateDeviceIdentity(currentUserId, { sync: false });
+      keyBoxesByMessageId = await fetchMessageKeyBoxesForDevice(
+        rawMessages.map((message) => message.id),
+        currentUserId,
+        v2Identity.deviceId,
+      );
+      attachmentMap = await fetchMessageAttachmentsByMessageId(rawMessages.map((message) => message.id));
+
+      const deviceKeyMap: Record<string, string> = {};
+      rawMessages.forEach((message) => {
+        const keyBox = keyBoxesByMessageId[message.id];
+        if (!keyBox || !message.sender_id || message.sender_id === currentUserId) {
+          return;
+        }
+
+        const deviceFingerprintKey = makePeerDeviceFingerprintKey(
+          message.sender_id,
+          message.sender_device_id || 'unknown',
+        );
+        if (keyBox.sender_public_key) {
+          deviceKeyMap[deviceFingerprintKey] = keyBox.sender_public_key;
+        }
+      });
+
+      if (Object.keys(deviceKeyMap).length > 0) {
+        const pinResult = await pinAndCheckPeerDevicePublicKeys(currentUserId, deviceKeyMap);
+        changedDeviceFingerprints = new Set(pinResult.changedDeviceIds);
+      }
+    } catch (error) {
+      if (!(error instanceof DeviceIdentityError)) {
+        console.error('Error preparing v2 decryption pipeline:', error);
+      }
+    }
+  }
+
+  const decrypted = rawMessages.map((message) => {
+    const attachments = attachmentMap[message.id] || [];
+
+    if (message.ciphertext && message.ciphertext_nonce && v2Identity) {
+      const keyBox = keyBoxesByMessageId[message.id];
+
+      if (!keyBox) {
         return {
-          conversation: {
-            ...normalized,
-            participant_1_profile: profileMap[normalized.participant_1],
-            participant_2_profile: profileMap[normalized.participant_2],
-          },
-          error: null,
+          ...message,
+          content: ENCRYPTED_MESSAGE_PREVIEW,
+          attachments,
         };
       }
 
-      if (error?.code === '23505') {
-        const raceConversation = await findExistingConversationViaDirectColumns(currentUserId, otherUserId);
-        if (raceConversation) {
-          return { conversation: raceConversation, error: null };
+      const fingerprintKey = makePeerDeviceFingerprintKey(
+        message.sender_id,
+        message.sender_device_id || 'unknown',
+      );
+
+      if (message.sender_id !== currentUserId && changedDeviceFingerprints.has(fingerprintKey)) {
+        return {
+          ...message,
+          content: MESSAGE_KEY_CHANGED_PLACEHOLDER,
+          attachments,
+        };
+      }
+
+      try {
+        const plaintext = decryptMessageEnvelopeForDevice({
+          ciphertext: message.ciphertext,
+          ciphertextNonce: message.ciphertext_nonce,
+          senderPublicKey: keyBox.sender_public_key,
+          wrappedKey: keyBox.wrapped_key,
+          wrappedKeyNonce: keyBox.wrapped_key_nonce,
+          recipientSecretKey: v2Identity.secretKey,
+        });
+
+        if (message.message_kind === 'image' || message.message_kind === 'video') {
+          const payload = parseMediaMessagePayload(plaintext);
+          return {
+            ...message,
+            content: payload?.text || (message.message_kind === 'video' ? 'Video message' : 'Image message'),
+            attachments: mergeMediaAttachments(attachments, payload),
+          };
         }
-      }
 
-      if (isMissingColumnError(error, 'conversations', pair[0]) || isMissingColumnError(error, 'conversations', pair[1])) {
-        break;
-      }
+        return {
+          ...message,
+          content: plaintext,
+          attachments,
+        };
+      } catch (error) {
+        if (!(error instanceof MessageCryptoV2Error)) {
+          console.error('Error decrypting v2 message:', error);
+        }
 
-      const missingColumn = extractMissingColumn(error);
-      if (missingColumn && missingColumn in payload) {
-        delete payload[missingColumn];
-        continue;
-      }
-
-      if (error) {
-        console.error('Error creating conversation (direct columns):', error);
-        return { conversation: null, error: new Error(error.message || 'Failed to create conversation') };
+        return {
+          ...message,
+          content: ENCRYPTED_MESSAGE_PREVIEW,
+          attachments,
+        };
       }
     }
-  }
 
-  return { conversation: null, error: new Error('Unable to create direct-column conversation with current schema') };
+    return {
+      ...message,
+      attachments,
+    };
+  });
+
+  return decryptLegacyV1Messages(decrypted, conversationId, currentUserId);
 }
 
-async function createConversationViaParticipantJoinTable(
-  currentUserId: string,
-  otherUserId: string
-): Promise<{ conversation: ConversationData | null; error: Error | null }> {
-  const config = await getConversationParticipantsTableConfig();
-  if (!config) {
+async function fetchMessagesRaw(conversationId: string): Promise<{ rows: RawRecord[]; error: Error | null }> {
+  const { data, error } = await supabase
+    .from('messages')
+    .select('*')
+    .eq('conversation_id', conversationId)
+    .order('created_at', { ascending: true });
+
+  if (!error) {
     return {
-      conversation: null,
-      error: new Error('No supported participant join-table schema found'),
+      rows: (data || []) as RawRecord[],
+      error: null,
     };
   }
 
-  const now = new Date().toISOString();
-  const payloads: Array<Record<string, unknown>> = [
-    {},
-    { created_at: now },
-    { created_at: now, updated_at: now },
-    { created_at: now, updated_at: now, last_message_at: null },
-    { last_message_at: null },
-  ];
-
-  let createdConversationId = '';
-  let lastCreateError: QueryError | null = null;
-
-  for (const basePayload of payloads) {
-    const payload = { ...basePayload };
-    let attempts = 0;
-
-    while (attempts < 8) {
-      attempts += 1;
-
-      const { data, error } = await supabase
-        .from('conversations')
-        .insert(payload)
-        .select('*')
-        .maybeSingle();
-
-      if (!error && data) {
-        const id = typeof (data as Record<string, unknown>).id === 'string'
-          ? (data as Record<string, unknown>).id as string
-          : '';
-
-        if (id) {
-          createdConversationId = id;
-          break;
-        }
-      }
-
-      if (!error) {
-        continue;
-      }
-
-      lastCreateError = error;
-
-      const missingColumn = extractMissingColumn(error);
-      if (missingColumn && missingColumn in payload) {
-        delete payload[missingColumn];
-        continue;
-      }
-
-      const notNullColumn = extractNotNullColumn(error);
-      if (notNullColumn && !(notNullColumn in payload)) {
-        const fallbackValue = defaultConversationValueForColumn(notNullColumn, now);
-        if (fallbackValue !== undefined) {
-          payload[notNullColumn] = fallbackValue;
-          continue;
-        }
-      }
-
-      if (isMissingColumnError(error, 'conversations')) {
-        break;
-      }
-
-      console.error('Error creating conversation (join table):', error);
-      return { conversation: null, error: new Error(error.message || 'Failed to create conversation') };
-    }
-
-    if (createdConversationId) {
-      break;
-    }
-  }
-
-  if (!createdConversationId) {
-    return {
-      conversation: null,
-      error: new Error(lastCreateError?.message || 'Failed to create conversation'),
-    };
-  }
-
-  const participantRows = [
-    {
-      [config.conversationColumn]: createdConversationId,
-      [config.userColumn]: currentUserId,
-    },
-    {
-      [config.conversationColumn]: createdConversationId,
-      [config.userColumn]: otherUserId,
-    },
-  ];
-
-  const linkResult = await supabase
-    .from(CONVERSATION_PARTICIPANTS_TABLE)
-    .insert(participantRows);
-
-  if (linkResult.error && linkResult.error.code !== '23505') {
-    const ownLinkResult = await supabase
-      .from(CONVERSATION_PARTICIPANTS_TABLE)
-      .insert(participantRows[0]);
-
-    if (ownLinkResult.error && ownLinkResult.error.code !== '23505') {
-      console.error('Error linking current user to conversation:', ownLinkResult.error);
-      return {
-        conversation: null,
-        error: new Error(ownLinkResult.error.message || 'Failed to link conversation participants'),
-      };
-    }
-
-    const otherLinkResult = await supabase
-      .from(CONVERSATION_PARTICIPANTS_TABLE)
-      .insert(participantRows[1]);
-
-    if (otherLinkResult.error && otherLinkResult.error.code !== '23505') {
-      console.error('Error linking other participant to conversation:', otherLinkResult.error);
-      return {
-        conversation: null,
-        error: new Error(otherLinkResult.error.message || 'Failed to link conversation participants'),
-      };
-    }
-  }
-
-  const { conversation } = await fetchConversationById(createdConversationId);
-  if (conversation) {
-    return { conversation, error: null };
-  }
-
-  const profileMap = await fetchProfilesByIds([currentUserId, otherUserId]);
+  console.error('Error fetching raw messages:', error);
   return {
-    conversation: {
-      id: createdConversationId,
-      participant_1: currentUserId,
-      participant_2: otherUserId,
-      created_at: now,
-      participant_1_profile: profileMap[currentUserId],
-      participant_2_profile: profileMap[otherUserId],
-      unread_count: 0,
-    },
-    error: null,
+    rows: [],
+    error: new Error(error.message || 'Failed to fetch messages'),
   };
 }
 
-export interface ConversationData {
-  id: string;
-  participant_1: string;
-  participant_2: string;
-  booking_id?: string;
-  last_message_at?: string;
-  last_message_preview?: string;
-  created_at: string;
-  participant_1_profile?: ProfileData;
-  participant_2_profile?: ProfileData;
-  unread_count?: number;
+async function hydrateMessages(
+  rows: RawRecord[],
+  conversationId: string,
+  currentUserId: string,
+): Promise<MessageData[]> {
+  if (rows.length === 0) {
+    return [];
+  }
+
+  const messages = rows.map((row) => normalizeMessage(row));
+  const senderIds = uniqueIds(messages.map((message) => message.sender_id));
+  const senderMap = await fetchProfilesByIds(senderIds);
+
+  messages.forEach((message) => {
+    if (!message.sender) {
+      message.sender = senderMap[message.sender_id];
+    }
+  });
+
+  return decryptMessagesForCurrentUser(messages, conversationId, currentUserId);
 }
 
-export interface MessageData {
-  id: string;
-  conversation_id: string;
-  sender_id: string;
-  content: string;
-  encrypted_for_participant_1?: string;
-  encrypted_for_participant_2?: string;
-  encryption_nonce_p1?: string;
-  encryption_nonce_p2?: string;
-  encryption_sender_public_key?: string;
-  encryption_version?: string;
-  type: 'text' | 'image' | 'booking_request' | 'system';
-  is_read: boolean;
-  read_at?: string;
-  created_at: string;
-  sender?: ProfileData;
+async function fetchMessageById(
+  messageId: string,
+  currentUserId: string,
+): Promise<MessageData | null> {
+  if (!messageId) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from('messages')
+    .select('*')
+    .eq('id', messageId)
+    .maybeSingle();
+
+  if (error || !data) {
+    if (error) {
+      console.error('Error fetching message by id:', error);
+    }
+    return null;
+  }
+
+  const message = normalizeMessage(data as RawRecord);
+  const hydrated = await hydrateMessages([data as RawRecord], message.conversation_id, currentUserId);
+  return hydrated[0] || message;
 }
 
-/**
- * Fetch all conversations for the current user
- */
-export async function fetchConversations(): Promise<{ conversations: ConversationData[]; error: Error | null }> {
+async function ensureConversationMembersForDirect(
+  conversationId: string,
+  participant1: string,
+  participant2: string,
+): Promise<void> {
+  if (!await isMessagingV2Available()) {
+    return;
+  }
+
+  const rows = [participant1, participant2]
+    .filter(Boolean)
+    .map((userId) => ({
+      conversation_id: conversationId,
+      user_id: userId,
+      role: 'member',
+      left_at: null,
+      joined_at: new Date().toISOString(),
+    }));
+
+  if (rows.length === 0) {
+    return;
+  }
+
+  const { error } = await supabase
+    .from('conversation_members')
+    .upsert(rows, { onConflict: 'conversation_id,user_id' });
+
+  if (error && !isMissingSchemaError(error, 'conversation_members')) {
+    console.error('Error ensuring direct conversation members:', error);
+  }
+}
+
+async function getConversationMemberUserIds(
+  conversationId: string,
+): Promise<string[]> {
+  if (await isMessagingV2Available()) {
+    const { data, error } = await supabase
+      .from('conversation_members')
+      .select('user_id')
+      .eq('conversation_id', conversationId)
+      .is('left_at', null);
+
+    if (!error) {
+      return uniqueIds((data || []).map((row) => getString((row as RawRecord).user_id)));
+    }
+
+    if (!isMissingSchemaError(error, 'conversation_members')) {
+      console.error('Error fetching conversation member IDs:', error);
+    }
+  }
+
+  const { data: conversation, error } = await supabase
+    .from('conversations')
+    .select('participant_1,participant_2')
+    .eq('id', conversationId)
+    .maybeSingle();
+
+  if (error || !conversation) {
+    return [];
+  }
+
+  return uniqueIds([
+    getString((conversation as RawRecord).participant_1),
+    getString((conversation as RawRecord).participant_2),
+  ]);
+}
+
+function buildMediaPayload(params: {
+  text?: string;
+  attachments: MediaPayloadAttachment[];
+}): string {
+  return JSON.stringify({
+    text: params.text || '',
+    attachments: params.attachments,
+  } satisfies MediaMessagePayload);
+}
+
+async function sendSecureMessageV2Internal(params: {
+  conversationId: string;
+  messageKind: MessageKind;
+  plaintext: string;
+  attachmentRows?: Array<{
+    media_kind: 'image' | 'video';
+    bucket: string;
+    object_path: string;
+    ciphertext_size_bytes: number;
+    original_size_bytes?: number;
+    duration_ms?: number;
+    width?: number;
+    height?: number;
+    sha256: string;
+    thumbnail_object_path?: string;
+  }>;
+}): Promise<{ message: MessageData | null; error: Error | null }> {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) {
-      return { conversations: [], error: new Error('Not authenticated') };
+    const { userId, error: authError } = await getCurrentUserId();
+    if (authError || !userId) {
+      return { message: null, error: authError || new Error('Not authenticated') };
     }
 
-    const directResult = await fetchConversationRowsForUserDirect(user.id);
-
-    if (!directResult.error && directResult.pair) {
-      const normalized = directResult.rows.map((row) => normalizeConversation(row, directResult.pair || undefined));
-      const conversations = await finalizeConversations(normalized, user.id);
-      return { conversations, error: null };
+    const deviceIdentity = await getOrCreateDeviceIdentity(userId);
+    const memberUserIds = await getConversationMemberUserIds(params.conversationId);
+    if (memberUserIds.length === 0) {
+      return { message: null, error: new Error('Unable to resolve conversation members.') };
     }
 
-    const joinTableResult = await fetchConversationsViaParticipantJoinTable(user.id);
-    if (!joinTableResult.error) {
-      return joinTableResult;
+    const recipientDevices = await fetchRecipientDeviceIdentities(memberUserIds);
+    const missingMembers = memberUserIds.filter((memberId) => (
+      !recipientDevices.some((device) => device.userId === memberId)
+    ));
+
+    if (missingMembers.length > 0) {
+      return {
+        message: null,
+        error: new Error('Secure messaging keys are still initializing for one or more recipients. Ask them to open Messages and try again.'),
+      };
     }
 
-    return {
-      conversations: [],
-      error: directResult.error || joinTableResult.error || new Error('Failed to fetch conversations'),
+    const senderDeviceAlreadyPresent = recipientDevices.some((device) => (
+      device.userId === userId && device.deviceId === deviceIdentity.deviceId
+    ));
+
+    const resolvedRecipients: RecipientDevice[] = senderDeviceAlreadyPresent
+      ? recipientDevices
+      : [
+        ...recipientDevices,
+        {
+          userId,
+          deviceId: deviceIdentity.deviceId,
+          publicKey: deviceIdentity.publicKeyBase64,
+          keyVersion: deviceIdentity.version,
+        },
+      ];
+
+    const peerDevicePublicKeys: Record<string, string> = {};
+    resolvedRecipients.forEach((recipient) => {
+      if (recipient.userId === userId) {
+        return;
+      }
+      const key = makePeerDeviceFingerprintKey(recipient.userId, recipient.deviceId);
+      peerDevicePublicKeys[key] = recipient.publicKey;
+    });
+
+    const pinResult = await pinAndCheckPeerDevicePublicKeys(userId, peerDevicePublicKeys);
+    if (pinResult.changedDeviceIds.length > 0) {
+      return {
+        message: null,
+        error: new Error('A participant safety key changed. Messaging is blocked until trust is re-established.'),
+      };
+    }
+
+    const envelope = createEncryptedMessageEnvelope({
+      plaintext: params.plaintext,
+      senderIdentity: deviceIdentity,
+      recipients: resolvedRecipients,
+      includeEncryptedPreview: true,
+    });
+
+    const rpcPayload: Record<string, unknown> = {
+      p_conversation_id: params.conversationId,
+      p_sender_device_id: deviceIdentity.deviceId,
+      p_message_kind: params.messageKind,
+      p_ciphertext: envelope.ciphertext,
+      p_ciphertext_nonce: envelope.ciphertextNonce,
+      p_ciphertext_version: envelope.ciphertextVersion,
+      p_preview_ciphertext: envelope.previewCiphertext || null,
+      p_preview_nonce: envelope.previewNonce || null,
+      p_client_message_id: createClientMessageId(),
+      p_reply_to_message_id: null,
+      p_key_boxes: envelope.keyBoxes,
+      p_attachments: params.attachmentRows || [],
     };
-  } catch (err) {
-    console.error('Error in fetchConversations:', err);
+
+    const { data, error } = await supabase.rpc('send_secure_message_v2', rpcPayload);
+    if (error) {
+      console.error('Error sending secure v2 message:', error);
+      return { message: null, error: new Error(error.message || 'Failed to send message') };
+    }
+
+    const firstRow = Array.isArray(data) ? (data[0] as RawRecord | undefined) : (data as RawRecord | null);
+    const messageId = firstRow ? getString(firstRow.message_id) : '';
+    if (!messageId) {
+      return { message: null, error: new Error('Message sent but no message ID was returned.') };
+    }
+
+    const message = await fetchMessageById(messageId, userId);
+    if (!message) {
+      return { message: null, error: new Error('Message sent but could not be loaded.') };
+    }
+
     return {
-      conversations: [],
-      error: err instanceof Error ? err : new Error('Failed to fetch conversations'),
+      message,
+      error: null,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to send secure message.';
+    return {
+      message: null,
+      error: new Error(message),
     };
   }
 }
 
-/**
- * Fetch a single conversation by ID
- */
+async function sendLegacyV1Message(
+  conversationId: string,
+  content: string,
+  type: MessageData['type'],
+): Promise<{ message: MessageData | null; error: Error | null }> {
+  try {
+    const { userId, error: authError } = await getCurrentUserId();
+    if (authError || !userId) {
+      return { message: null, error: authError || new Error('Not authenticated') };
+    }
+
+    const participants = await resolveLegacyConversationParticipants(conversationId);
+    if (!participants) {
+      return { message: null, error: new Error('Unable to resolve conversation participants.') };
+    }
+
+    if (participants.participant_1 !== userId && participants.participant_2 !== userId) {
+      return { message: null, error: new Error('You are not a participant in this conversation.') };
+    }
+
+    const identity = await getMessagingIdentity(userId);
+    const publicKeys = await fetchMessagingPublicKeys([
+      participants.participant_1,
+      participants.participant_2,
+    ]);
+
+    const participant1Key = publicKeys[participants.participant_1];
+    const participant2Key = publicKeys[participants.participant_2];
+
+    if (!participant1Key || !participant2Key) {
+      return {
+        message: null,
+        error: new Error('Secure messaging keys are missing for this conversation.'),
+      };
+    }
+
+    const peerId = participants.participant_1 === userId
+      ? participants.participant_2
+      : participants.participant_1;
+    const peerKey = publicKeys[peerId];
+
+    if (peerId && peerKey) {
+      const pinResult = await pinAndCheckPeerPublicKeys(userId, { [peerId]: peerKey });
+      if (pinResult.changedUserIds.length > 0) {
+        return {
+          message: null,
+          error: new Error('Safety key changed for this chat. Messaging is blocked until verified.'),
+        };
+      }
+    }
+
+    const encryptedForP1 = encryptMessageForRecipient(content, participant1Key, identity.secretKey);
+    const encryptedForP2 = encryptMessageForRecipient(content, participant2Key, identity.secretKey);
+
+    const { data, error } = await supabase
+      .from('messages')
+      .insert({
+        conversation_id: conversationId,
+        sender_id: userId,
+        content: ENCRYPTED_MESSAGE_PREVIEW,
+        type,
+        encrypted_for_participant_1: encryptedForP1.ciphertextBase64,
+        encrypted_for_participant_2: encryptedForP2.ciphertextBase64,
+        encryption_nonce_p1: encryptedForP1.nonceBase64,
+        encryption_nonce_p2: encryptedForP2.nonceBase64,
+        encryption_sender_public_key: identity.publicKeyBase64,
+        encryption_version: LEGACY_ENCRYPTION_VERSION,
+      })
+      .select('*')
+      .maybeSingle();
+
+    if (error || !data) {
+      console.error('Error sending legacy v1 message:', error);
+      return { message: null, error: new Error(error?.message || 'Failed to send message') };
+    }
+
+    await supabase
+      .from('conversations')
+      .update({
+        last_message_at: new Date().toISOString(),
+        last_message_preview: ENCRYPTED_MESSAGE_PREVIEW,
+      })
+      .eq('id', conversationId);
+
+    const message = await fetchMessageById(getString((data as RawRecord).id), userId);
+    return {
+      message,
+      error: null,
+    };
+  } catch (error) {
+    if (error instanceof SecureMessagingError) {
+      return { message: null, error: new Error(error.message) };
+    }
+
+    return {
+      message: null,
+      error: new Error(error instanceof Error ? error.message : 'Failed to send message'),
+    };
+  }
+}
+
+export async function fetchConversations(): Promise<{ conversations: ConversationData[]; error: Error | null }> {
+  try {
+    const { userId, error: authError } = await getCurrentUserId();
+    if (authError || !userId) {
+      return { conversations: [], error: authError || new Error('Not authenticated') };
+    }
+
+    if (await isMessagingV2Available()) {
+      const memberRowsResult = await supabase
+        .from('conversation_members')
+        .select('conversation_id,user_id,last_read_at,left_at')
+        .eq('user_id', userId)
+        .is('left_at', null);
+
+      if (!memberRowsResult.error) {
+        const conversationIds = uniqueIds((memberRowsResult.data || []).map((row) => getString((row as RawRecord).conversation_id)));
+        if (conversationIds.length === 0) {
+          return { conversations: [], error: null };
+        }
+
+        const rows = await fetchConversationRowsByIds(conversationIds);
+        const conversations = await hydrateConversationRows(rows, userId);
+        return { conversations, error: null };
+      }
+
+      if (!isMissingSchemaError(memberRowsResult.error, 'conversation_members')) {
+        console.error('Error fetching v2 member rows:', memberRowsResult.error);
+      }
+    }
+
+    const rows = await fetchLegacyDirectConversationRows(userId);
+    const conversations = await hydrateConversationRows(rows, userId);
+    return { conversations, error: null };
+  } catch (error) {
+    console.error('Error in fetchConversations:', error);
+    return {
+      conversations: [],
+      error: error instanceof Error ? error : new Error('Failed to fetch conversations'),
+    };
+  }
+}
+
 export async function fetchConversationById(
-  conversationId: string
+  conversationId: string,
 ): Promise<{ conversation: ConversationData | null; error: Error | null }> {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
-    const currentUserId = user?.id || '';
+    const { userId, error: authError } = await getCurrentUserId();
+    if (authError || !userId) {
+      return { conversation: null, error: authError || new Error('Not authenticated') };
+    }
 
     const { data, error } = await supabase
       .from('conversations')
@@ -1852,382 +1513,531 @@ export async function fetchConversationById(
       return { conversation: null, error: null };
     }
 
-    const row = data as Record<string, unknown>;
-    const conversation = await hydrateConversationRow(row, currentUserId);
-
-    return { conversation, error: null };
-  } catch (err) {
-    console.error('Error in fetchConversationById:', err);
+    const hydrated = await hydrateConversationRows([data as RawRecord], userId);
+    return {
+      conversation: hydrated[0] || null,
+      error: null,
+    };
+  } catch (error) {
+    console.error('Error in fetchConversationById:', error);
     return {
       conversation: null,
-      error: err instanceof Error ? err : new Error('Failed to fetch conversation'),
+      error: error instanceof Error ? error : new Error('Failed to fetch conversation'),
     };
   }
 }
 
-/**
- * Fetch messages for a conversation
- */
 export async function fetchMessages(
-  conversationId: string
+  conversationId: string,
 ): Promise<{ messages: MessageData[]; error: Error | null }> {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
-    const currentUserId = user?.id || '';
-
-    for (const conversationColumn of MESSAGE_CONVERSATION_COLUMNS) {
-      let missingConversationColumn = false;
-
-      for (const includeSenderRelation of [true, false]) {
-        for (const withCreatedAtOrder of [true, false]) {
-          let query = includeSenderRelation
-            ? supabase
-              .from('messages')
-              .select(`
-                *,
-                sender:profiles!messages_sender_id_fkey(*)
-              `)
-            : supabase
-              .from('messages')
-              .select('*');
-
-          query = query.eq(conversationColumn, conversationId);
-
-          if (withCreatedAtOrder) {
-            query = query.order('created_at', { ascending: true });
-          }
-
-          const { data, error } = await query;
-
-          if (!error) {
-            const normalized = (data || []).map((row) => normalizeMessage(row));
-
-            if (!includeSenderRelation) {
-              const senderIds = normalized.map((message) => message.sender_id);
-              const profileMap = await fetchProfilesByIds(senderIds);
-              normalized.forEach((message) => {
-                message.sender = profileMap[message.sender_id];
-              });
-            }
-
-            normalized.sort((a, b) =>
-              new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-            );
-
-            const decrypted = await decryptMessagesForCurrentUser(
-              normalized,
-              conversationId,
-              currentUserId
-            );
-
-            return { messages: decrypted, error: null };
-          }
-
-          if (isMissingColumnError(error, 'messages', conversationColumn)) {
-            missingConversationColumn = true;
-            break;
-          }
-
-          if (withCreatedAtOrder && isMissingColumnError(error, 'messages', 'created_at')) {
-            continue;
-          }
-
-          if (includeSenderRelation && isRelationshipError(error)) {
-            break;
-          }
-
-          console.error('Error fetching messages:', error);
-          return { messages: [], error: new Error(error.message || 'Failed to fetch messages') };
-        }
-
-        if (missingConversationColumn) {
-          break;
-        }
-      }
-
-      if (!missingConversationColumn) {
-        break;
-      }
+    const { userId, error: authError } = await getCurrentUserId();
+    if (authError || !userId) {
+      return { messages: [], error: authError || new Error('Not authenticated') };
     }
 
-    return { messages: [], error: new Error('No supported conversation column found for messages') };
-  } catch (err) {
-    console.error('Error in fetchMessages:', err);
+    const { rows, error } = await fetchMessagesRaw(conversationId);
+    if (error) {
+      return { messages: [], error };
+    }
+
+    const messages = await hydrateMessages(rows, conversationId, userId);
+    return { messages, error: null };
+  } catch (error) {
+    console.error('Error in fetchMessages:', error);
     return {
       messages: [],
-      error: err instanceof Error ? err : new Error('Failed to fetch messages'),
+      error: error instanceof Error ? error : new Error('Failed to fetch messages'),
     };
   }
 }
 
-/**
- * Send a message
- */
+export async function sendTextMessageV2(
+  conversationId: string,
+  content: string,
+): Promise<{ message: MessageData | null; error: Error | null }> {
+  const trimmed = content.trim();
+  if (!trimmed) {
+    return { message: null, error: new Error('Message content cannot be empty') };
+  }
+
+  return sendSecureMessageV2Internal({
+    conversationId,
+    messageKind: 'text',
+    plaintext: trimmed,
+    attachmentRows: [],
+  });
+}
+
+export async function sendImageMessageV2(params: {
+  conversationId: string;
+  localUri: string;
+  caption?: string;
+  width?: number;
+  height?: number;
+}): Promise<{ message: MessageData | null; error: Error | null }> {
+  try {
+    const compressed = await compressImageForMessaging(params.localUri);
+    const encrypted = await encryptMediaFile(compressed.uri);
+
+    const upload = await createMediaUploadUrl({
+      conversationId: params.conversationId,
+      mediaKind: 'image',
+      ciphertextSizeBytes: encrypted.ciphertextSizeBytes,
+    });
+
+    await uploadEncryptedMediaFile({
+      encryptedUri: encrypted.encryptedUri,
+      signedUrl: upload.signedUrl,
+    });
+
+    const payloadAttachment: MediaPayloadAttachment = {
+      bucket: upload.bucket,
+      objectPath: upload.objectPath,
+      mediaKind: 'image',
+      mediaKeyBase64: encrypted.mediaKeyBase64,
+      mediaNonceBase64: encrypted.mediaNonceBase64,
+    };
+
+    const attachmentRows = [
+      {
+        media_kind: 'image' as const,
+        bucket: upload.bucket,
+        object_path: upload.objectPath,
+        ciphertext_size_bytes: encrypted.ciphertextSizeBytes,
+        original_size_bytes: encrypted.originalSizeBytes,
+        width: params.width,
+        height: params.height,
+        sha256: encrypted.sha256,
+      },
+    ];
+
+    return sendSecureMessageV2Internal({
+      conversationId: params.conversationId,
+      messageKind: 'image',
+      plaintext: buildMediaPayload({
+        text: params.caption,
+        attachments: [payloadAttachment],
+      }),
+      attachmentRows,
+    });
+  } catch (error) {
+    if (
+      error instanceof MediaCompressionError
+      || error instanceof MediaCryptoError
+      || error instanceof MessageCryptoV2Error
+      || error instanceof DeviceIdentityError
+    ) {
+      return { message: null, error: new Error(error.message) };
+    }
+
+    return {
+      message: null,
+      error: new Error(error instanceof Error ? error.message : 'Failed to send image message'),
+    };
+  }
+}
+
+export async function sendVideoMessageV2(params: {
+  conversationId: string;
+  localUri: string;
+  caption?: string;
+  durationMs?: number;
+  width?: number;
+  height?: number;
+}): Promise<{ message: MessageData | null; error: Error | null }> {
+  try {
+    const compressedVideo = await compressVideoForMessaging(params.localUri, params.durationMs);
+    const encryptedVideo = await encryptMediaFile(compressedVideo.uri);
+
+    const videoUpload = await createMediaUploadUrl({
+      conversationId: params.conversationId,
+      mediaKind: 'video',
+      ciphertextSizeBytes: encryptedVideo.ciphertextSizeBytes,
+      durationMs: compressedVideo.durationMs,
+    });
+
+    await uploadEncryptedMediaFile({
+      encryptedUri: encryptedVideo.encryptedUri,
+      signedUrl: videoUpload.signedUrl,
+    });
+
+    let thumbnailPayload: {
+      objectPath: string;
+      key: string;
+      nonce: string;
+    } | null = null;
+
+    try {
+      const thumbnail = await generateVideoThumbnailForMessaging(compressedVideo.uri);
+      const compressedThumbnail = await compressImageForMessaging(thumbnail.uri);
+      const encryptedThumbnail = await encryptMediaFile(compressedThumbnail.uri);
+
+      const thumbnailUpload = await createMediaUploadUrl({
+        conversationId: params.conversationId,
+        mediaKind: 'image',
+        ciphertextSizeBytes: encryptedThumbnail.ciphertextSizeBytes,
+      });
+
+      await uploadEncryptedMediaFile({
+        encryptedUri: encryptedThumbnail.encryptedUri,
+        signedUrl: thumbnailUpload.signedUrl,
+      });
+
+      thumbnailPayload = {
+        objectPath: thumbnailUpload.objectPath,
+        key: encryptedThumbnail.mediaKeyBase64,
+        nonce: encryptedThumbnail.mediaNonceBase64,
+      };
+    } catch (thumbnailError) {
+      console.warn('Unable to generate encrypted video thumbnail:', thumbnailError);
+    }
+
+    const payloadAttachment: MediaPayloadAttachment = {
+      bucket: videoUpload.bucket,
+      objectPath: videoUpload.objectPath,
+      mediaKind: 'video',
+      mediaKeyBase64: encryptedVideo.mediaKeyBase64,
+      mediaNonceBase64: encryptedVideo.mediaNonceBase64,
+      thumbnailObjectPath: thumbnailPayload?.objectPath,
+      thumbnailKeyBase64: thumbnailPayload?.key,
+      thumbnailNonceBase64: thumbnailPayload?.nonce,
+    };
+
+    const attachmentRows = [
+      {
+        media_kind: 'video' as const,
+        bucket: videoUpload.bucket,
+        object_path: videoUpload.objectPath,
+        ciphertext_size_bytes: encryptedVideo.ciphertextSizeBytes,
+        original_size_bytes: encryptedVideo.originalSizeBytes,
+        duration_ms: compressedVideo.durationMs,
+        width: params.width,
+        height: params.height,
+        sha256: encryptedVideo.sha256,
+        thumbnail_object_path: thumbnailPayload?.objectPath,
+      },
+    ];
+
+    return sendSecureMessageV2Internal({
+      conversationId: params.conversationId,
+      messageKind: 'video',
+      plaintext: buildMediaPayload({
+        text: params.caption,
+        attachments: [payloadAttachment],
+      }),
+      attachmentRows,
+    });
+  } catch (error) {
+    if (
+      error instanceof MediaCompressionError
+      || error instanceof MediaCryptoError
+      || error instanceof MessageCryptoV2Error
+      || error instanceof DeviceIdentityError
+    ) {
+      return { message: null, error: new Error(error.message) };
+    }
+
+    return {
+      message: null,
+      error: new Error(error instanceof Error ? error.message : 'Failed to send video message'),
+    };
+  }
+}
+
 export async function sendMessage(
   conversationId: string,
   content: string,
-  type: MessageData['type'] = 'text'
+  type: MessageData['type'] = 'text',
 ): Promise<{ message: MessageData | null; error: Error | null }> {
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
+  const normalizedType = normalizeMessageType(type);
+  const trimmed = content.trim();
 
-    if (!user) {
-      return { message: null, error: new Error('Not authenticated') };
-    }
-
-    const normalizedType = normalizeMessageType(type);
-    const trimmedContent = content.trim();
-
-    if (!trimmedContent) {
-      return { message: null, error: new Error('Message content cannot be empty') };
-    }
-
-    let encryptedPayload: Record<string, string>;
-    try {
-      encryptedPayload = await buildEncryptedPayloadForMessage(conversationId, user.id, trimmedContent);
-    } catch (error) {
-      if (error instanceof SecureMessagingError) {
-        return { message: null, error: new Error(error.message) };
-      }
-
-      const message = error instanceof Error ? error.message : 'Failed to encrypt your message.';
-      return { message: null, error: new Error(message) };
-    }
-
-    for (const conversationColumn of MESSAGE_CONVERSATION_COLUMNS) {
-      let missingConversationColumn = false;
-
-      for (const senderColumn of MESSAGE_SENDER_COLUMNS) {
-        const payload: Record<string, unknown> = {
-          [conversationColumn]: conversationId,
-          [senderColumn]: user.id,
-          content: ENCRYPTED_MESSAGE_PREVIEW,
-          type: normalizedType,
-          ...encryptedPayload,
-        };
-
-        let attempts = 0;
-        while (attempts < 10) {
-          attempts += 1;
-
-          const { data, error } = await supabase
-            .from('messages')
-            .insert(payload)
-            .select('*')
-            .maybeSingle();
-
-          if (!error) {
-            await updateConversationLastMessage(conversationId);
-
-            const normalized = data ? normalizeMessage(data) : null;
-            if (!normalized) {
-              return { message: null, error: new Error('Message sent but response was empty') };
-            }
-
-            if (!normalized.sender) {
-              const profileMap = await fetchProfilesByIds([normalized.sender_id]);
-              normalized.sender = profileMap[normalized.sender_id];
-            }
-
-            const decrypted = await decryptMessagesForCurrentUser([normalized], conversationId, user.id);
-            return { message: decrypted[0] || normalized, error: null };
-          }
-
-          if (isMissingRequiredMessageEncryptionColumn(error)) {
-            return {
-              message: null,
-              error: new Error('Secure messaging schema is out of date. Please run the latest Supabase migrations.'),
-            };
-          }
-
-          if (isMissingColumnError(error, 'messages', conversationColumn)) {
-            missingConversationColumn = true;
-            break;
-          }
-
-          if (isMissingColumnError(error, 'messages', senderColumn)) {
-            break;
-          }
-
-          const missingColumn = extractMissingColumn(error);
-          if (missingColumn && missingColumn in payload) {
-            if (
-              (MESSAGE_ENCRYPTION_REQUIRED_COLUMNS as readonly string[]).includes(missingColumn)
-            ) {
-              return {
-                message: null,
-                error: new Error('Secure messaging schema is out of date. Please run the latest Supabase migrations.'),
-              };
-            }
-            delete payload[missingColumn];
-            continue;
-          }
-
-          console.error('Error sending message:', error);
-          return { message: null, error: new Error(error.message || 'Failed to send message') };
-        }
-
-        if (missingConversationColumn) {
-          break;
-        }
-      }
-
-      if (!missingConversationColumn) {
-        break;
-      }
-    }
-
-    return { message: null, error: new Error('Unable to send message with current schema') };
-  } catch (err) {
-    console.error('Error in sendMessage:', err);
-    return {
-      message: null,
-      error: err instanceof Error ? err : new Error('Failed to send message'),
-    };
+  if (!trimmed) {
+    return { message: null, error: new Error('Message content cannot be empty') };
   }
+
+  const fallbackToLegacyIfNeeded = async (result: { message: MessageData | null; error: Error | null }) => {
+    if (!result.error) {
+      return result;
+    }
+
+    const message = result.error.message.toLowerCase();
+    const shouldFallback = (
+      message.includes('send_secure_message_v2')
+      || message.includes('schema')
+      || message.includes('function')
+    );
+
+    if (!shouldFallback) {
+      return result;
+    }
+
+    messagingV2SupportCache = false;
+    return sendLegacyV1Message(conversationId, trimmed, normalizedType);
+  };
+
+  if (await isMessagingV2Available()) {
+    if (normalizedType === 'text') {
+      const result = await sendTextMessageV2(conversationId, trimmed);
+      return fallbackToLegacyIfNeeded(result);
+    }
+
+    const result = await sendSecureMessageV2Internal({
+      conversationId,
+      messageKind: normalizedType === 'booking_request'
+        ? 'booking_request'
+        : normalizedType === 'system'
+          ? 'system'
+          : normalizedType === 'image'
+            ? 'image'
+            : 'text',
+      plaintext: trimmed,
+      attachmentRows: [],
+    });
+    return fallbackToLegacyIfNeeded(result);
+  }
+
+  return sendLegacyV1Message(conversationId, trimmed, normalizedType);
 }
 
-/**
- * Create or get a conversation between two users
- */
 export async function getOrCreateConversation(
-  otherUserId: string
+  otherUserId: string,
 ): Promise<{ conversation: ConversationData | null; error: Error | null }> {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) {
-      return { conversation: null, error: new Error('Not authenticated') };
+    const { userId, error: authError } = await getCurrentUserId();
+    if (authError || !userId) {
+      return { conversation: null, error: authError || new Error('Not authenticated') };
     }
 
-    if (user.id === otherUserId) {
-      return { conversation: null, error: new Error('Cannot create a conversation with yourself') };
+    if (!otherUserId || otherUserId === userId) {
+      return { conversation: null, error: new Error('Invalid conversation participant') };
     }
 
-    const existingDirect = await findExistingConversationViaDirectColumns(user.id, otherUserId);
-    if (existingDirect) {
-      return { conversation: existingDirect, error: null };
-    }
+    const canonicalPair = [userId, otherUserId].sort();
 
-    const existingJoin = await findExistingConversationViaParticipantJoinTable(user.id, otherUserId);
-    if (existingJoin) {
-      return { conversation: existingJoin, error: null };
-    }
+    const existing = await supabase
+      .from('conversations')
+      .select('*')
+      .or(`and(participant_1.eq.${canonicalPair[0]},participant_2.eq.${canonicalPair[1]}),and(participant_1.eq.${canonicalPair[1]},participant_2.eq.${canonicalPair[0]})`)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
 
-    const createDirectResult = await createConversationViaDirectColumns(user.id, otherUserId);
-    if (!createDirectResult.error && createDirectResult.conversation) {
-      return createDirectResult;
-    }
-
-    const createJoinResult = await createConversationViaParticipantJoinTable(user.id, otherUserId);
-    if (!createJoinResult.error && createJoinResult.conversation) {
-      return createJoinResult;
-    }
-
-    return {
-      conversation: null,
-      error: createDirectResult.error || createJoinResult.error || new Error('Unable to create conversation with current schema'),
-    };
-  } catch (err) {
-    console.error('Error in getOrCreateConversation:', err);
-    return {
-      conversation: null,
-      error: err instanceof Error ? err : new Error('Failed to create conversation'),
-    };
-  }
-}
-
-/**
- * Mark messages as read
- */
-export async function markMessagesAsRead(
-  conversationId: string
-): Promise<{ success: boolean; error: Error | null }> {
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) {
-      return { success: false, error: new Error('Not authenticated') };
+    if (!existing.error && existing.data) {
+      await ensureConversationMembersForDirect(
+        getString((existing.data as RawRecord).id),
+        canonicalPair[0],
+        canonicalPair[1],
+      );
+      return fetchConversationById(getString((existing.data as RawRecord).id));
     }
 
     const now = new Date().toISOString();
+    const { data: created, error: createError } = await supabase
+      .from('conversations')
+      .insert({
+        participant_1: canonicalPair[0],
+        participant_2: canonicalPair[1],
+        kind: 'direct',
+        created_by: userId,
+        created_at: now,
+        updated_at: now,
+      })
+      .select('*')
+      .maybeSingle();
 
-    for (const conversationColumn of MESSAGE_CONVERSATION_COLUMNS) {
-      let missingConversationColumn = false;
-
-      for (const senderColumn of MESSAGE_SENDER_COLUMNS) {
-        const payloads: Array<Record<string, unknown>> = [
-          { is_read: true, read_at: now },
-          { is_read: true },
-        ];
-
-        for (const payload of payloads) {
-          let query = supabase
-            .from('messages')
-            .update(payload)
-            .eq(conversationColumn, conversationId)
-            .neq(senderColumn, user.id);
-
-          if ('is_read' in payload) {
-            query = query.eq('is_read', false);
-          }
-
-          const { error } = await query;
-
-          if (!error) {
-            return { success: true, error: null };
-          }
-
-          if (isMissingColumnError(error, 'messages', conversationColumn)) {
-            missingConversationColumn = true;
-            break;
-          }
-
-          if (isMissingColumnError(error, 'messages', senderColumn)) {
-            continue;
-          }
-
-          if (isMissingColumnError(error, 'messages', 'is_read') && 'is_read' in payload) {
-            continue;
-          }
-
-          const missingColumn = extractMissingColumn(error);
-          if (missingColumn && missingColumn in payload) {
-            continue;
-          }
-
-          console.error('Error marking messages as read:', error);
-          return { success: false, error: new Error(error.message || 'Failed to mark messages as read') };
-        }
-
-        if (missingConversationColumn) {
-          break;
-        }
-      }
-
-      if (!missingConversationColumn) {
-        break;
-      }
+    if (createError && createError.code !== '23505') {
+      console.error('Error creating direct conversation:', createError);
+      return {
+        conversation: null,
+        error: new Error(createError.message || 'Failed to create conversation'),
+      };
     }
 
-    return { success: false, error: new Error('Unable to mark messages as read with current schema') };
-  } catch (err) {
-    console.error('Error in markMessagesAsRead:', err);
+    const conversationId = getString((created as RawRecord | null)?.id);
+    if (conversationId) {
+      await ensureConversationMembersForDirect(conversationId, canonicalPair[0], canonicalPair[1]);
+      return fetchConversationById(conversationId);
+    }
+
+    const retry = await supabase
+      .from('conversations')
+      .select('*')
+      .or(`and(participant_1.eq.${canonicalPair[0]},participant_2.eq.${canonicalPair[1]}),and(participant_1.eq.${canonicalPair[1]},participant_2.eq.${canonicalPair[0]})`)
+      .limit(1)
+      .maybeSingle();
+
+    if (retry.error || !retry.data) {
+      return {
+        conversation: null,
+        error: new Error(retry.error?.message || 'Failed to resolve conversation after creation'),
+      };
+    }
+
+    const retryConversationId = getString((retry.data as RawRecord).id);
+    await ensureConversationMembersForDirect(retryConversationId, canonicalPair[0], canonicalPair[1]);
+    return fetchConversationById(retryConversationId);
+  } catch (error) {
+    console.error('Error in getOrCreateConversation:', error);
     return {
-      success: false,
-      error: err instanceof Error ? err : new Error('Failed to mark messages as read'),
+      conversation: null,
+      error: error instanceof Error ? error : new Error('Failed to create conversation'),
     };
   }
 }
 
-/**
- * Subscribe to new messages in a conversation
- */
+export async function getOrCreateGroupConversation(
+  groupId: string,
+): Promise<{ conversation: ConversationData | null; error: Error | null }> {
+  try {
+    if (!groupId) {
+      return { conversation: null, error: new Error('groupId is required') };
+    }
+
+    const { data, error } = await supabase.rpc('get_or_create_group_conversation', {
+      p_group_id: groupId,
+    });
+
+    if (error) {
+      console.error('Error getting/creating group conversation:', error);
+      return { conversation: null, error: new Error(error.message || 'Failed to open group chat') };
+    }
+
+    const conversationId = typeof data === 'string'
+      ? data
+      : Array.isArray(data)
+        ? getString((data[0] as RawRecord | undefined)?.get_or_create_group_conversation)
+        : getString((data as RawRecord | null)?.get_or_create_group_conversation);
+
+    if (!conversationId) {
+      return { conversation: null, error: new Error('Group chat conversation ID was not returned.') };
+    }
+
+    return fetchConversationById(conversationId);
+  } catch (error) {
+    console.error('Error in getOrCreateGroupConversation:', error);
+    return {
+      conversation: null,
+      error: error instanceof Error ? error : new Error('Failed to open group chat'),
+    };
+  }
+}
+
+export async function getOrCreateEventConversation(
+  eventId: string,
+): Promise<{ conversation: ConversationData | null; error: Error | null }> {
+  try {
+    if (!eventId) {
+      return { conversation: null, error: new Error('eventId is required') };
+    }
+
+    const { data, error } = await supabase.rpc('get_or_create_event_conversation', {
+      p_event_id: eventId,
+    });
+
+    if (error) {
+      console.error('Error getting/creating event conversation:', error);
+      return { conversation: null, error: new Error(error.message || 'Failed to open event chat') };
+    }
+
+    const conversationId = typeof data === 'string'
+      ? data
+      : Array.isArray(data)
+        ? getString((data[0] as RawRecord | undefined)?.get_or_create_event_conversation)
+        : getString((data as RawRecord | null)?.get_or_create_event_conversation);
+
+    if (!conversationId) {
+      return { conversation: null, error: new Error('Event chat conversation ID was not returned.') };
+    }
+
+    return fetchConversationById(conversationId);
+  } catch (error) {
+    console.error('Error in getOrCreateEventConversation:', error);
+    return {
+      conversation: null,
+      error: error instanceof Error ? error : new Error('Failed to open event chat'),
+    };
+  }
+}
+
+export async function markMessagesAsRead(
+  conversationId: string,
+): Promise<{ success: boolean; error: Error | null }> {
+  try {
+    const { userId, error: authError } = await getCurrentUserId();
+    if (authError || !userId) {
+      return { success: false, error: authError || new Error('Not authenticated') };
+    }
+
+    if (await isMessagingV2Available()) {
+      const { error } = await supabase.rpc('mark_conversation_read_v2', {
+        p_conversation_id: conversationId,
+        p_read_at: new Date().toISOString(),
+      });
+
+      if (error && !isMissingSchemaError(error, 'mark_conversation_read_v2')) {
+        console.error('Error marking conversation read via v2 RPC:', error);
+      }
+    }
+
+    const now = new Date().toISOString();
+    const primary = await supabase
+      .from('messages')
+      .update({
+        is_read: true,
+        read_at: now,
+      })
+      .eq('conversation_id', conversationId)
+      .neq('sender_user_id', userId)
+      .eq('is_read', false);
+
+    if (!primary.error) {
+      return { success: true, error: null };
+    }
+
+    if (isMissingSchemaError(primary.error, 'sender_user_id')) {
+      const fallback = await supabase
+        .from('messages')
+        .update({
+          is_read: true,
+          read_at: now,
+        })
+        .eq('conversation_id', conversationId)
+        .neq('sender_id', userId)
+        .eq('is_read', false);
+
+      if (!fallback.error) {
+        return { success: true, error: null };
+      }
+
+      console.error('Error marking messages as read (fallback):', fallback.error);
+      return {
+        success: false,
+        error: new Error(fallback.error.message || 'Failed to mark messages as read'),
+      };
+    }
+
+    console.error('Error marking messages as read:', primary.error);
+    return {
+      success: false,
+      error: new Error(primary.error.message || 'Failed to mark messages as read'),
+    };
+  } catch (error) {
+    console.error('Error in markMessagesAsRead:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error : new Error('Failed to mark messages as read'),
+    };
+  }
+}
+
 export function subscribeToMessages(
   conversationId: string,
-  onMessage: (message: MessageData) => void
+  onMessage: (message: MessageData) => void,
 ): () => void {
   let currentUserId = '';
+
   void supabase.auth.getUser().then(({ data }) => {
     currentUserId = data.user?.id || '';
   });
@@ -2240,17 +2050,12 @@ export function subscribeToMessages(
         event: 'INSERT',
         schema: 'public',
         table: 'messages',
+        filter: `conversation_id=eq.${conversationId}`,
       },
       async (payload) => {
-        const row = payload.new as Record<string, unknown>;
-        const rowConversationId =
-          typeof row.conversation_id === 'string'
-            ? row.conversation_id
-            : typeof row.thread_id === 'string'
-              ? row.thread_id
-              : '';
-
-        if (!rowConversationId || rowConversationId !== conversationId) {
+        const row = payload.new as RawRecord;
+        const messageConversationId = getString(row.conversation_id);
+        if (!messageConversationId || messageConversationId !== conversationId) {
           return;
         }
 
@@ -2259,11 +2064,11 @@ export function subscribeToMessages(
           currentUserId = data.user?.id || '';
         }
 
-        const message = await fetchMessageById(String(row.id || ''), currentUserId);
+        const message = await fetchMessageById(getString(row.id), currentUserId);
         if (message) {
           onMessage(message);
         }
-      }
+      },
     )
     .subscribe();
 
@@ -2272,9 +2077,6 @@ export function subscribeToMessages(
   };
 }
 
-/**
- * Get total unread message count
- */
 export async function getUnreadCount(): Promise<{ count: number; error: Error | null }> {
   try {
     const { conversations, error } = await fetchConversations();
@@ -2282,16 +2084,35 @@ export async function getUnreadCount(): Promise<{ count: number; error: Error | 
       return { count: 0, error };
     }
 
-    const total = conversations.reduce((sum, conversation) => {
-      return sum + Math.max(0, Math.round(toNumber(conversation.unread_count, 0)));
-    }, 0);
+    const total = conversations.reduce((sum, conversation) => (
+      sum + Math.max(0, Math.round(toNumber(conversation.unread_count, 0)))
+    ), 0);
 
     return { count: total, error: null };
-  } catch (err) {
-    console.error('Error in getUnreadCount:', err);
+  } catch (error) {
+    console.error('Error in getUnreadCount:', error);
     return {
       count: 0,
-      error: err instanceof Error ? err : new Error('Failed to get unread count'),
+      error: error instanceof Error ? error : new Error('Failed to get unread count'),
     };
   }
+}
+
+export async function resolveMessageAttachmentUri(
+  attachment: MessageAttachmentData,
+): Promise<string> {
+  if (!attachment.object_path || !attachment.media_key_base64 || !attachment.media_nonce_base64) {
+    throw new Error('Attachment does not include required media decryption metadata.');
+  }
+
+  const download = await getMediaDownloadUrl(attachment.object_path);
+  const encryptedUri = await downloadEncryptedMediaToCache(download.signedUrl);
+
+  const extension = attachment.media_kind === 'video' ? '.mp4' : '.jpg';
+  return decryptMediaFileToCache({
+    encryptedUri,
+    mediaKeyBase64: attachment.media_key_base64,
+    mediaNonceBase64: attachment.media_nonce_base64,
+    outputExtension: extension,
+  });
 }
