@@ -285,12 +285,27 @@ export async function fetchMessagingPublicKeys(userIds: string[]): Promise<Recor
   }
 
   const { data, error } = await supabase
-    .from('profiles')
+    .from('profiles_public')
     .select(`id,${PROFILE_PUBLIC_KEY_COLUMN}`)
     .in('id', uniqueIds);
 
-  if (error) {
-    if (isMissingProfileColumnError(error)) {
+  const shouldFallbackToProfiles = (
+    !!error
+    && String((error as QueryError | null)?.message || '').toLowerCase().includes('profiles_public')
+  );
+
+  const fallbackResult = shouldFallbackToProfiles
+    ? await supabase
+      .from('profiles')
+      .select(`id,${PROFILE_PUBLIC_KEY_COLUMN}`)
+      .in('id', uniqueIds)
+    : null;
+
+  const rows = fallbackResult?.data || data;
+  const errorToUse = fallbackResult?.error || error;
+
+  if (errorToUse) {
+    if (isMissingProfileColumnError(errorToUse)) {
       throw new SecureMessagingError(
         'schema_unavailable',
         'Secure messaging schema is not available yet. Please run the latest Supabase migrations.'
@@ -299,12 +314,12 @@ export async function fetchMessagingPublicKeys(userIds: string[]): Promise<Recor
 
     throw new SecureMessagingError(
       'profile_sync_failed',
-      error.message || 'Unable to load participant encryption keys.'
+      errorToUse.message || 'Unable to load participant encryption keys.'
     );
   }
 
   const keyMap: Record<string, string> = {};
-  (data || []).forEach((row) => {
+  (rows || []).forEach((row) => {
     const typed = row as Record<string, unknown>;
     const id = typeof typed.id === 'string' ? typed.id : '';
     const key = typeof typed[PROFILE_PUBLIC_KEY_COLUMN] === 'string'

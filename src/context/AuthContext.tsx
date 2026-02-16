@@ -7,6 +7,7 @@ import {
   getOrCreateDeviceIdentity,
   heartbeatDeviceIdentity,
 } from '../services/crypto/deviceIdentity';
+import { resolveMetroArea } from '../services/api/locationApi';
 import { getMessagingIdentity, SecureMessagingError } from '../services/crypto/messagingEncryption';
 import { trackEvent } from '../services/monitoring/events';
 import { initRevenueCat } from '../services/subscription/revenueCat';
@@ -118,6 +119,11 @@ function transformSupabaseUser(supabaseUser: SupabaseUser, profile?: any): User 
       city: profile.city,
       state: profile.state || undefined,
       country: profile.country || 'USA',
+      metroAreaId: profile.metro_area_id || undefined,
+      metroAreaName: profile.metro_area_name || undefined,
+      metroCity: profile.metro_city || undefined,
+      metroState: profile.metro_state || undefined,
+      metroCountry: profile.metro_country || undefined,
     } : undefined,
     isVerified: profile?.id_verified === true,
     isPremium: normalizedSubscriptionTier === 'pro',
@@ -126,6 +132,28 @@ function transformSupabaseUser(supabaseUser: SupabaseUser, profile?: any): User 
     createdAt: supabaseUser.created_at || new Date().toISOString(),
     lastActive: new Date().toISOString(),
   };
+}
+
+function buildMetroUpdatePayload(resolution: Awaited<ReturnType<typeof resolveMetroArea>>): Record<string, unknown> {
+  const payload: Record<string, unknown> = {
+    metro_resolved_at: new Date().toISOString(),
+  };
+
+  if (resolution.metro) {
+    payload.metro_area_id = resolution.metro.metroAreaId;
+    payload.metro_area_name = resolution.metro.metroAreaName;
+    payload.metro_city = resolution.metro.metroCity;
+    payload.metro_state = resolution.metro.metroState;
+    payload.metro_country = resolution.metro.metroCountry;
+    return payload;
+  }
+
+  payload.metro_area_id = null;
+  payload.metro_area_name = null;
+  payload.metro_city = null;
+  payload.metro_state = null;
+  payload.metro_country = null;
+  return payload;
 }
 
 /**
@@ -241,6 +269,70 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return null;
     }
   }, []);
+
+  const resolveAndPersistMetroForUser = useCallback(async (
+    userId: string,
+    profile: Record<string, unknown> | null | undefined
+  ): Promise<Record<string, unknown> | null> => {
+    if (!profile) return null;
+
+    const city = typeof profile.city === 'string' ? profile.city : '';
+    const country = typeof profile.country === 'string' ? profile.country : '';
+    if (!city.trim() || !country.trim()) {
+      return profile;
+    }
+
+    const metroAlreadyResolved = typeof profile.metro_area_id === 'string'
+      || typeof profile.metro_resolved_at === 'string';
+    if (metroAlreadyResolved) {
+      return profile;
+    }
+
+    const resolution = await resolveMetroArea({
+      city,
+      state: typeof profile.state === 'string' ? profile.state : undefined,
+      country,
+      countryCode: typeof signupData.countryCode === 'string' ? signupData.countryCode : undefined,
+    });
+
+    const metroPayload = buildMetroUpdatePayload(resolution);
+    const { data: updatedProfile, error } = await supabase
+      .from('profiles')
+      .update(metroPayload)
+      .eq('id', userId)
+      .select('*')
+      .single();
+
+    if (error) {
+      safeLog('Metro resolution persistence failed', { error: error.message || 'unknown' });
+      return profile;
+    }
+
+    return (updatedProfile || profile) as Record<string, unknown>;
+  }, [signupData.countryCode]);
+
+  const upsertFriendProfileFromSignup = useCallback(async (
+    userId: string,
+    aboutValue: string | null | undefined
+  ): Promise<void> => {
+    const payload = {
+      user_id: userId,
+      headline: null,
+      about: aboutValue || null,
+      interests: signupData.interests,
+      languages: signupData.languages,
+      friendship_goals: signupData.lookingFor,
+      discoverable: true,
+    };
+
+    const { error } = await supabase
+      .from('friend_profiles')
+      .upsert(payload, { onConflict: 'user_id' });
+
+    if (error) {
+      safeLog('Friend profile upsert during signup failed', { error: error.message || 'unknown' });
+    }
+  }, [signupData.interests, signupData.languages, signupData.lookingFor]);
 
   /**
    * Restore session on app launch using Supabase.
@@ -631,6 +723,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
           }
 
+          profile = await resolveAndPersistMetroForUser(
+            data.user.id,
+            (profile || null) as Record<string, unknown> | null,
+          );
+
+          await upsertFriendProfileFromSignup(
+            data.user.id,
+            typeof (profile as Record<string, unknown> | null)?.bio === 'string'
+              ? ((profile as Record<string, unknown>).bio as string)
+              : signupData.bio,
+          );
+
           const appUser = transformSupabaseUser(data.user, profile);
           setUser(appUser);
           await storeUser(appUser);
@@ -649,7 +753,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } finally {
       setIsLoading(false);
     }
-  }, [signupData, signupConsents, validateSignupConsents, validateAge, fetchUserProfile]);
+  }, [
+    signupData,
+    signupConsents,
+    validateSignupConsents,
+    validateAge,
+    fetchUserProfile,
+    resolveAndPersistMetroForUser,
+    upsertFriendProfileFromSignup,
+  ]);
 
   /**
    * Sign in with Supabase Auth

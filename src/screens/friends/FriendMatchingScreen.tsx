@@ -152,7 +152,8 @@ const FriendMatchingContent: React.FC = () => {
 
   const renderProfile = ({ item }: { item: FriendProfile }) => {
     const name = `${item.firstName} ${item.lastName}`.trim();
-    const city = [item.location.city, item.location.state].filter(Boolean).join(', ');
+    const metroLabel = item.location.metroAreaName || item.location.city;
+    const locationText = metroLabel || 'Location unavailable';
     const score = Math.max(0, Math.min(item.compatibilityScore || 0, 100));
     const isBusy = busyUserId === item.userId;
 
@@ -171,7 +172,7 @@ const FriendMatchingContent: React.FC = () => {
                 <Ionicons name="checkmark-circle" size={18} color={colors.primary.blue} />
               ) : null}
             </View>
-            <Text style={styles.locationText}>{city || 'Location unavailable'}</Text>
+            <Text style={styles.locationText}>{locationText}</Text>
             <View style={styles.scorePill}>
               <Ionicons name="sparkles-outline" size={14} color={colors.primary.blue} />
               <Text style={styles.scoreText}>{score}% compatibility</Text>

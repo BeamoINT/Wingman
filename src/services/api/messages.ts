@@ -173,6 +173,65 @@ type MediaMessagePayload = {
 const ENCRYPTED_MESSAGE_PREVIEW = getEncryptedMessagePreview();
 const MESSAGE_KEY_CHANGED_PLACEHOLDER = 'Message unavailable: safety key changed.';
 const LEGACY_ENCRYPTION_VERSION = getMessageEncryptionVersion();
+const PROFILE_PUBLIC_SELECT = [
+  'id',
+  'first_name',
+  'last_name',
+  'avatar_url',
+  'bio',
+  'date_of_birth',
+  'gender',
+  'email_verified',
+  'phone_verified',
+  'id_verified',
+  'verification_level',
+  'terms_accepted',
+  'privacy_accepted',
+  'age_confirmed',
+  'electronic_signature_consent',
+  'electronic_signature_consent_at',
+  'marketing_opt_in',
+  'subscription_tier',
+  'pro_status',
+  'created_at',
+  'updated_at',
+  'message_encryption_public_key',
+  'message_encryption_key_version',
+  'message_encryption_updated_at',
+  'metro_area_id',
+  'metro_area_name',
+  'metro_city',
+  'metro_state',
+  'metro_country',
+].join(',');
+const PROFILE_LEGACY_SELECT = [
+  'id',
+  'first_name',
+  'last_name',
+  'email',
+  'phone',
+  'avatar_url',
+  'bio',
+  'date_of_birth',
+  'gender',
+  'email_verified',
+  'phone_verified',
+  'id_verified',
+  'verification_level',
+  'terms_accepted',
+  'privacy_accepted',
+  'age_confirmed',
+  'electronic_signature_consent',
+  'electronic_signature_consent_at',
+  'marketing_opt_in',
+  'subscription_tier',
+  'pro_status',
+  'created_at',
+  'updated_at',
+  'message_encryption_public_key',
+  'message_encryption_key_version',
+  'message_encryption_updated_at',
+].join(',');
 let messagingV2SupportCache: boolean | null = null;
 let messagingSchemaCapabilityCache: MessagingSchemaCapability | null = null;
 
@@ -471,17 +530,32 @@ async function fetchProfilesByIds(ids: string[]): Promise<Record<string, Profile
   }
 
   const { data, error } = await supabase
-    .from('profiles')
-    .select('*')
+    .from('profiles_public')
+    .select(PROFILE_PUBLIC_SELECT)
     .in('id', unique);
 
-  if (error) {
-    console.error('Error fetching profiles:', error);
+  const relationMissing = (
+    !!error
+    && String((error as QueryError | null)?.message || '').toLowerCase().includes('profiles_public')
+  );
+
+  const fallbackResult = relationMissing
+    ? await supabase
+      .from('profiles')
+      .select(PROFILE_LEGACY_SELECT)
+      .in('id', unique)
+    : null;
+
+  const rows = fallbackResult?.data || data;
+  const errorToUse = fallbackResult?.error || error;
+
+  if (errorToUse) {
+    console.error('Error fetching profiles:', errorToUse);
     return {};
   }
 
   const map: Record<string, ProfileData> = {};
-  (data || []).forEach((row) => {
+  (rows || []).forEach((row) => {
     const profile = normalizeProfile(row);
     if (profile?.id) {
       map[profile.id] = profile;

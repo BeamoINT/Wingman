@@ -11,7 +11,11 @@ export type MonitoringEventName =
   | 'pro_purchase_succeeded'
   | 'pro_purchase_failed'
   | 'pro_restore_succeeded'
-  | 'pro_restore_failed';
+  | 'pro_restore_failed'
+  | 'metro_resolve_success'
+  | 'metro_resolve_failed'
+  | 'location_data_blocked_read'
+  | 'location_policy_denied';
 
 type EventPayload = Record<string, string | number | boolean | null | undefined>;
 
@@ -27,4 +31,3 @@ export function trackEvent(name: MonitoringEventName, payload: EventPayload = {}
     data: payload,
   });
 }
-

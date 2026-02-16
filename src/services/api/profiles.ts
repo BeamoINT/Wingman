@@ -4,6 +4,7 @@
  */
 
 import { supabase } from '../supabase';
+import { resolveMetroArea } from './locationApi';
 
 export interface ProfileData {
   id: string;
@@ -18,6 +19,12 @@ export interface ProfileData {
   city?: string;
   state?: string;
   country?: string;
+  metro_area_id?: string | null;
+  metro_area_name?: string | null;
+  metro_city?: string | null;
+  metro_state?: string | null;
+  metro_country?: string | null;
+  metro_resolved_at?: string | null;
   email_verified: boolean;
   phone_verified: boolean;
   id_verified: boolean;
@@ -139,7 +146,51 @@ export async function updateProfile(updates: UpdateProfileInput): Promise<{ prof
       return { profile: null, error };
     }
 
-    return { profile: data, error: null };
+    let profile = data as ProfileData;
+    const locationUpdated = (
+      updates.city !== undefined
+      || updates.state !== undefined
+      || updates.country !== undefined
+    );
+
+    if (locationUpdated) {
+      const metroResolution = await resolveMetroArea({
+        city: profile.city,
+        state: profile.state,
+        country: profile.country,
+      });
+
+      const metroUpdates: Record<string, unknown> = {
+        metro_resolved_at: new Date().toISOString(),
+      };
+
+      if (metroResolution.metro) {
+        metroUpdates.metro_area_id = metroResolution.metro.metroAreaId;
+        metroUpdates.metro_area_name = metroResolution.metro.metroAreaName;
+        metroUpdates.metro_city = metroResolution.metro.metroCity;
+        metroUpdates.metro_state = metroResolution.metro.metroState;
+        metroUpdates.metro_country = metroResolution.metro.metroCountry;
+      } else {
+        metroUpdates.metro_area_id = null;
+        metroUpdates.metro_area_name = null;
+        metroUpdates.metro_city = null;
+        metroUpdates.metro_state = null;
+        metroUpdates.metro_country = null;
+      }
+
+      const { data: metroProfile, error: metroError } = await supabase
+        .from('profiles')
+        .update(metroUpdates)
+        .eq('id', user.id)
+        .select()
+        .single();
+
+      if (!metroError && metroProfile) {
+        profile = metroProfile as ProfileData;
+      }
+    }
+
+    return { profile, error: null };
   } catch (err) {
     console.error('Error in updateProfile:', err);
     return { profile: null, error: err as Error };

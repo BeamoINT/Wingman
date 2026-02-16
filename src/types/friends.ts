@@ -22,6 +22,11 @@ export interface FriendProfile {
     city: string;
     state?: string;
     country: string;
+    metroAreaId?: string;
+    metroAreaName?: string;
+    metroCity?: string;
+    metroState?: string;
+    metroCountry?: string;
   };
   interests: string[];
   languages: string[];

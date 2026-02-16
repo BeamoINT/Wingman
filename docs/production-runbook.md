@@ -36,3 +36,10 @@ Feature flags:
 1. Validate RevenueCat webhook auth secret.
 2. Run `sync-pro-entitlement` for affected users.
 3. Confirm `profiles.subscription_tier`, `pro_status`, and `subscription_events`.
+
+### Location privacy incident
+1. Confirm no precise coordinates are being persisted from app writes.
+2. Validate `resolve-metro-area` responses only include metro-level labels.
+3. Check Sentry event payloads/breadcrumbs for redaction of `city/state/country/coordinates`.
+4. Verify Friends and Messages profile reads use controlled public paths (no raw location columns).
+5. If leakage is suspected, disable `friends_ranked_list_enabled` while remediating.

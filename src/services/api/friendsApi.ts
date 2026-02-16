@@ -18,6 +18,8 @@ import type {
   PostType,
 } from '../../types/friends';
 import { friendsFeatureFlags } from '../../config/featureFlags';
+import { resolveMetroArea } from './locationApi';
+import { trackEvent } from '../monitoring/events';
 import { supabase } from '../supabase';
 
 type RawRecord = Record<string, unknown>;
@@ -28,6 +30,36 @@ type QueryError = {
 };
 
 const FALLBACK_COUNTRY = 'USA';
+const PROFILE_PUBLIC_SELECT = [
+  'id',
+  'first_name',
+  'last_name',
+  'avatar_url',
+  'bio',
+  'date_of_birth',
+  'verification_level',
+  'id_verified',
+  'created_at',
+  'updated_at',
+  'metro_area_id',
+  'metro_area_name',
+  'metro_city',
+  'metro_state',
+  'metro_country',
+].join(',');
+
+const LEGACY_PROFILE_SELECT = [
+  'id',
+  'first_name',
+  'last_name',
+  'avatar_url',
+  'bio',
+  'date_of_birth',
+  'verification_level',
+  'id_verified',
+  'created_at',
+  'updated_at',
+].join(',');
 
 const GROUP_CATEGORIES: GroupCategory[] = [
   'sports-fitness',
@@ -67,6 +99,8 @@ const FRIEND_POST_TYPES: PostType[] = [
   'achievement',
 ];
 
+const metroResolutionAttemptedForUser = new Set<string>();
+
 function toStringValue(value: unknown, fallback = ''): string {
   return typeof value === 'string' ? value : fallback;
 }
@@ -90,6 +124,12 @@ function isRelationshipError(error: unknown): boolean {
     || message.includes('foreign key')
     || message.includes('schema cache')
   );
+}
+
+function isMissingProfilesPublicView(error: unknown): boolean {
+  const typedError = error as QueryError | null | undefined;
+  const message = String(typedError?.message || '').toLowerCase();
+  return message.includes('profiles_public') || message.includes("relation 'profiles_public'");
 }
 
 function calculateAge(dateOfBirth?: string): number {
@@ -134,6 +174,12 @@ function transformProfileToFriendProfile(profileData: unknown): FriendProfile {
   const profile = (profileData || {}) as RawRecord;
   const firstName = toStringValue(profile.first_name, 'User');
   const lastName = toStringValue(profile.last_name, '');
+  const metroAreaId = toOptionalString(profile.metro_area_id);
+  const metroAreaName = toOptionalString(profile.metro_area_name);
+  const metroCity = toOptionalString(profile.metro_city);
+  const metroState = toOptionalString(profile.metro_state);
+  const metroCountry = toOptionalString(profile.metro_country);
+  const fallbackCity = metroAreaName || toStringValue(profile.city, 'Unknown');
 
   return {
     id: toStringValue(profile.id),
@@ -144,9 +190,14 @@ function transformProfileToFriendProfile(profileData: unknown): FriendProfile {
     bio: toOptionalString(profile.bio),
     age: calculateAge(toOptionalString(profile.date_of_birth)),
     location: {
-      city: toStringValue(profile.city, 'Unknown'),
-      state: toOptionalString(profile.state),
-      country: toStringValue(profile.country, FALLBACK_COUNTRY),
+      city: fallbackCity,
+      state: metroState || toOptionalString(profile.state),
+      country: metroCountry || toStringValue(profile.country, FALLBACK_COUNTRY),
+      metroAreaId,
+      metroAreaName,
+      metroCity,
+      metroState,
+      metroCountry,
     },
     interests: normalizeTextArray(profile.interests),
     languages: normalizeTextArray(profile.languages),
@@ -166,6 +217,13 @@ function transformRecommendationRowToFriendProfile(rowData: unknown): FriendProf
   const commonLanguages = normalizeTextArray(row.shared_languages);
   const commonGoals = normalizeTextArray(row.shared_goals);
 
+  const metroAreaId = toOptionalString(row.metro_area_id);
+  const metroAreaName = toOptionalString(row.metro_area_name);
+  const metroCity = toOptionalString(row.metro_city);
+  const metroState = toOptionalString(row.metro_state);
+  const metroCountry = toOptionalString(row.metro_country);
+  const locationLabel = toOptionalString(row.location_label);
+
   return {
     id: toStringValue(row.user_id),
     userId: toStringValue(row.user_id),
@@ -175,9 +233,14 @@ function transformRecommendationRowToFriendProfile(rowData: unknown): FriendProf
     bio: toOptionalString(row.about),
     age: 18,
     location: {
-      city: toStringValue(row.city, 'Unknown'),
-      state: toOptionalString(row.state),
-      country: toStringValue(row.country, FALLBACK_COUNTRY),
+      city: locationLabel || metroAreaName || 'Unknown',
+      state: metroState || undefined,
+      country: metroCountry || FALLBACK_COUNTRY,
+      metroAreaId,
+      metroAreaName,
+      metroCity,
+      metroState,
+      metroCountry,
     },
     interests: [],
     languages: [],
@@ -240,9 +303,27 @@ async function fetchProfilesByIds(userIds: string[]): Promise<Map<string, Friend
   }
 
   const { data, error } = await supabase
-    .from('profiles')
-    .select('*')
+    .from('profiles_public')
+    .select(PROFILE_PUBLIC_SELECT)
     .in('id', userIds);
+
+  if (error && isMissingProfilesPublicView(error)) {
+    const legacy = await supabase
+      .from('profiles')
+      .select(LEGACY_PROFILE_SELECT)
+      .in('id', userIds);
+
+    if (!legacy.error) {
+      const mapped = new Map<string, FriendProfile>();
+      (legacy.data || []).forEach((entry) => {
+        const profile = transformProfileToFriendProfile(entry as unknown as RawRecord);
+        if (profile.id) {
+          mapped.set(profile.id, profile);
+        }
+      });
+      return mapped;
+    }
+  }
 
   if (error) {
     console.error('Error fetching profiles by IDs:', error);
@@ -251,13 +332,70 @@ async function fetchProfilesByIds(userIds: string[]): Promise<Map<string, Friend
 
   const mapped = new Map<string, FriendProfile>();
   (data || []).forEach((entry) => {
-    const profile = transformProfileToFriendProfile(entry as RawRecord);
+    const profile = transformProfileToFriendProfile(entry as unknown as RawRecord);
     if (profile.id) {
       mapped.set(profile.id, profile);
     }
   });
 
   return mapped;
+}
+
+async function ensureCurrentUserMetroResolved(userId: string): Promise<void> {
+  if (!userId || metroResolutionAttemptedForUser.has(userId)) {
+    return;
+  }
+
+  metroResolutionAttemptedForUser.add(userId);
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('city,state,country,metro_area_id,metro_resolved_at')
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (error) {
+    trackEvent('location_policy_denied', { source: 'friends_metro_probe' });
+    return;
+  }
+
+  const city = toStringValue((data as RawRecord | null)?.city);
+  const country = toStringValue((data as RawRecord | null)?.country);
+  const state = toOptionalString((data as RawRecord | null)?.state);
+  const hasMetroArea = Boolean(toOptionalString((data as RawRecord | null)?.metro_area_id));
+  const hasResolvedAt = Boolean(toOptionalString((data as RawRecord | null)?.metro_resolved_at));
+
+  if (hasMetroArea || hasResolvedAt || !city.trim() || !country.trim()) {
+    return;
+  }
+
+  const resolution = await resolveMetroArea({ city, state, country });
+  const payload: Record<string, unknown> = {
+    metro_resolved_at: new Date().toISOString(),
+  };
+
+  if (resolution.metro) {
+    payload.metro_area_id = resolution.metro.metroAreaId;
+    payload.metro_area_name = resolution.metro.metroAreaName;
+    payload.metro_city = resolution.metro.metroCity;
+    payload.metro_state = resolution.metro.metroState;
+    payload.metro_country = resolution.metro.metroCountry;
+  } else {
+    payload.metro_area_id = null;
+    payload.metro_area_name = null;
+    payload.metro_city = null;
+    payload.metro_state = null;
+    payload.metro_country = null;
+  }
+
+  const { error: updateError } = await supabase
+    .from('profiles')
+    .update(payload)
+    .eq('id', userId);
+
+  if (updateError) {
+    trackEvent('metro_resolve_failed', { reason: updateError.code || 'profile_update_failed' });
+  }
 }
 
 async function getAuthenticatedUserId(): Promise<{ userId: string | null; error: Error | null }> {
@@ -295,62 +433,51 @@ export async function fetchRankedFriendProfiles(limit = 30, offset = 0): Promise
       return { profiles: [], error: authError || new Error('Not authenticated') };
     }
 
+    await ensureCurrentUserMetroResolved(userId);
+
     if (!friendsFeatureFlags.friendsRankedListEnabled) {
       const { data: profileRows, error: profileError } = await supabase
-        .from('profiles')
-        .select('*')
+        .from('profiles_public')
+        .select(PROFILE_PUBLIC_SELECT)
         .neq('id', userId)
         .order('updated_at', { ascending: false })
         .range(offset, offset + Math.max(limit, 1) - 1);
 
-      if (profileError) {
+      const fallbackRowsResult = (
+        profileError && isMissingProfilesPublicView(profileError)
+          ? await supabase
+            .from('profiles')
+            .select(LEGACY_PROFILE_SELECT)
+            .neq('id', userId)
+            .order('updated_at', { ascending: false })
+            .range(offset, offset + Math.max(limit, 1) - 1)
+          : null
+      );
+
+      const rows = fallbackRowsResult?.data || profileRows;
+      const errorToUse = fallbackRowsResult?.error || profileError;
+
+      if (errorToUse) {
         return {
           profiles: [],
-          error: new Error(profileError.message || 'Failed to load profiles'),
+          error: new Error(errorToUse.message || 'Failed to load profiles'),
         };
       }
 
       return {
-        profiles: (profileRows || []).map((row) => transformProfileToFriendProfile(row as RawRecord)),
+        profiles: (rows || []).map((row) => transformProfileToFriendProfile(row as unknown as RawRecord)),
         error: null,
       };
     }
 
-    const { data, error } = await supabase.rpc('get_friend_recommendations_v2', {
+    const { data, error } = await supabase.rpc('get_friend_recommendations_v3', {
       p_limit: limit,
       p_offset: offset,
     });
 
     if (error) {
-      const errorMessage = String(error.message || '').toLowerCase();
-      const isMissingRpc = (
-        errorMessage.includes('get_friend_recommendations_v2')
-        || errorMessage.includes('function')
-        || errorMessage.includes('schema cache')
-      );
-
-      if (isMissingRpc) {
-        const { data: fallbackProfiles, error: fallbackError } = await supabase
-          .from('profiles')
-          .select('*')
-          .neq('id', userId)
-          .order('updated_at', { ascending: false })
-          .range(offset, offset + Math.max(limit, 1) - 1);
-
-        if (fallbackError) {
-          return {
-            profiles: [],
-            error: new Error(fallbackError.message || 'Failed to load fallback recommendations'),
-          };
-        }
-
-        return {
-          profiles: (fallbackProfiles || []).map((row) => transformProfileToFriendProfile(row as RawRecord)),
-          error: null,
-        };
-      }
-
       console.error('Error loading ranked friend recommendations:', error);
+      trackEvent('location_data_blocked_read', { source: 'friend_recommendations' });
       return {
         profiles: [],
         error: new Error(error.message || 'Failed to load recommendations'),
@@ -589,7 +716,7 @@ export async function fetchSocialFeedPosts(limit = 50): Promise<{
       .from('friend_posts')
       .select(`
         *,
-        author:profiles!friend_posts_author_id_fkey(*)
+        author:profiles!friend_posts_author_id_fkey(${PROFILE_PUBLIC_SELECT})
       `)
       .order('created_at', { ascending: false })
       .limit(limit);
@@ -611,7 +738,7 @@ export async function fetchSocialFeedPosts(limit = 50): Promise<{
       console.error('Error loading social feed posts:', withRelation.error);
       return { posts: [], error: new Error(withRelation.error.message || 'Failed to load posts') };
     } else {
-      rows = (withRelation.data || []) as RawRecord[];
+      rows = (withRelation.data || []) as unknown as RawRecord[];
     }
 
     const postIds = rows
@@ -960,7 +1087,7 @@ export async function fetchFriendEvents(limit = 80): Promise<{
       .from('friend_events')
       .select(`
         *,
-        host:profiles!friend_events_host_id_fkey(*)
+        host:profiles!friend_events_host_id_fkey(${PROFILE_PUBLIC_SELECT})
       `)
       .order('date_time', { ascending: true })
       .limit(limit);
@@ -982,7 +1109,7 @@ export async function fetchFriendEvents(limit = 80): Promise<{
       console.error('Error loading friend events:', withRelation.error);
       return { events: [], error: new Error(withRelation.error.message || 'Failed to load events') };
     } else {
-      rows = (withRelation.data || []) as RawRecord[];
+      rows = (withRelation.data || []) as unknown as RawRecord[];
     }
 
     const eventIds = rows

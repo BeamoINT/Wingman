@@ -28,6 +28,11 @@ export interface Location {
   country: string;
   latitude?: number;
   longitude?: number;
+  metroAreaId?: string;
+  metroAreaName?: string;
+  metroCity?: string;
+  metroState?: string;
+  metroCountry?: string;
 }
 
 // Companion Types
