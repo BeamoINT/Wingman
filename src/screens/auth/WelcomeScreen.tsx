@@ -14,11 +14,11 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button } from '../../components';
 import { useAuth } from '../../context/AuthContext';
-import { colors } from '../../theme/colors';
-import { spacing } from '../../theme/spacing';
-import { typography } from '../../theme/typography';
 import type { RootStackParamList } from '../../types';
 import { haptics } from '../../utils/haptics';
+import { useTheme } from '../../context/ThemeContext';
+import type { ThemeTokens } from '../../theme/tokens';
+import { useThemedStyles } from '../../theme/useThemedStyles';
 
 const { width, height } = Dimensions.get('window');
 const TOTAL_PAGES = 2;
@@ -26,6 +26,9 @@ const TOTAL_PAGES = 2;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Welcome'>;
 
 export const WelcomeScreen: React.FC = () => {
+  const { tokens } = useTheme();
+  const { colors, spacing, typography } = tokens;
+  const styles = useThemedStyles(createStyles);
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView>(null);
@@ -309,7 +312,7 @@ export const WelcomeScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
   container: {
     flex: 1,
   },

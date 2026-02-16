@@ -17,11 +17,11 @@ import {
     formatPhoneForDisplay, isValidPhoneNumber, sendPhoneOtp,
     verifyPhoneOtp
 } from '../../services/api/phoneVerification';
-import { colors } from '../../theme/colors';
-import { spacing } from '../../theme/spacing';
-import { typography } from '../../theme/typography';
 import type { RootStackParamList } from '../../types';
 import { haptics } from '../../utils/haptics';
+import { useTheme } from '../../context/ThemeContext';
+import type { ThemeTokens } from '../../theme/tokens';
+import { useThemedStyles } from '../../theme/useThemedStyles';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'VerifyPhone'>;
 type VerifyPhoneRouteProp = RouteProp<RootStackParamList, 'VerifyPhone'>;
@@ -31,6 +31,9 @@ const CODE_LENGTH = 6;
 type VerificationStep = 'phone' | 'code';
 
 export const VerifyPhoneScreen: React.FC = () => {
+  const { tokens } = useTheme();
+  const { colors, spacing, typography } = tokens;
+  const styles = useThemedStyles(createStyles);
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute<VerifyPhoneRouteProp>();
   const insets = useSafeAreaInsets();
@@ -395,7 +398,7 @@ export const VerifyPhoneScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background.primary,

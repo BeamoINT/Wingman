@@ -2,8 +2,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import React from 'react';
 import { Image, StyleSheet, Text, View, ViewStyle } from 'react-native';
-import { colors } from '../theme/colors';
-import { typography } from '../theme/typography';
+import { useTheme } from '../context/ThemeContext';
+import type { ThemeTokens } from '../theme/tokens';
+import { useThemedStyles } from '../theme/useThemedStyles';
 
 interface AvatarProps {
   source?: string;
@@ -33,6 +34,9 @@ export const Avatar: React.FC<AvatarProps> = ({
   verificationLevel = 'basic',
   style,
 }) => {
+  const { tokens } = useTheme();
+  const { colors, spacing, typography } = tokens;
+  const styles = useThemedStyles(createStyles);
   const dimensions = sizeMap[size];
   const initials = name
     ? name
@@ -121,7 +125,7 @@ export const Avatar: React.FC<AvatarProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
   container: {
     position: 'relative',
   },

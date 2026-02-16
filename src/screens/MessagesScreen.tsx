@@ -11,11 +11,11 @@ import { useAuth } from '../context/AuthContext';
 import { useIsConnected } from '../context/NetworkContext';
 import type { ConversationData } from '../services/api/messages';
 import { fetchConversations } from '../services/api/messages';
-import { colors } from '../theme/colors';
-import { spacing } from '../theme/spacing';
-import { typography } from '../theme/typography';
 import type { Conversation, RootStackParamList, User } from '../types';
 import { haptics } from '../utils/haptics';
+import { useTheme } from '../context/ThemeContext';
+import type { ThemeTokens } from '../theme/tokens';
+import { useThemedStyles } from '../theme/useThemedStyles';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -110,6 +110,9 @@ function formatRelativeTime(dateString: string): string {
 }
 
 export const MessagesScreen: React.FC = () => {
+  const { tokens } = useTheme();
+  const { colors, spacing, typography } = tokens;
+  const styles = useThemedStyles(createStyles);
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
@@ -345,7 +348,7 @@ export const MessagesScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background.primary,

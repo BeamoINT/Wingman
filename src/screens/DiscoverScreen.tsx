@@ -10,11 +10,11 @@ import { CompanionCard, EmptySearchResults, EmptyState, InlineBanner } from '../
 import { useIsConnected } from '../context/NetworkContext';
 import type { CompanionData } from '../services/api/companions';
 import { fetchCompanions } from '../services/api/companions';
-import { colors } from '../theme/colors';
-import { spacing } from '../theme/spacing';
-import { typography } from '../theme/typography';
 import type { Companion, CompanionSpecialty, RootStackParamList, VerificationLevel } from '../types';
 import { haptics } from '../utils/haptics';
+import { useTheme } from '../context/ThemeContext';
+import type { ThemeTokens } from '../theme/tokens';
+import { useThemedStyles } from '../theme/useThemedStyles';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 type SpecialtyFilter = 'all' | CompanionSpecialty;
@@ -130,6 +130,9 @@ function sortCompanions(companions: Companion[], sortOption: SortOption): Compan
 }
 
 export const DiscoverScreen: React.FC = () => {
+  const { tokens } = useTheme();
+  const { colors, spacing, typography } = tokens;
+  const styles = useThemedStyles(createStyles);
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
   const isConnected = useIsConnected();
@@ -445,7 +448,7 @@ export const DiscoverScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background.primary,

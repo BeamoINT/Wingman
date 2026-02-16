@@ -10,7 +10,8 @@
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "doctor": "npx expo-doctor",
-    "preflight": "npm run typecheck && npm run lint && npm run doctor",
+    "check:legacy-theme-imports": "node ./scripts/check-legacy-theme-imports.js",
+    "preflight": "npm run check:legacy-theme-imports && npm run typecheck && npm run lint && npm run doctor",
     "lint": "eslint .",
     "format": "prettier --write ."
   },

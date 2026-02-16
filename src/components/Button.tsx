@@ -172,13 +172,13 @@ export const Button: React.FC<ButtonProps> = ({
         },
         text: {
           ...typography.presets.button,
-          color: colors.text.inverse,
+          color: colors.text.primary,
         },
         smallText: {
           ...typography.presets.buttonSmall,
         },
         primaryText: {
-          color: colors.text.inverse,
+          color: colors.text.onAccent,
         },
         outlineText: {
           color: colors.text.primary,
@@ -190,7 +190,7 @@ export const Button: React.FC<ButtonProps> = ({
           color: colors.text.primary,
         },
         dangerText: {
-          color: colors.text.inverse,
+          color: colors.text.onDanger,
         },
         secondaryText: {
           color: colors.text.primary,
@@ -233,7 +233,7 @@ export const Button: React.FC<ButtonProps> = ({
     }
 
     if (resolvedVariant === 'primary' || resolvedVariant === 'danger') {
-      return colors.text.inverse;
+      return resolvedVariant === 'primary' ? colors.text.onAccent : colors.text.onDanger;
     }
 
     return colors.text.primary;
@@ -243,7 +243,7 @@ export const Button: React.FC<ButtonProps> = ({
 
   const spinnerColor = (
     resolvedVariant === 'primary' || resolvedVariant === 'danger'
-      ? colors.text.inverse
+      ? (resolvedVariant === 'primary' ? colors.text.onAccent : colors.text.onDanger)
       : colors.text.primary
   );
 

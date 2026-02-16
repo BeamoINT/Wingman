@@ -15,11 +15,11 @@ import { createBooking } from '../services/api/bookingsApi';
 import { trackEvent } from '../services/monitoring/events';
 import type { CompanionData } from '../services/api/companions';
 import { fetchCompanionById } from '../services/api/companions';
-import { colors } from '../theme/colors';
-import { spacing } from '../theme/spacing';
-import { typography } from '../theme/typography';
 import type { CompanionSpecialty, RootStackParamList, VerificationLevel } from '../types';
 import { haptics } from '../utils/haptics';
+import { useTheme } from '../context/ThemeContext';
+import type { ThemeTokens } from '../theme/tokens';
+import { useThemedStyles } from '../theme/useThemedStyles';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Booking'>;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -139,6 +139,9 @@ function transformCompanionData(data: CompanionData): CompanionPreview {
 
 // Inner component that contains the actual booking UI
 const BookingScreenContent: React.FC = () => {
+  const { tokens } = useTheme();
+  const { colors, spacing, typography } = tokens;
+  const styles = useThemedStyles(createStyles);
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute<Props['route']>();
   const insets = useSafeAreaInsets();
@@ -699,6 +702,9 @@ const BookingScreenContent: React.FC = () => {
  * BookingScreen - Wrapped with RequirementsGate to enforce all booking requirements.
  */
 export const BookingScreen: React.FC = () => {
+  const { tokens } = useTheme();
+  const { colors, spacing, typography } = tokens;
+  const styles = useThemedStyles(createStyles);
   return (
     <RequirementsGate
       feature="book_companion"
@@ -709,7 +715,7 @@ export const BookingScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background.primary,

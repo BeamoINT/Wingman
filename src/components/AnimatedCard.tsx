@@ -3,9 +3,10 @@ import { StyleProp, StyleSheet, ViewStyle } from 'react-native';
 import Animated, {
     Extrapolation, interpolate, useAnimatedStyle, useSharedValue, withDelay, withSpring
 } from 'react-native-reanimated';
-import { colors } from '../theme/colors';
-import { spacing } from '../theme/spacing';
 import { springConfigs } from '../utils/animations';
+import { useTheme } from '../context/ThemeContext';
+import type { ThemeTokens } from '../theme/tokens';
+import { useThemedStyles } from '../theme/useThemedStyles';
 
 interface AnimatedCardProps {
   children: React.ReactNode;
@@ -23,6 +24,9 @@ export const AnimatedCard: React.FC<AnimatedCardProps> = ({
   index = 0,
   variant = 'default',
 }) => {
+  const { tokens } = useTheme();
+  const { colors, spacing, typography } = tokens;
+  const styles = useThemedStyles(createStyles);
   const progress = useSharedValue(0);
 
   useEffect(() => {
@@ -93,7 +97,7 @@ export const AnimatedCard: React.FC<AnimatedCardProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
   card: {
     borderRadius: spacing.radius.xl,
     padding: spacing.lg,

@@ -182,6 +182,9 @@ const createThemeColors = (theme: ThemeName) => {
       placeholder: p.textTertiary,
       accent: p.accent,
       gold: p.silver,
+      onAccent: '#FFFFFF',
+      onDanger: '#FFFFFF',
+      onSuccess: '#FFFFFF',
       inverse: theme === 'dark' ? '#0A0A0A' : '#FFFFFF',
     },
 

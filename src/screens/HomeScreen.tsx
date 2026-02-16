@@ -1,7 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { LinearGradient } from 'expo-linear-gradient';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
     ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View
@@ -10,11 +9,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CompanionCard, SafetyBanner } from '../components';
 import { useAuth } from '../context/AuthContext';
 import { fetchCompanions } from '../services/companionsApi';
-import { colors } from '../theme/colors';
-import { spacing } from '../theme/spacing';
-import { typography } from '../theme/typography';
 import type { Companion, RootStackParamList } from '../types';
 import { haptics } from '../utils/haptics';
+import { useTheme } from '../context/ThemeContext';
+import type { ThemeTokens } from '../theme/tokens';
+import { useThemedStyles } from '../theme/useThemedStyles';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -26,6 +25,9 @@ function getGreeting(): string {
 }
 
 export const HomeScreen: React.FC = () => {
+  const { tokens } = useTheme();
+  const { colors, spacing, typography } = tokens;
+  const styles = useThemedStyles(createStyles);
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
@@ -131,24 +133,19 @@ export const HomeScreen: React.FC = () => {
         </View>
 
         {/* Pro Banner */}
-        <TouchableOpacity onPress={handleSubscriptionPress} activeOpacity={0.9}>
-          <LinearGradient
-            colors={colors.gradients.premium}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.premiumBanner}
-          >
-            <View style={styles.premiumContent}>
-              <Ionicons name="star" size={24} color={colors.primary.darkBlack} />
-              <View style={styles.premiumText}>
-                <Text style={styles.premiumTitle}>Upgrade to Pro</Text>
-                <Text style={styles.premiumSubtitle}>
-                  Friends matching, requests, groups, and events
-                </Text>
-              </View>
+        <TouchableOpacity onPress={handleSubscriptionPress} activeOpacity={0.9} style={styles.premiumBanner}>
+          <View style={styles.premiumContent}>
+            <View style={styles.premiumIconWrap}>
+              <Ionicons name="star" size={18} color={colors.accent.primary} />
             </View>
-            <Ionicons name="chevron-forward" size={20} color={colors.primary.darkBlack} />
-          </LinearGradient>
+            <View style={styles.premiumText}>
+              <Text style={styles.premiumTitle}>Upgrade to Pro</Text>
+              <Text style={styles.premiumSubtitle}>
+                Friends matching, requests, groups, and events
+              </Text>
+            </View>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.text.secondary} />
         </TouchableOpacity>
 
         {/* Loading State */}
@@ -244,7 +241,7 @@ export const HomeScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background.primary,
@@ -305,6 +302,11 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     borderRadius: spacing.radius.xl,
     marginBottom: spacing.xl,
+    backgroundColor: colors.surface.level1,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.accent.primary,
   },
   verificationNotice: {
     flexDirection: 'row',
@@ -326,15 +328,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.md,
   },
+  premiumIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: spacing.radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.accent.soft,
+  },
   premiumText: {},
   premiumTitle: {
     ...typography.presets.h4,
-    color: colors.primary.darkBlack,
+    color: colors.text.primary,
   },
   premiumSubtitle: {
     ...typography.presets.caption,
-    color: colors.primary.darkBlack,
-    opacity: 0.8,
+    color: colors.text.secondary,
   },
   loadingContainer: {
     paddingVertical: spacing.massive,

@@ -3,9 +3,11 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React from 'react';
 import {
+  FlatList,
   StyleSheet,
   Text,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { Card, Header, ScreenScaffold, SectionHeader } from '../../components';
@@ -74,10 +76,16 @@ export const FriendsScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const { tokens } = useTheme();
   const styles = useThemedStyles(createStyles);
-  const { colors } = tokens;
+  const { colors, spacing } = tokens;
+  const { width } = useWindowDimensions();
   const { user } = useAuth();
 
   const isPro = user?.subscriptionTier === 'pro';
+  const numColumns = width >= 980 ? 3 : 2;
+  const contentWidth = Math.min(width, spacing.contentMaxWidthWide) - (spacing.screenPadding * 2);
+  const cardWidth = numColumns === 3
+    ? (contentWidth - (spacing.md * 2)) / 3
+    : (contentWidth - spacing.md) / 2;
 
   const handleOpenFeature = async (feature: FriendFeatureCard) => {
     await haptics.light();
@@ -108,7 +116,7 @@ export const FriendsScreen: React.FC = () => {
   };
 
   return (
-    <ScreenScaffold scrollable contentContainerStyle={styles.content}>
+    <ScreenScaffold withBottomPadding={false}>
       <Header
         title="Friends"
         rightIcon="mail-outline"
@@ -116,50 +124,59 @@ export const FriendsScreen: React.FC = () => {
         transparent
       />
 
-      <SectionHeader
-        title={isPro ? 'Pro Active' : 'Free Preview Mode'}
-        subtitle={
-          isPro
-            ? 'You have full access to matching, requests, feed, groups, and events.'
-            : 'Browse ranked profiles for free. Upgrade to Pro to send requests and unlock all Friends features.'
-        }
-      />
-
-      <Card variant="accent" style={styles.statusCard}>
-        <View style={styles.statusRow}>
-          <View style={styles.statusIconWrap}>
-            <Ionicons
-              name={isPro ? 'sparkles' : 'eye-outline'}
-              size={20}
-              color={isPro ? colors.accent.primary : colors.text.secondary}
+      <FlatList
+        key={`friends-grid-${numColumns}`}
+        data={FEATURE_CARDS}
+        keyExtractor={(item) => item.key}
+        numColumns={numColumns}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.content}
+        columnWrapperStyle={styles.gridRow}
+        ListHeaderComponent={(
+          <View style={styles.listHeader}>
+            <SectionHeader
+              title={isPro ? 'Pro Active' : 'Free Preview Mode'}
+              subtitle={
+                isPro
+                  ? 'You have full access to matching, requests, feed, groups, and events.'
+                  : 'Browse ranked profiles for free. Upgrade to Pro to send requests and unlock all Friends features.'
+              }
             />
-          </View>
-          <View style={styles.statusTextWrap}>
-            <Text style={styles.statusTitle}>{isPro ? 'Pro Active' : 'Free Preview Mode'}</Text>
-            <Text style={styles.statusSubtitle}>
-              {isPro
-                ? 'You have full access to matching, requests, feed, groups, and events.'
-                : 'Browse ranked profiles for free. Upgrade to Pro to send requests and unlock all Friends features.'}
-            </Text>
-          </View>
-        </View>
 
-        {!isPro ? (
-          <TouchableOpacity style={styles.upgradeButton} onPress={() => navigation.navigate('Subscription')}>
-            <Text style={styles.upgradeButtonText}>Upgrade to Pro</Text>
-            <Ionicons name="arrow-forward" size={16} color={colors.text.primary} />
-          </TouchableOpacity>
-        ) : null}
-      </Card>
+            <Card variant="accent" style={styles.statusCard}>
+              <View style={styles.statusRow}>
+                <View style={styles.statusIconWrap}>
+                  <Ionicons
+                    name={isPro ? 'sparkles' : 'eye-outline'}
+                    size={20}
+                    color={isPro ? colors.accent.primary : colors.text.secondary}
+                  />
+                </View>
+                <View style={styles.statusTextWrap}>
+                  <Text style={styles.statusTitle}>{isPro ? 'Pro Active' : 'Free Preview Mode'}</Text>
+                  <Text style={styles.statusSubtitle}>
+                    {isPro
+                      ? 'You have full access to matching, requests, feed, groups, and events.'
+                      : 'Browse ranked profiles for free. Upgrade to Pro to send requests and unlock all Friends features.'}
+                  </Text>
+                </View>
+              </View>
 
-      <View style={styles.grid}>
-        {FEATURE_CARDS.map((feature) => {
+              {!isPro ? (
+                <TouchableOpacity style={styles.upgradeButton} onPress={() => navigation.navigate('Subscription')}>
+                  <Text style={styles.upgradeButtonText}>Upgrade to Pro</Text>
+                  <Ionicons name="arrow-forward" size={16} color={colors.text.onAccent} />
+                </TouchableOpacity>
+              ) : null}
+            </Card>
+          </View>
+        )}
+        renderItem={({ item: feature }) => {
           const locked = !isPro && !feature.previewAccessible;
 
           return (
             <TouchableOpacity
-              key={feature.key}
-              style={styles.featureCard}
+              style={[styles.featureCard, { width: cardWidth }]}
               onPress={() => handleOpenFeature(feature)}
               activeOpacity={0.85}
             >
@@ -178,8 +195,8 @@ export const FriendsScreen: React.FC = () => {
               <Text style={styles.featureDescription}>{feature.description}</Text>
             </TouchableOpacity>
           );
-        })}
-      </View>
+        }}
+      />
     </ScreenScaffold>
   );
 };
@@ -187,7 +204,11 @@ export const FriendsScreen: React.FC = () => {
 const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
   content: {
     paddingBottom: spacing.massive,
+    gap: spacing.md,
+  },
+  listHeader: {
     gap: spacing.lg,
+    marginBottom: spacing.md,
   },
   statusCard: {
     gap: spacing.md,
@@ -229,15 +250,13 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
   },
   upgradeButtonText: {
     ...typography.presets.button,
-    color: colors.text.primary,
+    color: colors.text.onAccent,
   },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.md,
+  gridRow: {
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
   },
   featureCard: {
-    width: '48%',
     minHeight: 180,
     borderRadius: spacing.radius.xl,
     borderWidth: 1,

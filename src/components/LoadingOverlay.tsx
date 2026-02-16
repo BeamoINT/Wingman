@@ -1,9 +1,9 @@
 import { BlurView } from 'expo-blur';
 import React from 'react';
 import { ActivityIndicator, Modal, StyleSheet, Text, View } from 'react-native';
-import { colors } from '../theme/colors';
-import { spacing } from '../theme/spacing';
-import { typography } from '../theme/typography';
+import { useTheme } from '../context/ThemeContext';
+import type { ThemeTokens } from '../theme/tokens';
+import { useThemedStyles } from '../theme/useThemedStyles';
 
 interface LoadingOverlayProps {
   /**
@@ -34,6 +34,9 @@ export const LoadingOverlay: React.FC<LoadingOverlayProps> = ({
   useBlur = true,
   transparent = false,
 }) => {
+  const { tokens } = useTheme();
+  const { colors, spacing, typography } = tokens;
+  const styles = useThemedStyles(createStyles);
   if (!visible) return null;
 
   const content = (
@@ -85,38 +88,50 @@ export const LoadingOverlay: React.FC<LoadingOverlayProps> = ({
 export const LoadingIndicator: React.FC<{
   message?: string;
   size?: 'small' | 'large';
-}> = ({ message, size = 'large' }) => (
-  <View
-    style={styles.inlineContainer}
-    accessibilityRole="progressbar"
-    accessibilityLabel={message || 'Loading'}
-  >
-    <ActivityIndicator size={size} color={colors.primary.blue} />
-    {message && (
-      <Text style={[styles.message, styles.inlineMessage]}>{message}</Text>
-    )}
-  </View>
-);
+}> = ({ message, size = 'large' }) => {
+  const { tokens } = useTheme();
+  const { colors } = tokens;
+  const styles = useThemedStyles(createStyles);
+
+  return (
+    <View
+      style={styles.inlineContainer}
+      accessibilityRole="progressbar"
+      accessibilityLabel={message || 'Loading'}
+    >
+      <ActivityIndicator size={size} color={colors.primary.blue} />
+      {message && (
+        <Text style={[styles.message, styles.inlineMessage]}>{message}</Text>
+      )}
+    </View>
+  );
+};
 
 /**
  * Centered loading indicator that fills its container.
  */
 export const LoadingScreen: React.FC<{
   message?: string;
-}> = ({ message }) => (
-  <View
-    style={styles.screenContainer}
-    accessibilityRole="progressbar"
-    accessibilityLabel={message || 'Loading'}
-  >
-    <ActivityIndicator size="large" color={colors.primary.blue} />
-    {message && (
-      <Text style={styles.screenMessage}>{message}</Text>
-    )}
-  </View>
-);
+}> = ({ message }) => {
+  const { tokens } = useTheme();
+  const { colors } = tokens;
+  const styles = useThemedStyles(createStyles);
 
-const styles = StyleSheet.create({
+  return (
+    <View
+      style={styles.screenContainer}
+      accessibilityRole="progressbar"
+      accessibilityLabel={message || 'Loading'}
+    >
+      <ActivityIndicator size="large" color={colors.primary.blue} />
+      {message && (
+        <Text style={styles.screenMessage}>{message}</Text>
+      )}
+    </View>
+  );
+};
+
+const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
   container: {
     flex: 1,
     justifyContent: 'center',

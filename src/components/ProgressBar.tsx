@@ -3,9 +3,9 @@ import { StyleSheet, Text, View } from 'react-native';
 import Animated, {
     useAnimatedStyle, useSharedValue, withSpring
 } from 'react-native-reanimated';
-import { colors } from '../theme/colors';
-import { spacing } from '../theme/spacing';
-import { typography } from '../theme/typography';
+import { useTheme } from '../context/ThemeContext';
+import type { ThemeTokens } from '../theme/tokens';
+import { useThemedStyles } from '../theme/useThemedStyles';
 
 interface ProgressBarProps {
   currentStep: number;
@@ -18,6 +18,9 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
   totalSteps,
   showLabel = true,
 }) => {
+  const { tokens } = useTheme();
+  const { colors, spacing, typography } = tokens;
+  const styles = useThemedStyles(createStyles);
   const progressValue = useSharedValue(currentStep / totalSteps);
 
   useEffect(() => {
@@ -45,7 +48,7 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
   container: {
     marginBottom: spacing.lg,
   },

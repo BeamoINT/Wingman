@@ -14,15 +14,15 @@ import { useIsConnected } from '../context/NetworkContext';
 import type { BookingData } from '../services/api/bookingsApi';
 import { cancelBooking, fetchUserBookings } from '../services/api/bookingsApi';
 import { getOrCreateConversation } from '../services/api/messages';
-import { colors } from '../theme/colors';
-import { spacing } from '../theme/spacing';
-import { typography } from '../theme/typography';
 import type {
     Booking,
     BookingStatus,
     CompanionSpecialty, RootStackParamList, VerificationLevel
 } from '../types';
 import { haptics } from '../utils/haptics';
+import { useTheme } from '../context/ThemeContext';
+import type { ThemeTokens } from '../theme/tokens';
+import { useThemedStyles } from '../theme/useThemedStyles';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 type TabType = 'upcoming' | 'completed' | 'cancelled';
@@ -173,6 +173,9 @@ function buildMapUrl(query: string): string {
 }
 
 export const BookingsScreen: React.FC = () => {
+  const { tokens } = useTheme();
+  const { colors, spacing, typography } = tokens;
+  const styles = useThemedStyles(createStyles);
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
   const isConnected = useIsConnected();
@@ -538,7 +541,7 @@ export const BookingsScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background.primary,

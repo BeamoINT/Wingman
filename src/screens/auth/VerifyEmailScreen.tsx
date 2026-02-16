@@ -11,17 +11,20 @@ import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button } from '../../components';
 import { useAuth } from '../../context/AuthContext';
-import { colors } from '../../theme/colors';
-import { spacing } from '../../theme/spacing';
-import { typography } from '../../theme/typography';
 import type { RootStackParamList } from '../../types';
 import { haptics } from '../../utils/haptics';
+import { useTheme } from '../../context/ThemeContext';
+import type { ThemeTokens } from '../../theme/tokens';
+import { useThemedStyles } from '../../theme/useThemedStyles';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'VerifyEmail'>;
 
 const CODE_LENGTH = 6;
 
 export const VerifyEmailScreen: React.FC = () => {
+  const { tokens } = useTheme();
+  const { colors, spacing, typography } = tokens;
+  const styles = useThemedStyles(createStyles);
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
   const { signupData, supabaseUser, verifyEmail, resendEmailVerification, setEmailVerified } = useAuth();
@@ -222,7 +225,7 @@ export const VerifyEmailScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background.primary,

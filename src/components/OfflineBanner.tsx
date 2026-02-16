@@ -6,9 +6,9 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useIsConnected } from '../context/NetworkContext';
-import { colors } from '../theme/colors';
-import { spacing } from '../theme/spacing';
-import { typography } from '../theme/typography';
+import { useTheme } from '../context/ThemeContext';
+import type { ThemeTokens } from '../theme/tokens';
+import { useThemedStyles } from '../theme/useThemedStyles';
 
 interface OfflineBannerProps {
   /**
@@ -24,6 +24,9 @@ interface OfflineBannerProps {
 export const OfflineBanner: React.FC<OfflineBannerProps> = ({
   message = "You're offline. Some features may be unavailable.",
 }) => {
+  const { tokens } = useTheme();
+  const { colors, spacing, typography } = tokens;
+  const styles = useThemedStyles(createStyles);
   const isConnected = useIsConnected();
   const insets = useSafeAreaInsets();
   const animation = useSharedValue(0);
@@ -81,7 +84,7 @@ export const OfflineBanner: React.FC<OfflineBannerProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
   container: {
     position: 'absolute',
     top: 0,

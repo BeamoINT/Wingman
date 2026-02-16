@@ -26,5 +26,16 @@ module.exports = {
     'no-useless-escape': 'off',
     'no-control-regex': 'off',
     'prefer-const': 'off',
+    'no-restricted-imports': [
+      'error',
+      {
+        patterns: [
+          {
+            group: ['**/theme/colors', '**/theme/spacing', '**/theme/typography'],
+            message: 'Use runtime theme tokens via useTheme/useThemedStyles instead of static imports.',
+          },
+        ],
+      },
+    ],
   },
 };

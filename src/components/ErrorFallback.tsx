@@ -1,9 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { colors } from '../theme/colors';
-import { spacing } from '../theme/spacing';
-import { typography } from '../theme/typography';
+import { useTheme } from '../context/ThemeContext';
+import type { ThemeTokens } from '../theme/tokens';
+import { useThemedStyles } from '../theme/useThemedStyles';
 
 interface ErrorFallbackProps {
   error: Error | null;
@@ -22,6 +22,9 @@ export const ErrorFallback: React.FC<ErrorFallbackProps> = ({
   title = 'Something went wrong',
   message = "We're sorry, but something unexpected happened. Please try again.",
 }) => {
+  const { tokens } = useTheme();
+  const { colors, spacing, typography } = tokens;
+  const styles = useThemedStyles(createStyles);
   return (
     <View style={styles.container} accessibilityRole="alert">
       <View style={styles.content}>
@@ -76,7 +79,7 @@ export const ErrorFallback: React.FC<ErrorFallbackProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background.primary,

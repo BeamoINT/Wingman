@@ -12,11 +12,11 @@ import { Avatar, Badge, Card } from '../components';
 import { useAuth } from '../context/AuthContext';
 import { checkExistingCompanionProfile, getCompanionApplication } from '../services/api/companionApplicationApi';
 import { createPaymentPortalSession } from '../services/api/payments';
-import { colors } from '../theme/colors';
-import { spacing } from '../theme/spacing';
-import { typography } from '../theme/typography';
 import type { CompanionApplicationStatus, RootStackParamList } from '../types';
 import { haptics } from '../utils/haptics';
+import { useTheme } from '../context/ThemeContext';
+import type { ThemeTokens } from '../theme/tokens';
+import { useThemedStyles } from '../theme/useThemedStyles';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -31,6 +31,9 @@ interface MenuItem {
 }
 
 export const ProfileScreen: React.FC = () => {
+  const { tokens } = useTheme();
+  const { colors, spacing, typography } = tokens;
+  const styles = useThemedStyles(createStyles);
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
   const { user, signOut } = useAuth();
@@ -262,7 +265,7 @@ export const ProfileScreen: React.FC = () => {
                     : 'people'
                 }
                 size={24}
-                color={colors.primary.darkBlack}
+                color={colors.text.primary}
               />
             </View>
             <View style={styles.companionContent}>
@@ -285,7 +288,7 @@ export const ProfileScreen: React.FC = () => {
                   : 'Earn money by being a great friend'}
               </Text>
             </View>
-            <Ionicons name="arrow-forward" size={20} color={colors.primary.darkBlack} />
+            <Ionicons name="arrow-forward" size={20} color={colors.text.secondary} />
           </LinearGradient>
         </TouchableOpacity>
 
@@ -334,7 +337,7 @@ export const ProfileScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background.primary,
@@ -422,11 +425,11 @@ const styles = StyleSheet.create({
   },
   companionTitle: {
     ...typography.presets.h4,
-    color: colors.primary.darkBlack,
+    color: colors.text.primary,
   },
   companionSubtitle: {
     ...typography.presets.caption,
-    color: colors.primary.darkBlack,
+    color: colors.text.secondary,
     opacity: 0.8,
     marginTop: 2,
   },

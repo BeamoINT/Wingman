@@ -1,10 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
-import { colors } from '../theme/colors';
-import { spacing } from '../theme/spacing';
-import { typography } from '../theme/typography';
 import { Button } from './Button';
+import { useTheme } from '../context/ThemeContext';
+import type { ThemeTokens } from '../theme/tokens';
+import { useThemedStyles } from '../theme/useThemedStyles';
 
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -58,7 +58,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
   title,
   message,
   icon = 'file-tray-outline',
-  iconColor = colors.text.tertiary,
+  iconColor,
   actionLabel,
   onAction,
   secondaryActionLabel,
@@ -66,6 +66,10 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
   style,
   size = 'medium',
 }) => {
+  const { tokens } = useTheme();
+  const { colors, spacing, typography } = tokens;
+  const styles = useThemedStyles(createStyles);
+  const resolvedIconColor = iconColor ?? colors.text.tertiary;
   const iconSize = size === 'small' ? 48 : size === 'large' ? 80 : 64;
   const titleStyle = size === 'small' ? typography.presets.h4 : typography.presets.h3;
   const messageStyle = size === 'small' ? typography.presets.caption : typography.presets.body;
@@ -85,7 +89,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
         <Ionicons
           name={icon}
           size={iconSize}
-          color={iconColor}
+          color={resolvedIconColor}
         />
       </View>
 
@@ -208,7 +212,7 @@ export const EmptyChat: React.FC<{
   />
 );
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
   container: {
     flex: 1,
     alignItems: 'center',

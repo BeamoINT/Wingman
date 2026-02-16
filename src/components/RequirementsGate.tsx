@@ -1,3 +1,6 @@
+import { useTheme } from '../context/ThemeContext';
+import type { ThemeTokens } from '../theme/tokens';
+import { useThemedStyles } from '../theme/useThemedStyles';
 /**
  * Requirements Gate Component
  *
@@ -15,9 +18,6 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRequirements, type AppFeature, type RequirementCheck } from '../context/RequirementsContext';
-import { colors } from '../theme/colors';
-import { spacing } from '../theme/spacing';
-import { typography } from '../theme/typography';
 import type { LegalDocumentType, RootStackParamList } from '../types';
 import { haptics } from '../utils/haptics';
 import { Button } from './Button';
@@ -72,6 +72,9 @@ export const RequirementsGate: React.FC<RequirementsGateProps> = ({
   onRequirementsMet,
   fallback,
 }) => {
+  const { tokens } = useTheme();
+  const { colors, spacing, typography } = tokens;
+  const styles = useThemedStyles(createStyles);
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
   const { checkBookingRequirements, checkCompanionRequirements, canAccessFeature, isLoading } =
@@ -287,7 +290,7 @@ export const useFeatureGate = () => {
   return { checkFeature, checkBooking };
 };
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
   loadingContainer: {
     flex: 1,
     alignItems: 'center',

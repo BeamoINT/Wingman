@@ -14,15 +14,15 @@ import { Avatar, Badge, Button, Card, EmptyState } from '../components';
 import type { BookingData } from '../services/api/bookingsApi';
 import { cancelBooking, fetchBookingById } from '../services/api/bookingsApi';
 import { getOrCreateConversation } from '../services/api/messages';
-import { colors } from '../theme/colors';
-import { spacing } from '../theme/spacing';
-import { typography } from '../theme/typography';
 import type {
     Booking,
     BookingStatus,
     CompanionSpecialty, RootStackParamList, VerificationLevel
 } from '../types';
 import { haptics } from '../utils/haptics';
+import { useTheme } from '../context/ThemeContext';
+import type { ThemeTokens } from '../theme/tokens';
+import { useThemedStyles } from '../theme/useThemedStyles';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'BookingConfirmation'>;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -167,6 +167,9 @@ function statusVariant(status: BookingStatus): 'success' | 'warning' | 'info' | 
 }
 
 export const BookingConfirmationScreen: React.FC = () => {
+  const { tokens } = useTheme();
+  const { colors, spacing, typography } = tokens;
+  const styles = useThemedStyles(createStyles);
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute<Props['route']>();
   const insets = useSafeAreaInsets();
@@ -440,7 +443,7 @@ export const BookingConfirmationScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background.primary,

@@ -24,11 +24,11 @@ import {
     subscribeToMessages
 } from '../services/api/messages';
 import { MediaPickerError, pickImageForMessaging, pickVideoForMessaging } from '../services/media/picker';
-import { colors } from '../theme/colors';
-import { spacing } from '../theme/spacing';
-import { typography } from '../theme/typography';
 import type { Conversation, Message, RootStackParamList, User } from '../types';
 import { haptics } from '../utils/haptics';
+import { useTheme } from '../context/ThemeContext';
+import type { ThemeTokens } from '../theme/tokens';
+import { useThemedStyles } from '../theme/useThemedStyles';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Chat'>;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -195,6 +195,9 @@ function sortMessagesByTime(messages: Message[]): Message[] {
  * Inner content component for the Chat screen
  */
 const ChatScreenContent: React.FC = () => {
+  const { tokens } = useTheme();
+  const { colors, spacing, typography } = tokens;
+  const styles = useThemedStyles(createStyles);
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute<Props['route']>();
   const insets = useSafeAreaInsets();
@@ -785,6 +788,9 @@ const ChatScreenContent: React.FC = () => {
  * ChatScreen - Wrapped with RequirementsGate to enforce messaging requirements.
  */
 export const ChatScreen: React.FC = () => {
+  const { tokens } = useTheme();
+  const { colors, spacing, typography } = tokens;
+  const styles = useThemedStyles(createStyles);
   return (
     <RequirementsGate
       feature="send_message"
@@ -795,7 +801,7 @@ export const ChatScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background.primary,

@@ -4,10 +4,10 @@ import { Pressable, StyleSheet, Text, ViewStyle } from 'react-native';
 import Animated, {
     useAnimatedStyle, useSharedValue, withSpring
 } from 'react-native-reanimated';
-import { colors } from '../theme/colors';
-import { spacing } from '../theme/spacing';
-import { typography } from '../theme/typography';
 import { haptics } from '../utils/haptics';
+import { useTheme } from '../context/ThemeContext';
+import type { ThemeTokens } from '../theme/tokens';
+import { useThemedStyles } from '../theme/useThemedStyles';
 
 interface SelectableChipProps {
   label: string;
@@ -26,6 +26,9 @@ export const SelectableChip: React.FC<SelectableChipProps> = ({
   icon,
   style,
 }) => {
+  const { tokens } = useTheme();
+  const { colors, spacing, typography } = tokens;
+  const styles = useThemedStyles(createStyles);
   const scale = useSharedValue(1);
 
   const handlePressIn = () => {
@@ -80,7 +83,7 @@ export const SelectableChip: React.FC<SelectableChipProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
