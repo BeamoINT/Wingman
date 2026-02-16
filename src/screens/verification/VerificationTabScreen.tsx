@@ -54,7 +54,7 @@ export const VerificationTabScreen: React.FC = () => {
 
   const handlePhoneVerificationPress = useCallback(async () => {
     await haptics.light();
-    navigation.navigate('VerifyPhone');
+    navigation.navigate('VerifyPhone', { source: 'profile' });
   }, [navigation]);
 
   const verificationSteps = getVerificationSteps();

@@ -313,7 +313,9 @@ export type RootStackParamList = {
   SignIn: undefined;
   Signup: { resumeStep?: number } | undefined;
   VerifyEmail: undefined;
-  VerifyPhone: undefined;
+  VerifyPhone: {
+    source?: 'signup' | 'requirements' | 'profile' | 'booking';
+  } | undefined;
   ForgotPassword: { email?: string } | undefined;
   MagicLinkLogin: { email?: string } | undefined;
   Tutorial: undefined;

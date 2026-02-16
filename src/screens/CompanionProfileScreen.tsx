@@ -200,7 +200,7 @@ export const CompanionProfileScreen: React.FC = () => {
               if (firstUnmet.navigateTo === 'Verification') {
                 navigation.navigate('Verification', { source: 'requirements' });
               } else if (firstUnmet.navigateTo === 'VerifyPhone') {
-                navigation.navigate('VerifyPhone');
+                navigation.navigate('VerifyPhone', { source: 'requirements' });
               } else if (firstUnmet.navigateTo === 'Subscription') {
                 navigation.navigate('Subscription');
               } else if (firstUnmet.navigateTo === 'SignIn') {

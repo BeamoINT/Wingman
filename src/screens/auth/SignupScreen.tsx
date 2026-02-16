@@ -286,7 +286,7 @@ export const SignupScreen: React.FC = () => {
 
       await haptics.success();
 
-      // Navigate to email verification if needed, otherwise to tutorial
+      // Navigate to email verification if needed, otherwise continue to phone verification.
       if (result.needsVerification) {
         navigation.reset({
           index: 0,
@@ -295,7 +295,7 @@ export const SignupScreen: React.FC = () => {
       } else {
         navigation.reset({
           index: 0,
-          routes: [{ name: 'Tutorial' }],
+          routes: [{ name: 'VerifyPhone', params: { source: 'signup' } }],
         });
       }
     }

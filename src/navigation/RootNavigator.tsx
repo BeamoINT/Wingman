@@ -135,7 +135,15 @@ export const RootNavigator: React.FC = () => {
     ]);
 
     if (isAuthenticated) {
-      if (currentRouteName !== 'Main') {
+      const allowedAuthRoutes = new Set<string>([
+        'Main',
+        'VerifyEmail',
+        'VerifyPhone',
+        'Tutorial',
+        'LegalDocument',
+      ]);
+
+      if (!currentRouteName || !allowedAuthRoutes.has(currentRouteName)) {
         navigationRef.dispatch(
           CommonActions.reset({
             index: 0,

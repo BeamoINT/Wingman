@@ -33,8 +33,8 @@ serve(async (req) => {
     if (!accountSid || !authToken || !verifyServiceSid) {
       console.error('Missing Twilio configuration');
       return new Response(
-        JSON.stringify({ error: 'Server configuration error' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ status: 'failed', error: 'Server configuration error' }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -59,10 +59,11 @@ serve(async (req) => {
       console.error('Twilio error:', data);
       return new Response(
         JSON.stringify({
+          status: 'failed',
           error: data.message || 'Failed to send verification code',
           code: data.code
         }),
-        { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -77,8 +78,8 @@ serve(async (req) => {
   } catch (error) {
     console.error('Error in send-phone-otp:', error);
     return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({ status: 'failed', error: 'Internal server error' }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });

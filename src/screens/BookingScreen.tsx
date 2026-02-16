@@ -327,7 +327,7 @@ const BookingScreenContent: React.FC = () => {
                 : (needsEmailOrIdVerification ? 'Complete Verification' : 'Add Profile Photo'),
               onPress: () => {
                 if (needsPhoneVerification) {
-                  navigation.navigate('VerifyPhone');
+                  navigation.navigate('VerifyPhone', { source: 'booking' });
                   return;
                 }
 

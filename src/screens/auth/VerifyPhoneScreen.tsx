@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useEffect, useRef, useState } from 'react';
@@ -21,7 +22,8 @@ import { typography } from '../../theme/typography';
 import type { RootStackParamList } from '../../types';
 import { haptics } from '../../utils/haptics';
 
-type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Signup'>;
+type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'VerifyPhone'>;
+type VerifyPhoneRouteProp = RouteProp<RootStackParamList, 'VerifyPhone'>;
 
 const CODE_LENGTH = 6;
 
@@ -29,8 +31,10 @@ type VerificationStep = 'phone' | 'code';
 
 export const VerifyPhoneScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
+  const route = useRoute<VerifyPhoneRouteProp>();
   const insets = useSafeAreaInsets();
   const { signupData, setPhoneVerified } = useAuth();
+  const isSignupFlow = route.params?.source === 'signup';
 
   const [step, setStep] = useState<VerificationStep>('phone');
   const [phoneNumber, setPhoneNumber] = useState(signupData.phone || '');
@@ -137,6 +141,19 @@ export const VerifyPhoneScreen: React.FC = () => {
             {
               text: 'Continue',
               onPress: () => {
+                if (isSignupFlow) {
+                  navigation.reset({
+                    index: 0,
+                    routes: [{ name: 'Tutorial' }],
+                  });
+                  return;
+                }
+
+                if (navigation.canGoBack()) {
+                  navigation.goBack();
+                  return;
+                }
+
                 navigation.reset({
                   index: 0,
                   routes: [{ name: 'Main' }],
@@ -174,6 +191,14 @@ export const VerifyPhoneScreen: React.FC = () => {
   };
 
   const handleSkip = () => {
+    if (isSignupFlow) {
+      Alert.alert(
+        'Phone Verification Required',
+        'To continue signup, please verify your phone number.'
+      );
+      return;
+    }
+
     Alert.alert(
       'Skip Phone Verification?',
       'You can verify your phone number later from your profile settings. Some features may be limited until verification.',
@@ -239,9 +264,11 @@ export const VerifyPhoneScreen: React.FC = () => {
           disabled={!phoneNumber.trim()}
         />
 
-        <TouchableOpacity style={styles.skipButton} onPress={handleSkip}>
-          <Text style={styles.skipText}>Skip for now</Text>
-        </TouchableOpacity>
+        {!isSignupFlow && (
+          <TouchableOpacity style={styles.skipButton} onPress={handleSkip}>
+            <Text style={styles.skipText}>Skip for now</Text>
+          </TouchableOpacity>
+        )}
       </Animated.View>
     </>
   );

@@ -17,7 +17,7 @@ import { typography } from '../../theme/typography';
 import type { RootStackParamList } from '../../types';
 import { haptics } from '../../utils/haptics';
 
-type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Signup'>;
+type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'VerifyEmail'>;
 
 const CODE_LENGTH = 6;
 
@@ -95,10 +95,10 @@ export const VerifyEmailScreen: React.FC = () => {
         await haptics.success();
         setEmailVerified();
 
-        // Navigate to phone verification or tutorial
+        // Enforce phone verification immediately after email verification during signup.
         navigation.reset({
           index: 0,
-          routes: [{ name: 'Tutorial' }],
+          routes: [{ name: 'VerifyPhone', params: { source: 'signup' } }],
         });
       } else {
         setError(result.error || 'Invalid verification code');
