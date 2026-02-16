@@ -1,6 +1,41 @@
 import * as FileSystem from 'expo-file-system';
-import { Image as ImageCompressor, Video, getVideoMetaData } from 'react-native-compressor';
 import { supportsNativeMediaCompression } from '../../config/runtime';
+
+type CompressorModule = {
+  Image: {
+    compress: (value: string, options?: Record<string, unknown>) => Promise<string>;
+  };
+  Video: {
+    compress: (
+      fileUrl: string,
+      options?: Record<string, unknown>,
+      onProgress?: (progress: number) => void,
+    ) => Promise<string>;
+  };
+  getVideoMetaData: (filePath: string) => Promise<{
+    duration?: number;
+    width?: number;
+    height?: number;
+  }>;
+};
+
+let compressorModuleCache: CompressorModule | null = null;
+
+function getCompressorModule(): CompressorModule {
+  if (!supportsNativeMediaCompression) {
+    throw new MediaCompressionError(
+      'unsupported_runtime',
+      'Media compression requires a development or production build. Expo Go is unsupported.',
+    );
+  }
+
+  if (!compressorModuleCache) {
+    // Lazy import so Expo Go can boot without loading an unlinked native module.
+    compressorModuleCache = require('react-native-compressor') as CompressorModule;
+  }
+
+  return compressorModuleCache;
+}
 
 export const VIDEO_MAX_DURATION_MS = 60_000;
 export const VIDEO_MAX_CIPHERTEXT_BYTES = 20 * 1024 * 1024;
@@ -64,9 +99,10 @@ export async function compressVideoForMessaging(
   }
 
   let durationMs = providedDurationMs || 0;
+  const compressor = getCompressorModule();
   if (durationMs <= 0) {
     try {
-      const metadata = await getVideoMetaData(sourceUri);
+      const metadata = await compressor.getVideoMetaData(sourceUri);
       durationMs = Math.max(0, Math.round(Number(metadata?.duration || 0) * 1000));
     } catch {
       // Metadata read failures should not block compression; duration is re-checked post-compress.
@@ -79,7 +115,7 @@ export async function compressVideoForMessaging(
 
   let compressedUri: string;
   try {
-    compressedUri = await Video.compress(
+    compressedUri = await compressor.Video.compress(
       sourceUri,
       {
         compressionMethod: 'manual',
@@ -106,7 +142,7 @@ export async function compressVideoForMessaging(
 
   if (durationMs <= 0) {
     try {
-      const compressedMetadata = await getVideoMetaData(compressedUri);
+      const compressedMetadata = await compressor.getVideoMetaData(compressedUri);
       durationMs = Math.max(0, Math.round(Number(compressedMetadata?.duration || 0) * 1000));
     } catch {
       durationMs = providedDurationMs || 0;
@@ -129,21 +165,24 @@ export async function compressImageForMessaging(sourceUri: string): Promise<Comp
     throw new MediaCompressionError('invalid_media', 'Image URI is required.');
   }
 
-  let compressedUri: string;
-  try {
-    compressedUri = await ImageCompressor.compress(sourceUri, {
-      compressionMethod: 'manual',
-      maxWidth: IMAGE_MAX_EDGE,
-      maxHeight: IMAGE_MAX_EDGE,
-      quality: IMAGE_TARGET_QUALITY,
-      output: 'jpg',
-      returnableOutputType: 'uri',
-    });
-  } catch (error) {
-    throw new MediaCompressionError(
-      'compression_failed',
-      error instanceof Error ? error.message : 'Image compression failed.',
-    );
+  let compressedUri = sourceUri;
+  if (supportsNativeMediaCompression) {
+    try {
+      const compressor = getCompressorModule();
+      compressedUri = await compressor.Image.compress(sourceUri, {
+        compressionMethod: 'manual',
+        maxWidth: IMAGE_MAX_EDGE,
+        maxHeight: IMAGE_MAX_EDGE,
+        quality: IMAGE_TARGET_QUALITY,
+        output: 'jpg',
+        returnableOutputType: 'uri',
+      });
+    } catch (error) {
+      throw new MediaCompressionError(
+        'compression_failed',
+        error instanceof Error ? error.message : 'Image compression failed.',
+      );
+    }
   }
 
   const compressedSizeBytes = await getFileSizeBytes(compressedUri);
@@ -159,4 +198,3 @@ export async function compressImageForMessaging(sourceUri: string): Promise<Comp
     sizeBytes: compressedSizeBytes,
   };
 }
-
