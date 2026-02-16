@@ -11,6 +11,8 @@
 - `REVENUECAT_ENTITLEMENT_PRO`
 - `GOOGLE_PLACES_API_KEY` (for existing city search/geocoding functions)
 
+Security note: if a RevenueCat `sk_` secret key is ever shared in plaintext, rotate it after deployment and update `REVENUECAT_SECRET_API_KEY` immediately.
+
 ## Deploy sequence
 1. Link the project and verify environment:
 ```bash

@@ -23,6 +23,12 @@ export const SubscriptionCard: React.FC<SubscriptionCardProps> = ({
   const { colors } = tokens;
 
   const isProPlan = subscription.tier === 'pro';
+  const isYearly = subscription.billingPeriod === 'yearly';
+  const billingLabel = isYearly ? 'year' : 'month';
+  const planLabel = isProPlan
+    ? (isYearly ? 'Pro Yearly' : 'Pro Monthly')
+    : 'Free';
+  const priceLabel = isProPlan ? `$${subscription.price}/${billingLabel}` : '$0/month';
 
   const handlePress = async () => {
     await haptics.medium();
@@ -50,10 +56,10 @@ export const SubscriptionCard: React.FC<SubscriptionCardProps> = ({
 
         <View style={styles.headerText}>
           <Text style={styles.tierLabel}>
-            {subscription.tier === 'pro' ? 'Pro' : 'Free'}
+            {planLabel}
           </Text>
           <Text style={styles.tierSubLabel}>
-            {subscription.tier === 'pro' ? '$10/month' : '$0/month'}
+            {priceLabel}
           </Text>
         </View>
 

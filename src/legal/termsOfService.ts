@@ -217,11 +217,12 @@ Gift cards are non-refundable and non-transferable for cash. Unused gift card ba
 We offer the following subscription plans:
 
 - Free: Core Wingman booking features;
-- Pro ($10.00/month): Full Friends access, including matching requests, friend chat, feed, groups, and events.
+- Pro Monthly ($10.00/month): Full Friends access, including matching requests, friend chat, feed, groups, and events.
+- Pro Yearly ($99.00/year): Full Friends access, including matching requests, friend chat, feed, groups, and events.
 
 8.2 Billing
 
-Pro subscriptions are billed monthly on a recurring basis until cancelled. You authorize us to charge your payment method on file for all subscription fees.
+Pro subscriptions are billed on the selected recurring cycle (monthly or yearly) until cancelled. You authorize us to charge your payment method on file for all subscription fees.
 
 8.3 Automatic Renewal
 

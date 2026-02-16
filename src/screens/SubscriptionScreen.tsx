@@ -24,27 +24,37 @@ import { trackEvent } from '../services/monitoring/events';
 import {
   getEntitlementStatus,
   initRevenueCat,
-  purchaseProMonthly,
+  purchaseProPlan,
   restorePurchases,
 } from '../services/subscription/revenueCat';
 import type { ThemeTokens } from '../theme/tokens';
 import { useThemedStyles } from '../theme/useThemedStyles';
-import type { RootStackParamList, Subscription } from '../types';
+import type { ProBillingPeriod, RootStackParamList, Subscription } from '../types';
 import { haptics } from '../utils/haptics';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
-const PRO_PLAN: Subscription = {
-  id: 'pro',
+const PRO_FEATURES: Subscription['features'] = [
+  { name: 'Unlimited Wingman bookings', description: '', included: true },
+  { name: 'Send and receive friend requests', description: '', included: true },
+  { name: 'Friend messaging after acceptance', description: '', included: true },
+  { name: 'Access feed, groups, and events', description: '', included: true },
+];
+
+const PRO_MONTHLY_PLAN: Subscription = {
+  id: 'pro-monthly',
   tier: 'pro',
   price: 10,
   billingPeriod: 'monthly',
-  features: [
-    { name: 'Unlimited Wingman bookings', description: '', included: true },
-    { name: 'Send and receive friend requests', description: '', included: true },
-    { name: 'Friend messaging after acceptance', description: '', included: true },
-    { name: 'Access feed, groups, and events', description: '', included: true },
-  ],
+  features: PRO_FEATURES,
+};
+
+const PRO_YEARLY_PLAN: Subscription = {
+  id: 'pro-yearly',
+  tier: 'pro',
+  price: 99,
+  billingPeriod: 'yearly',
+  features: PRO_FEATURES,
 };
 
 export const SubscriptionScreen: React.FC = () => {
@@ -58,8 +68,11 @@ export const SubscriptionScreen: React.FC = () => {
   const [isPurchasing, setIsPurchasing] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [selectedBillingPeriod, setSelectedBillingPeriod] = useState<ProBillingPeriod>('monthly');
 
   const isPro = user?.subscriptionTier === 'pro';
+  const selectedPlan = selectedBillingPeriod === 'yearly' ? PRO_YEARLY_PLAN : PRO_MONTHLY_PLAN;
+  const yearlySavings = (PRO_MONTHLY_PLAN.price * 12) - PRO_YEARLY_PLAN.price;
 
   const handleBackPress = async () => {
     await haptics.light();
@@ -80,7 +93,7 @@ export const SubscriptionScreen: React.FC = () => {
     setIsPurchasing(true);
     setStatusMessage(null);
     await haptics.medium();
-    trackEvent('pro_purchase_started');
+    trackEvent('pro_purchase_started', { billingPeriod: selectedBillingPeriod });
 
     try {
       const initResult = await initRevenueCat(user.id);
@@ -90,27 +103,30 @@ export const SubscriptionScreen: React.FC = () => {
         return;
       }
 
-      const purchaseResult = await purchaseProMonthly();
+      const purchaseResult = await purchaseProPlan(selectedBillingPeriod);
       if (!purchaseResult.success) {
         setStatusMessage(purchaseResult.error || 'Unable to complete Pro purchase right now.');
-        trackEvent('pro_purchase_failed', { reason: purchaseResult.error || 'purchase_failed' });
+        trackEvent('pro_purchase_failed', {
+          billingPeriod: selectedBillingPeriod,
+          reason: purchaseResult.error || 'purchase_failed',
+        });
         return;
       }
 
       const { status } = await getEntitlementStatus();
       if (status.isPro) {
         await refreshSession();
-        setStatusMessage('Pro purchase successful. Your access will refresh shortly.');
-        trackEvent('pro_purchase_succeeded');
+        setStatusMessage(`Pro ${selectedBillingPeriod} purchase successful. Your access will refresh shortly.`);
+        trackEvent('pro_purchase_succeeded', { billingPeriod: selectedBillingPeriod });
         Alert.alert('Subscription', 'Pro is now active. If this screen still shows Free, reopen the app tab in a moment.');
       } else {
         setStatusMessage('Purchase completed. Final entitlement sync is still in progress.');
-        trackEvent('pro_purchase_failed', { reason: 'sync_pending' });
+        trackEvent('pro_purchase_failed', { billingPeriod: selectedBillingPeriod, reason: 'sync_pending' });
       }
     } catch (error) {
       console.error('Pro purchase flow failed:', error);
       setStatusMessage('Unable to complete your Pro purchase right now.');
-      trackEvent('pro_purchase_failed', { reason: 'exception' });
+      trackEvent('pro_purchase_failed', { billingPeriod: selectedBillingPeriod, reason: 'exception' });
     } finally {
       setIsPurchasing(false);
     }
@@ -154,9 +170,12 @@ export const SubscriptionScreen: React.FC = () => {
     }
   };
 
-  const currentStatusText = useMemo(() => (
-    isPro ? 'Current plan: Pro' : 'Current plan: Free'
-  ), [isPro]);
+  const currentStatusText = useMemo(() => {
+    if (!isPro) {
+      return 'Current plan: Free';
+    }
+    return user?.proStatus === 'active' ? 'Current plan: Pro Active' : 'Current plan: Pro';
+  }, [isPro, user?.proStatus]);
 
   return (
     <View style={styles.container}>
@@ -169,7 +188,9 @@ export const SubscriptionScreen: React.FC = () => {
           </View>
           <View style={styles.heroText}>
             <Text style={styles.heroTitle}>Wingman Pro</Text>
-            <Text style={styles.heroSubtitle}>$10/month. Unlock the full Friends experience.</Text>
+            <Text style={styles.heroSubtitle}>
+              ${selectedPlan.price}/{selectedPlan.billingPeriod === 'yearly' ? 'year' : 'month'}. Unlock the full Friends experience.
+            </Text>
             <Text style={styles.heroMeta}>{currentStatusText}</Text>
           </View>
         </View>
@@ -181,14 +202,24 @@ export const SubscriptionScreen: React.FC = () => {
         />
 
         <View style={styles.section}>
-          <SectionHeader title="Plan" subtitle="Single Pro tier, monthly billing only" />
+          <SectionHeader title="Plan" subtitle="Choose monthly or yearly billing." />
           <View style={styles.planList}>
             <SubscriptionCard
-              subscription={PRO_PLAN}
-              isSelected
-              onSelect={() => undefined}
+              subscription={PRO_MONTHLY_PLAN}
+              isSelected={selectedBillingPeriod === 'monthly'}
+              onSelect={() => setSelectedBillingPeriod('monthly')}
+            />
+            <SubscriptionCard
+              subscription={PRO_YEARLY_PLAN}
+              isSelected={selectedBillingPeriod === 'yearly'}
+              onSelect={() => setSelectedBillingPeriod('yearly')}
             />
           </View>
+          <InlineBanner
+            title="Best value on yearly"
+            message={`Yearly saves $${yearlySavings}/year compared to monthly billing.`}
+            variant="success"
+          />
         </View>
 
         <TouchableOpacity style={styles.restoreLink} onPress={handleRestore} disabled={isRestoring || isPurchasing}>
@@ -211,7 +242,9 @@ export const SubscriptionScreen: React.FC = () => {
         <Button
           title={isPro
             ? 'Pro Active'
-            : (isPurchasing ? 'Starting Pro...' : 'Start Pro')}
+            : (isPurchasing
+              ? `Starting Pro ${selectedBillingPeriod === 'yearly' ? 'Yearly' : 'Monthly'}...`
+              : `Start Pro ${selectedBillingPeriod === 'yearly' ? 'Yearly' : 'Monthly'}`)}
           onPress={handleStartPro}
           variant="primary"
           size="large"

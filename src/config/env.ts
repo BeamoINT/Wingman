@@ -11,6 +11,7 @@ type EnvShape = {
   revenueCatApiKeyAndroid: string;
   revenueCatEntitlementPro: string;
   revenueCatPackageProMonthly: string;
+  revenueCatPackageProYearly: string;
   sentryDsn: string;
 };
 
@@ -52,6 +53,7 @@ function loadEnv(): EnvShape {
   const revenueCatApiKeyAndroid = readRawValue('rc_api_key_android');
   const revenueCatEntitlementPro = readRawValue('rc_entitlement_pro') || 'pro';
   const revenueCatPackageProMonthly = readRawValue('rc_package_pro_monthly') || '$rc_monthly';
+  const revenueCatPackageProYearly = readRawValue('rc_package_pro_yearly') || '$rc_annual';
   const sentryDsn = readRawValue('sentry_dsn');
 
   if (!supabaseUrl) warnMissing('EXPO_PUBLIC_SUPABASE_URL');
@@ -66,6 +68,7 @@ function loadEnv(): EnvShape {
     revenueCatApiKeyAndroid,
     revenueCatEntitlementPro,
     revenueCatPackageProMonthly,
+    revenueCatPackageProYearly,
     sentryDsn,
   };
 }
@@ -85,4 +88,3 @@ export function assertCoreEnvInDevelopment(): void {
     throw new Error(`Missing required env vars: ${missing.join(', ')}`);
   }
 }
-

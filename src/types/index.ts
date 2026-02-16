@@ -130,12 +130,13 @@ export interface BookingLocation {
 export type SubscriptionTier = 'free' | 'pro';
 
 export type ProStatus = 'inactive' | 'active' | 'grace' | 'past_due' | 'canceled';
+export type ProBillingPeriod = 'monthly' | 'yearly';
 
 export interface Subscription {
   id: string;
   tier: SubscriptionTier;
   price: number;
-  billingPeriod: 'monthly';
+  billingPeriod: ProBillingPeriod;
   features: SubscriptionFeature[];
 }
 

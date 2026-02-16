@@ -128,8 +128,9 @@ Disputes may result in:
       id: 'subscriptions',
       title: '5. Subscription Refunds',
       content: `5.1 SUBSCRIPTION TIERS
-We offer one subscription tier:
-- Pro: $10.00/month
+We offer one subscription entitlement with two billing options:
+- Pro Monthly: $10.00/month
+- Pro Yearly: $99.00/year
 
 5.2 INITIAL SUBSCRIPTION REFUND
 If you cancel within 48 hours of your FIRST subscription purchase, you may request a full refund. To request:

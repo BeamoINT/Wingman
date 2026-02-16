@@ -1,6 +1,7 @@
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import { runtimeEnv } from '../../config/env';
+import type { ProBillingPeriod } from '../../types';
 import { supabase } from '../supabase';
 
 export interface RevenueCatResult {
@@ -50,6 +51,9 @@ function getConfigValue(name: string): string {
   if (name === 'rc_package_pro_monthly') {
     return runtimeEnv.revenueCatPackageProMonthly;
   }
+  if (name === 'rc_package_pro_yearly') {
+    return runtimeEnv.revenueCatPackageProYearly;
+  }
 
   const extra = (Constants.expoConfig?.extra || {}) as Record<string, unknown>;
   const fromExtra = extra[name];
@@ -80,8 +84,12 @@ function getProEntitlementId(): string {
   return getConfigValue('rc_entitlement_pro') || 'pro';
 }
 
-function getProPackageId(): string {
+function getProMonthlyPackageId(): string {
   return getConfigValue('rc_package_pro_monthly') || '$rc_monthly';
+}
+
+function getProYearlyPackageId(): string {
+  return getConfigValue('rc_package_pro_yearly') || '$rc_annual';
 }
 
 function normalizeExpirationDate(
@@ -175,21 +183,31 @@ export async function initRevenueCat(userId: string): Promise<RevenueCatResult> 
   }
 }
 
-function resolveProPackage(availablePackages: PurchasesPackageLike[]): PurchasesPackageLike | null {
-  const configuredPackageId = getProPackageId();
+function resolveProPackage(
+  availablePackages: PurchasesPackageLike[],
+  billingPeriod: ProBillingPeriod
+): PurchasesPackageLike | null {
+  const configuredPackageId = billingPeriod === 'yearly'
+    ? getProYearlyPackageId()
+    : getProMonthlyPackageId();
+  const fallbackPackageType = billingPeriod === 'yearly' ? 'ANNUAL' : 'MONTHLY';
 
   const exactMatch = availablePackages.find((pkg) => pkg.identifier === configuredPackageId);
   if (exactMatch) return exactMatch;
 
-  const monthlyPackage = availablePackages.find((pkg) => (
-    pkg.packageType === 'MONTHLY'
+  const matchingPeriodPackage = availablePackages.find((pkg) => (
+    String(pkg.packageType || '').toUpperCase() === fallbackPackageType
   ));
-  if (monthlyPackage) return monthlyPackage;
+  if (matchingPeriodPackage) return matchingPeriodPackage;
 
-  return availablePackages[0] || null;
+  if (billingPeriod === 'monthly') {
+    return availablePackages[0] || null;
+  }
+
+  return null;
 }
 
-export async function purchaseProMonthly(): Promise<RevenueCatResult> {
+export async function purchaseProPlan(billingPeriod: ProBillingPeriod): Promise<RevenueCatResult> {
   const runtimeError = ensureMobileRuntime();
   if (runtimeError) return runtimeError;
 
@@ -205,12 +223,13 @@ export async function purchaseProMonthly(): Promise<RevenueCatResult> {
     const Purchases = purchasesModule.default;
     const offerings = await Purchases.getOfferings();
     const allPackages = offerings.current?.availablePackages || [];
-    const selectedPackage = resolveProPackage(allPackages);
+    const selectedPackage = resolveProPackage(allPackages, billingPeriod);
 
     if (!selectedPackage) {
+      const periodLabel = billingPeriod === 'yearly' ? 'yearly' : 'monthly';
       return {
         success: false,
-        error: 'No Pro subscription package is available right now.',
+        error: `No Pro ${periodLabel} package is available right now.`,
       };
     }
 
@@ -222,9 +241,16 @@ export async function purchaseProMonthly(): Promise<RevenueCatResult> {
     if (message.includes('cancel')) {
       return { success: false, error: 'Purchase was canceled.' };
     }
-    console.error('Failed to purchase Pro subscription:', error);
-    return { success: false, error: 'Unable to complete your Pro purchase right now.' };
+    console.error(`Failed to purchase Pro ${billingPeriod} subscription:`, error);
+    return {
+      success: false,
+      error: `Unable to complete your Pro ${billingPeriod} purchase right now.`,
+    };
   }
+}
+
+export async function purchaseProMonthly(): Promise<RevenueCatResult> {
+  return purchaseProPlan('monthly');
 }
 
 export async function restorePurchases(): Promise<RevenueCatResult> {
