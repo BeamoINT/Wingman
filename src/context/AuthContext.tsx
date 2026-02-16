@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Session, User as SupabaseUser } from '@supabase/supabase-js';
 import * as SecureStore from 'expo-secure-store';
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { supportsRevenueCatPurchases, supportsSecureMessagingIdentity } from '../config/runtime';
 import {
   DeviceIdentityError,
   getOrCreateDeviceIdentity,
@@ -207,6 +208,10 @@ function toFallbackAppUser(sessionUser: SupabaseUser, existingUser?: User | null
 let messagingSchemaCapability: 'unknown' | 'available' | 'unavailable' = 'unknown';
 
 async function primeSecureMessagingIdentity(userId: string): Promise<void> {
+  if (!supportsSecureMessagingIdentity) {
+    return;
+  }
+
   if (messagingSchemaCapability === 'unavailable') {
     return;
   }
@@ -230,6 +235,10 @@ async function primeSecureMessagingIdentity(userId: string): Promise<void> {
 }
 
 async function primeSubscriptionIdentity(userId: string): Promise<void> {
+  if (!supportsRevenueCatPurchases) {
+    return;
+  }
+
   const result = await initRevenueCat(userId);
   if (!result.success && result.error && !result.error.toLowerCase().includes('unavailable')) {
     safeLog('RevenueCat initialization skipped', { error: result.error });
@@ -388,7 +397,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setUser(appUser);
           await storeUser(appUser);
 
-          safeLog('Session restored successfully');
         } else {
           // No active session — check for a saved signup draft
           try {
@@ -428,7 +436,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, newSession) => {
       authChangeSequence += 1;
       const currentSequence = authChangeSequence;
-      safeLog('Auth state changed', { event });
 
       // INITIAL_SESSION from onAuthStateChange also means session loading is done
       if (event === 'INITIAL_SESSION') {
@@ -480,6 +487,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     if (!supabaseUser?.id) {
+      return;
+    }
+
+    if (!supportsSecureMessagingIdentity) {
       return;
     }
 

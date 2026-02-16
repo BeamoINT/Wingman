@@ -21,17 +21,16 @@ Wingman is a modern iOS and Android app that connects people who want company fo
 - **Emergency SOS**: One-tap emergency alerts
 
 ### Friend Matching
-- Subscription tiers include friend matching features
+- Pro subscription unlocks the full Friends experience
 - Connect with like-minded people for genuine friendships (not dating)
 - Group activities and exclusive events
 - No pressure, organic connections
 
-### Premium Features
-- Unlimited bookings
-- Priority companion matching
-- Exclusive member events
-- Concierge service (Elite tier)
-- VIP companion access
+### Pro Features
+- Ranked friend recommendations and request inbox
+- Friends feed, groups, and events
+- Encrypted media messaging support in app builds
+- Priority product access for new social features
 
 ## Tech Stack
 
@@ -45,12 +44,12 @@ Wingman is a modern iOS and Android app that connects people who want company fo
 ## Design System
 
 ### Color Palette
-- **Primary Black**: `#0A0A0F` - Main background
-- **Light Blue/Teal**: `#4ECDC4` - Primary accent
-- **Gold**: `#FFD700` - Premium/highlight accent
+- **Monochrome Surfaces**: neutral light/dark semantic layers
+- **Electric Blue Accent**: `#0A84FF` for primary actions and trust indicators
+- **Token-driven States**: semantic success/warning/error colors
 
 ### Typography
-- Clean, modern system fonts
+- Manrope across all display/body roles
 - Consistent sizing scale
 - Accessibility-focused contrast ratios
 
@@ -66,8 +65,9 @@ Wingman is a modern iOS and Android app that connects people who want company fo
 ### Prerequisites
 - Node.js 18+
 - npm or yarn
-- Expo CLI
+- Expo CLI / EAS CLI
 - iOS Simulator (Mac) or Android Emulator
+- Wingman development build installed on device/simulator for full functionality
 
 ### Installation
 
@@ -79,22 +79,29 @@ cd wingman
 # Install dependencies
 npm install
 
-# Start the development server
+# Start Metro for Wingman development build (default)
 npm start
 ```
 
 ### Running the App
 
 ```bash
-# iOS
-npm run ios
-
-# Android
-npm run android
+# Build and run development client
+npm run ios:dev
+npm run android:dev
 
 # Web (preview)
 npm run web
+
+# Expo Go fallback (limited compatibility)
+npm run start:go
 ```
+
+## Runtime Notes
+
+- Wingman is production-oriented and depends on native modules for purchases and secure media messaging.
+- Full app behavior requires a Wingman development build or production build.
+- Expo Go is intentionally limited and should only be used for basic fallback checks.
 
 ## Project Structure
 

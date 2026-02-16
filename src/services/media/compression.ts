@@ -25,7 +25,7 @@ function getCompressorModule(): CompressorModule {
   if (!supportsNativeMediaCompression) {
     throw new MediaCompressionError(
       'unsupported_runtime',
-      'Media compression requires a development or production build. Expo Go is unsupported.',
+      'Media compression requires the Wingman app build. Expo Go is unsupported.',
     );
   }
 
@@ -84,7 +84,7 @@ function assertSupportedRuntimeForVideo(): void {
   if (!supportsNativeMediaCompression) {
     throw new MediaCompressionError(
       'unsupported_runtime',
-      'Video messaging requires a development or production build. Expo Go is unsupported.',
+      'Video messaging requires the Wingman app build. Expo Go is unsupported.',
     );
   }
 }

@@ -5,6 +5,12 @@
 2. `npm run preflight`
 3. `npx expo config --type public`
 
+## Startup validation (required)
+1. Launch with `npm start` and open from Wingman development build.
+2. Confirm cold start reaches Home/Profile without indefinite loading screens.
+3. Confirm Expo Go shows controlled unsupported-runtime guidance (no crash).
+4. Confirm session restore completes without repeated runtime/schema log loops.
+
 ## Product-critical smoke tests
 1. Sign in with password and magic code.
 2. Open Discover, Bookings, Messages, Chat, Profile, Subscription.

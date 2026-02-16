@@ -6,18 +6,20 @@ import {
 } from '@expo-google-fonts/manrope';
 import { useFonts } from 'expo-font';
 import { StatusBar } from 'expo-status-bar';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { configureReanimatedLogger, ReanimatedLogLevel } from 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ErrorBoundary, LoadingScreen } from './src/components';
+import { requiresNativeBuild } from './src/config/runtime';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { NetworkProvider } from './src/context/NetworkContext';
 import { RequirementsProvider } from './src/context/RequirementsContext';
 import { ThemeProvider, useTheme } from './src/context/ThemeContext';
 import { VerificationProvider } from './src/context/VerificationContext';
 import { RootNavigator } from './src/navigation';
+import { UnsupportedRuntimeScreen } from './src/screens/system/UnsupportedRuntimeScreen';
 import { captureError, initializeSentry } from './src/services/monitoring/sentry';
 
 // Disable strict mode warnings for shared value reads during render
@@ -26,19 +28,64 @@ configureReanimatedLogger({
   strict: false,
 });
 
+type AppStartupPhase = 'fonts' | 'theme' | 'session' | 'ready' | 'failed';
+
+const FONT_LOAD_TIMEOUT_MS = 8000;
+const THEME_LOAD_TIMEOUT_MS = 8000;
+const SESSION_RESTORE_TIMEOUT_MS = 12000;
+
 /**
  * Inner app component that has access to contexts.
  */
-function AppContent() {
+function AppContent({ onPhaseChange }: { onPhaseChange: (phase: AppStartupPhase) => void }) {
   const { isRestoringSession } = useAuth();
   const { isDark, isThemeReady } = useTheme();
+  const [themeTimedOut, setThemeTimedOut] = useState(false);
+  const [sessionTimedOut, setSessionTimedOut] = useState(false);
+  const startupPhase: AppStartupPhase = !isThemeReady && !themeTimedOut
+    ? 'theme'
+    : isRestoringSession && !sessionTimedOut
+      ? 'session'
+      : 'ready';
 
-  if (!isThemeReady) {
-    return <LoadingScreen message="Loading your appearance..." />;
+  useEffect(() => {
+    if (isThemeReady) {
+      setThemeTimedOut(false);
+      return undefined;
+    }
+
+    const timeout = setTimeout(() => {
+      setThemeTimedOut(true);
+      onPhaseChange('failed');
+    }, THEME_LOAD_TIMEOUT_MS);
+
+    return () => clearTimeout(timeout);
+  }, [isThemeReady, onPhaseChange]);
+
+  useEffect(() => {
+    if (!isRestoringSession) {
+      setSessionTimedOut(false);
+      return undefined;
+    }
+
+    const timeout = setTimeout(() => {
+      setSessionTimedOut(true);
+      onPhaseChange('failed');
+    }, SESSION_RESTORE_TIMEOUT_MS);
+
+    return () => clearTimeout(timeout);
+  }, [isRestoringSession, onPhaseChange]);
+
+  useEffect(() => {
+    onPhaseChange(startupPhase);
+  }, [onPhaseChange, startupPhase]);
+
+  if (startupPhase === 'theme') {
+    return <LoadingScreen message="Preparing your app..." />;
   }
 
-  if (isRestoringSession) {
-    return <LoadingScreen message="Restoring your session..." />;
+  if (startupPhase === 'session') {
+    return <LoadingScreen message="Restoring your account..." />;
   }
 
   return (
@@ -62,7 +109,12 @@ function handleError(error: Error, errorInfo: React.ErrorInfo) {
 }
 
 export default function App() {
-  initializeSentry();
+  const [startupPhase, setStartupPhase] = useState<AppStartupPhase>('fonts');
+  const [fontLoadTimedOut, setFontLoadTimedOut] = useState(false);
+
+  useEffect(() => {
+    initializeSentry();
+  }, []);
 
   const [fontsLoaded, fontError] = useFonts({
     Manrope_400Regular,
@@ -71,21 +123,42 @@ export default function App() {
     Manrope_700Bold,
   });
 
-  const fontsReady = fontsLoaded || Boolean(fontError);
+  useEffect(() => {
+    if (fontsLoaded || fontError || fontLoadTimedOut) {
+      return undefined;
+    }
+
+    const timeout = setTimeout(() => {
+      setFontLoadTimedOut(true);
+      setStartupPhase('failed');
+    }, FONT_LOAD_TIMEOUT_MS);
+
+    return () => clearTimeout(timeout);
+  }, [fontError, fontLoadTimedOut, fontsLoaded]);
+
+  const fontsReady = fontsLoaded || Boolean(fontError) || fontLoadTimedOut;
+  const loadingMessage = startupPhase === 'failed'
+    ? 'Startup is taking longer than expected...'
+    : 'Starting Wingman...';
 
   return (
     <GestureHandlerRootView style={styles.container}>
       <ErrorBoundary onError={handleError}>
         <SafeAreaProvider>
           <ThemeProvider>
-            {!fontsReady ? (
-              <LoadingScreen message="Loading fonts..." />
+            {requiresNativeBuild ? (
+              <>
+                <StatusBar style="light" />
+                <UnsupportedRuntimeScreen />
+              </>
+            ) : !fontsReady ? (
+              <LoadingScreen message={loadingMessage} />
             ) : (
               <NetworkProvider>
                 <AuthProvider>
                   <VerificationProvider>
                     <RequirementsProvider>
-                      <AppContent />
+                      <AppContent onPhaseChange={setStartupPhase} />
                     </RequirementsProvider>
                   </VerificationProvider>
                 </AuthProvider>

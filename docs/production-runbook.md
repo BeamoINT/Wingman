@@ -22,6 +22,13 @@ Feature flags:
 4. If data access fails, disable affected feature flag first, then patch.
 
 ## Recovery playbooks
+### App fails to open / stuck on opening project
+1. Confirm tester is opening Wingman from a Wingman build (development client or production), not Expo Go.
+2. Verify Metro was started with `npm start` (`expo start --dev-client`).
+3. If app was opened from Expo Go, expected behavior is unsupported-runtime screen. Reopen from Wingman build.
+4. If issue persists in Wingman build, clear Metro cache (`npx expo start --dev-client --clear`) and relaunch.
+5. Check Sentry startup errors for font/theme/session phases before escalating.
+
 ### Messaging schema mismatch
 1. Disable `messages_v2_enabled`.
 2. Confirm latest migration applied in target project.

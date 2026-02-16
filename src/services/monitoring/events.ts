@@ -20,10 +20,6 @@ export type MonitoringEventName =
 type EventPayload = Record<string, string | number | boolean | null | undefined>;
 
 export function trackEvent(name: MonitoringEventName, payload: EventPayload = {}): void {
-  if (__DEV__) {
-    console.log(`[event] ${name}`, payload);
-  }
-
   Sentry.addBreadcrumb({
     category: 'product.event',
     level: 'info',

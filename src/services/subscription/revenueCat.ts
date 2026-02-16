@@ -1,7 +1,9 @@
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import { runtimeEnv } from '../../config/env';
+import { isExpoGo, supportsRevenueCatPurchases } from '../../config/runtime';
 import type { ProBillingPeriod } from '../../types';
+import { safeLog } from '../../utils/sanitize';
 import { supabase } from '../supabase';
 
 export interface RevenueCatResult {
@@ -26,11 +28,14 @@ type PurchasesPackageLike = {
 let purchasesModulePromise: Promise<PurchasesModuleType | null> | null = null;
 
 async function getPurchasesModule(): Promise<PurchasesModuleType | null> {
+  if (!supportsRevenueCatPurchases || isExpoGo) {
+    return null;
+  }
+
   if (!purchasesModulePromise) {
     purchasesModulePromise = import('react-native-purchases')
       .then((module) => module)
-      .catch((error) => {
-        console.warn('react-native-purchases is unavailable in this runtime:', error);
+      .catch(() => {
         return null;
       });
   }
@@ -114,8 +119,8 @@ let initializedForUser: string | null = null;
 async function syncWithBackend(): Promise<void> {
   try {
     await supabase.functions.invoke('sync-pro-entitlement');
-  } catch (error) {
-    console.error('Failed to sync Pro entitlement with backend:', error);
+  } catch (error: unknown) {
+    safeLog('Failed to sync Pro entitlement with backend', { error: String(error) });
   }
 }
 
@@ -124,6 +129,12 @@ function ensureMobileRuntime(): RevenueCatResult | null {
     return {
       success: false,
       error: 'Subscriptions can only be managed in the iOS or Android app.',
+    };
+  }
+  if (isExpoGo || !supportsRevenueCatPurchases) {
+    return {
+      success: false,
+      error: 'Subscriptions require the Wingman app build. Expo Go is unsupported.',
     };
   }
   return null;
@@ -175,7 +186,7 @@ export async function initRevenueCat(userId: string): Promise<RevenueCatResult> 
 
     return { success: true, error: null };
   } catch (error) {
-    console.error('Failed to initialize RevenueCat:', error);
+    safeLog('Failed to initialize RevenueCat', { error: String(error) });
     return {
       success: false,
       error: 'Unable to initialize subscriptions right now.',
@@ -241,7 +252,7 @@ export async function purchaseProPlan(billingPeriod: ProBillingPeriod): Promise<
     if (message.includes('cancel')) {
       return { success: false, error: 'Purchase was canceled.' };
     }
-    console.error(`Failed to purchase Pro ${billingPeriod} subscription:`, error);
+    safeLog(`Failed to purchase Pro ${billingPeriod} subscription`, { error: String(error) });
     return {
       success: false,
       error: `Unable to complete your Pro ${billingPeriod} purchase right now.`,
@@ -270,8 +281,8 @@ export async function restorePurchases(): Promise<RevenueCatResult> {
     await Purchases.restorePurchases();
     await syncWithBackend();
     return { success: true, error: null };
-  } catch (error) {
-    console.error('Failed to restore purchases:', error);
+  } catch (error: unknown) {
+    safeLog('Failed to restore purchases', { error: String(error) });
     return { success: false, error: 'Unable to restore purchases right now.' };
   }
 }
@@ -326,8 +337,8 @@ export async function getEntitlementStatus(): Promise<{
       },
       error: null,
     };
-  } catch (error) {
-    console.error('Failed to fetch RevenueCat entitlement status:', error);
+  } catch (error: unknown) {
+    safeLog('Failed to fetch RevenueCat entitlement status', { error: String(error) });
     return {
       status: {
         isPro: false,

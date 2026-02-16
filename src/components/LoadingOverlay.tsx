@@ -34,8 +34,8 @@ export const LoadingOverlay: React.FC<LoadingOverlayProps> = ({
   useBlur = true,
   transparent = false,
 }) => {
-  const { tokens } = useTheme();
-  const { colors, spacing, typography } = tokens;
+  const { tokens, isDark } = useTheme();
+  const { colors } = tokens;
   const styles = useThemedStyles(createStyles);
   if (!visible) return null;
 
@@ -68,7 +68,7 @@ export const LoadingOverlay: React.FC<LoadingOverlayProps> = ({
       {useBlur ? (
         <BlurView
           intensity={20}
-          tint="dark"
+          tint={isDark ? 'dark' : 'light'}
           style={styles.container}
         >
           {content}
@@ -148,7 +148,9 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     width: 80,
     height: 80,
     borderRadius: spacing.radius.xl,
-    backgroundColor: colors.background.card,
+    backgroundColor: colors.background.elevated,
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: colors.shadow.heavy,

@@ -5,7 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as WebBrowser from 'expo-web-browser';
 import React, { useCallback, useState } from 'react';
 import {
-    Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View
+    Alert, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar, Badge, Card } from '../components';
@@ -120,6 +120,20 @@ export const ProfileScreen: React.FC = () => {
     }
   }, [isOpeningPaymentPortal]);
 
+  const handleSupportPress = useCallback(async () => {
+    const supportEmailUrl = 'mailto:support@wingman.app?subject=Wingman%20Support';
+    try {
+      const canOpen = await Linking.canOpenURL(supportEmailUrl);
+      if (!canOpen) {
+        Alert.alert('Help & Support', 'Email support@wingman.app for help.');
+        return;
+      }
+      await Linking.openURL(supportEmailUrl);
+    } catch {
+      Alert.alert('Help & Support', 'Email support@wingman.app for help.');
+    }
+  }, []);
+
   const menuItems: MenuItem[] = [
     {
       id: 'subscription',
@@ -165,7 +179,7 @@ export const ProfileScreen: React.FC = () => {
       icon: 'help-circle',
       label: 'Help & Support',
       subtitle: 'FAQs and contact us',
-      onPress: () => {},
+      onPress: handleSupportPress,
     },
   ];
 
@@ -187,8 +201,8 @@ export const ProfileScreen: React.FC = () => {
         {/* Profile Card */}
         <TouchableOpacity
           activeOpacity={0.8}
-          onPress={async () => {
-            await haptics.light();
+          onPress={() => {
+            void haptics.light();
             navigation.navigate('EditProfile');
           }}
         >
