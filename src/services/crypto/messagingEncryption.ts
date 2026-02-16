@@ -23,7 +23,7 @@ export type MessagingIdentity = {
 };
 
 export class SecureMessagingError extends Error {
-  code: 'schema_unavailable' | 'missing_public_key' | 'invalid_key' | 'identity_unavailable' | 'profile_sync_failed';
+  code: 'schema_unavailable' | 'missing_public_key' | 'invalid_key' | 'identity_unavailable' | 'profile_sync_failed' | 'key_changed';
 
   constructor(
     code: SecureMessagingError['code'],
@@ -38,9 +38,13 @@ export class SecureMessagingError extends Error {
 const MESSAGE_ENCRYPTION_VERSION = 'x25519-xsalsa20poly1305-v1';
 const ENCRYPTED_MESSAGE_PREVIEW = 'Encrypted message';
 const STORE_PREFIX = 'wingman_msg_keypair_v1_';
+const PEER_KEY_FINGERPRINT_PREFIX = 'wingman_msg_peer_fingerprint_v1_';
 const PROFILE_PUBLIC_KEY_COLUMN = 'message_encryption_public_key';
 const PROFILE_VERSION_COLUMN = 'message_encryption_key_version';
 const PROFILE_UPDATED_AT_COLUMN = 'message_encryption_updated_at';
+const SECURE_STORE_OPTIONS: SecureStore.SecureStoreOptions = {
+  keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+};
 
 const identityCache = new Map<string, MessagingIdentity>();
 let prngInitialized = false;
@@ -71,6 +75,23 @@ function decodeBase64(value: string): Uint8Array {
 
 function getStoreKey(userId: string): string {
   return `${STORE_PREFIX}${userId}`;
+}
+
+function getPeerFingerprintStoreKey(userId: string): string {
+  return `${PEER_KEY_FINGERPRINT_PREFIX}${userId}`;
+}
+
+function assertValidPublicKey(keyBase64: string): void {
+  let decoded: Uint8Array;
+  try {
+    decoded = decodeBase64(keyBase64);
+  } catch {
+    throw new SecureMessagingError('invalid_key', 'Secure messaging key has invalid encoding.');
+  }
+
+  if (decoded.length !== nacl.box.publicKeyLength) {
+    throw new SecureMessagingError('invalid_key', 'Secure messaging key has an invalid length.');
+  }
 }
 
 function normalizeQueryError(error: unknown): QueryError | null {
@@ -107,7 +128,7 @@ function toIdentity(stored: StoredMessagingIdentity): MessagingIdentity | null {
 }
 
 async function loadStoredIdentity(userId: string): Promise<MessagingIdentity | null> {
-  const value = await SecureStore.getItemAsync(getStoreKey(userId));
+  const value = await SecureStore.getItemAsync(getStoreKey(userId), SECURE_STORE_OPTIONS);
   if (!value) {
     return null;
   }
@@ -131,7 +152,7 @@ async function saveIdentity(userId: string, identity: MessagingIdentity): Promis
     secretKey: encodeBase64(identity.secretKey),
   };
 
-  await SecureStore.setItemAsync(getStoreKey(userId), JSON.stringify(payload));
+  await SecureStore.setItemAsync(getStoreKey(userId), JSON.stringify(payload), SECURE_STORE_OPTIONS);
 }
 
 function createNewIdentity(): MessagingIdentity {
@@ -150,6 +171,38 @@ async function syncPublicKeyToProfile(
   userId: string,
   publicKeyBase64: string
 ): Promise<void> {
+  const { data: existing, error: existingError } = await supabase
+    .from('profiles')
+    .select(`${PROFILE_PUBLIC_KEY_COLUMN}`)
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (existingError) {
+    if (isMissingProfileColumnError(existingError)) {
+      throw new SecureMessagingError(
+        'schema_unavailable',
+        'Secure messaging schema is not available yet. Please run the latest Supabase migrations.'
+      );
+    }
+
+    throw new SecureMessagingError(
+      'profile_sync_failed',
+      existingError.message || 'Unable to load secure messaging profile key.'
+    );
+  }
+
+  const existingRow = (existing || {}) as Record<string, unknown>;
+  const existingKey = typeof existingRow[PROFILE_PUBLIC_KEY_COLUMN] === 'string'
+    ? existingRow[PROFILE_PUBLIC_KEY_COLUMN] as string
+    : '';
+
+  if (existingKey && existingKey !== publicKeyBase64) {
+    throw new SecureMessagingError(
+      'key_changed',
+      'Secure messaging key mismatch detected for your account. Messaging is locked until this is reviewed.'
+    );
+  }
+
   const now = new Date().toISOString();
   const payload: Record<string, unknown> = {
     [PROFILE_PUBLIC_KEY_COLUMN]: publicKeyBase64,
@@ -254,11 +307,91 @@ export async function fetchMessagingPublicKeys(userIds: string[]): Promise<Recor
       : '';
 
     if (id && key) {
+      assertValidPublicKey(key);
       keyMap[id] = key;
     }
   });
 
   return keyMap;
+}
+
+type PeerFingerprintMap = Record<string, string>;
+
+async function loadPeerFingerprints(ownerUserId: string): Promise<PeerFingerprintMap> {
+  const raw = await SecureStore.getItemAsync(getPeerFingerprintStoreKey(ownerUserId), SECURE_STORE_OPTIONS);
+  if (!raw) {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as PeerFingerprintMap;
+    if (!parsed || typeof parsed !== 'object') {
+      return {};
+    }
+    return parsed;
+  } catch {
+    return {};
+  }
+}
+
+async function savePeerFingerprints(ownerUserId: string, fingerprints: PeerFingerprintMap): Promise<void> {
+  await SecureStore.setItemAsync(
+    getPeerFingerprintStoreKey(ownerUserId),
+    JSON.stringify(fingerprints),
+    SECURE_STORE_OPTIONS
+  );
+}
+
+async function getPublicKeyFingerprint(publicKeyBase64: string): Promise<string> {
+  return Crypto.digestStringAsync(
+    Crypto.CryptoDigestAlgorithm.SHA256,
+    publicKeyBase64,
+    { encoding: Crypto.CryptoEncoding.HEX }
+  );
+}
+
+export async function pinAndCheckPeerPublicKeys(
+  ownerUserId: string,
+  peerPublicKeys: Record<string, string>
+): Promise<{ changedUserIds: string[]; pinnedUserIds: string[] }> {
+  if (!ownerUserId) {
+    throw new SecureMessagingError('identity_unavailable', 'User is not authenticated.');
+  }
+
+  const fingerprintStore = await loadPeerFingerprints(ownerUserId);
+  const changedUserIds = new Set<string>();
+  const pinnedUserIds = new Set<string>();
+  let hasUpdates = false;
+
+  for (const [peerId, publicKey] of Object.entries(peerPublicKeys)) {
+    if (!peerId || !publicKey) {
+      continue;
+    }
+
+    assertValidPublicKey(publicKey);
+    const fingerprint = await getPublicKeyFingerprint(publicKey);
+    const existing = fingerprintStore[peerId];
+
+    if (!existing) {
+      fingerprintStore[peerId] = fingerprint;
+      pinnedUserIds.add(peerId);
+      hasUpdates = true;
+      continue;
+    }
+
+    if (existing !== fingerprint) {
+      changedUserIds.add(peerId);
+    }
+  }
+
+  if (hasUpdates) {
+    await savePeerFingerprints(ownerUserId, fingerprintStore);
+  }
+
+  return {
+    changedUserIds: Array.from(changedUserIds),
+    pinnedUserIds: Array.from(pinnedUserIds),
+  };
 }
 
 export function encryptMessageForRecipient(

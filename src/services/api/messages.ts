@@ -14,6 +14,7 @@ import {
   getEncryptedMessagePreview,
   getMessageEncryptionVersion,
   getMessagingIdentity,
+  pinAndCheckPeerPublicKeys,
   type MessagingIdentity,
   SecureMessagingError
 } from '../crypto/messagingEncryption';
@@ -64,6 +65,7 @@ const MESSAGE_ENCRYPTION_REQUIRED_COLUMNS = [
 ] as const;
 const ENCRYPTED_MESSAGE_PREVIEW = getEncryptedMessagePreview();
 const MESSAGE_ENCRYPTION_VERSION = getMessageEncryptionVersion();
+const MESSAGE_KEY_CHANGED_PLACEHOLDER = 'Message unavailable: safety key changed.';
 
 let conversationParticipantsConfigCache: ConversationParticipantTableConfig | null | undefined;
 const conversationParticipantCache = new Map<string, {
@@ -665,6 +667,10 @@ function decryptMessageContentForCurrentUser(
     return message.content;
   }
 
+  if (message.encryption_version && message.encryption_version !== MESSAGE_ENCRYPTION_VERSION) {
+    return ENCRYPTED_MESSAGE_PREVIEW;
+  }
+
   const isParticipant1 = participants.participant_1 === currentUserId;
   const isParticipant2 = participants.participant_2 === currentUserId;
 
@@ -728,9 +734,30 @@ async function decryptMessagesForCurrentUser(
     ));
   }
 
+  const senderPublicKeys: Record<string, string> = {};
+  messages.forEach((message) => {
+    if (
+      message.sender_id &&
+      message.sender_id !== currentUserId &&
+      message.encryption_sender_public_key
+    ) {
+      senderPublicKeys[message.sender_id] = message.encryption_sender_public_key;
+    }
+  });
+
+  let changedSenderIds = new Set<string>();
+  try {
+    const evaluation = await pinAndCheckPeerPublicKeys(currentUserId, senderPublicKeys);
+    changedSenderIds = new Set(evaluation.changedUserIds);
+  } catch (error) {
+    console.error('Error verifying sender safety keys:', error);
+  }
+
   return messages.map((message) => ({
     ...message,
-    content: decryptMessageContentForCurrentUser(message, currentUserId, participants, identity),
+    content: changedSenderIds.has(message.sender_id)
+      ? MESSAGE_KEY_CHANGED_PLACEHOLDER
+      : decryptMessageContentForCurrentUser(message, currentUserId, participants, identity),
   }));
 }
 
@@ -761,6 +788,29 @@ async function buildEncryptedPayloadForMessage(
     throw new SecureMessagingError(
       'missing_public_key',
       'Secure messaging is still initializing for this conversation. Ask both users to open Messages and try again.'
+    );
+  }
+
+  const peerParticipantId = participants.participant_1 === currentUserId
+    ? participants.participant_2
+    : participants.participant_1;
+  const peerKey = publicKeyMap[peerParticipantId];
+
+  if (!peerParticipantId || !peerKey) {
+    throw new SecureMessagingError(
+      'missing_public_key',
+      'Recipient secure messaging key is missing.'
+    );
+  }
+
+  const keyEvaluation = await pinAndCheckPeerPublicKeys(currentUserId, {
+    [peerParticipantId]: peerKey,
+  });
+
+  if (keyEvaluation.changedUserIds.length > 0) {
+    throw new SecureMessagingError(
+      'key_changed',
+      'Safety key changed for this conversation. Messaging is blocked until the key is verified.'
     );
   }
 
@@ -844,8 +894,8 @@ async function countUnreadMessages(
 
 async function fetchLatestMessageMap(
   conversationIds: string[]
-): Promise<Record<string, { content: string; created_at: string }>> {
-  const result: Record<string, { content: string; created_at: string }> = {};
+): Promise<Record<string, { created_at: string }>> {
+  const result: Record<string, { created_at: string }> = {};
   const ids = uniqueIds(conversationIds);
 
   if (ids.length === 0) {
@@ -858,7 +908,7 @@ async function fetchLatestMessageMap(
     for (const includeOrdering of [true, false]) {
       let query = supabase
         .from('messages')
-        .select('*')
+        .select(`${conversationColumn},created_at`)
         .in(conversationColumn, ids);
 
       if (includeOrdering) {
@@ -876,9 +926,8 @@ async function fetchLatestMessageMap(
             return;
           }
 
-          const content = typeof row.content === 'string' ? row.content : '';
           const createdAt = typeof row.created_at === 'string' ? row.created_at : '';
-          result[convId] = { content, created_at: createdAt };
+          result[convId] = { created_at: createdAt };
         });
 
         return result;
@@ -1153,11 +1202,16 @@ async function finalizeConversations(
 
   const withUnreadAndPreview = hydrated.map((conversation, index) => {
     const fallbackLatest = latestMessageMap[conversation.id];
+    const hasMessage = !!(
+      conversation.last_message_at ||
+      fallbackLatest?.created_at ||
+      conversation.last_message_preview
+    );
 
     return {
       ...conversation,
       unread_count: unreadCounts[index] || 0,
-      last_message_preview: conversation.last_message_preview || fallbackLatest?.content || undefined,
+      last_message_preview: hasMessage ? ENCRYPTED_MESSAGE_PREVIEW : undefined,
       last_message_at: conversation.last_message_at || fallbackLatest?.created_at || undefined,
     };
   });
@@ -1304,7 +1358,7 @@ async function hydrateConversationRow(
     if (latest) {
       conversation = {
         ...conversation,
-        last_message_preview: conversation.last_message_preview || latest.content,
+        last_message_preview: ENCRYPTED_MESSAGE_PREVIEW,
         last_message_at: conversation.last_message_at || latest.created_at,
       };
     }
