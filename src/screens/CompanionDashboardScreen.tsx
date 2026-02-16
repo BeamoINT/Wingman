@@ -2,12 +2,22 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-    ScrollView, StyleSheet, Text, TouchableOpacity, View
+    ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar, Badge, Card } from '../components';
+import { useAuth } from '../context/AuthContext';
+import type { BookingData } from '../services/api/bookingsApi';
+import {
+    cancelBooking,
+    fetchCompanionBookings,
+    fetchCompanionEarnings,
+    updateBookingStatus
+} from '../services/api/bookingsApi';
+import { getOrCreateConversation } from '../services/api/messages';
+import { supabase } from '../services/supabase';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 import { typography } from '../theme/typography';
@@ -20,6 +30,7 @@ type TimeRange = 'week' | 'month' | 'year';
 
 interface Booking {
   id: string;
+  clientId: string;
   user: { name: string; avatar: string };
   date: string;
   time: string;
@@ -29,25 +40,195 @@ interface Booking {
   activity: string;
 }
 
-const mockBookings: Booking[] = [
-  { id: '1', user: { name: 'Alex T.', avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200' }, date: 'Today', time: '7:00 PM', duration: 2, amount: 90, status: 'upcoming', activity: 'Dining' },
-  { id: '2', user: { name: 'Jordan M.', avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200' }, date: 'Tomorrow', time: '3:00 PM', duration: 3, amount: 135, status: 'pending', activity: 'Coffee' },
-  { id: '3', user: { name: 'Casey R.', avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200' }, date: 'Mar 18', time: '8:00 PM', duration: 4, amount: 180, status: 'upcoming', activity: 'Concert' },
-];
+interface CompanionStats {
+  rating: number;
+  reviewCount: number;
+  responseTime: string;
+  completionRate: number;
+  repeatClientRate: number;
+  isAvailable: boolean;
+}
 
-const earningsData = {
-  week: { total: 540, bookings: 8, hours: 18 },
-  month: { total: 2340, bookings: 32, hours: 72 },
-  year: { total: 28500, bookings: 420, hours: 890 },
-};
+function toNumber(value: unknown, fallback = 0): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function formatBookingDateLabel(dateStr: string): string {
+  const date = new Date(dateStr);
+  if (Number.isNaN(date.getTime())) return dateStr;
+
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfTarget = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const diffDays = Math.round((startOfTarget.getTime() - startOfToday.getTime()) / (24 * 60 * 60 * 1000));
+
+  if (diffDays === 0) return 'Today';
+  if (diffDays === 1) return 'Tomorrow';
+
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function formatTimeLabel(time: string): string {
+  const [rawHours, rawMinutes] = time.split(':');
+  const hours = Number(rawHours);
+  const minutes = Number(rawMinutes);
+
+  if (Number.isNaN(hours)) return time;
+
+  const period = hours >= 12 ? 'PM' : 'AM';
+  const displayHour = hours % 12 || 12;
+  return `${displayHour}:${(Number.isNaN(minutes) ? 0 : minutes).toString().padStart(2, '0')} ${period}`;
+}
 
 export const CompanionDashboardScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
   const [timeRange, setTimeRange] = useState<TimeRange>('month');
-  const [isOnline, setIsOnline] = useState(true);
+  const [bookings, setBookings] = useState<BookingData[]>([]);
+  const [earnings, setEarnings] = useState<{ week: number; month: number; year: number; total: number }>({
+    week: 0,
+    month: 0,
+    year: 0,
+    total: 0,
+  });
+  const [stats, setStats] = useState<CompanionStats>({
+    rating: 0,
+    reviewCount: 0,
+    responseTime: 'Usually responds within 1 hour',
+    completionRate: 0,
+    repeatClientRate: 0,
+    isAvailable: false,
+  });
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const currentData = earningsData[timeRange];
+  const loadDashboardData = useCallback(async (refresh = false) => {
+    if (refresh) {
+      setIsRefreshing(true);
+    } else {
+      setIsLoading(true);
+    }
+    setError(null);
+
+    try {
+      const [{ bookings: companionBookings, error: bookingsError }, { earnings: earningsData, error: earningsError }] = await Promise.all([
+        fetchCompanionBookings(),
+        fetchCompanionEarnings(),
+      ]);
+
+      if (bookingsError) {
+        console.error('Error loading companion bookings:', bookingsError);
+        setError(bookingsError.message || 'Unable to load dashboard bookings.');
+      }
+
+      if (earningsError) {
+        console.error('Error loading companion earnings:', earningsError);
+        setError((current) => current || earningsError.message || 'Unable to load dashboard earnings.');
+      } else {
+        setEarnings(earningsData);
+      }
+
+      const safeBookings = companionBookings || [];
+      setBookings(safeBookings);
+
+      if (user?.id) {
+        const { data: companionRow, error: companionError } = await supabase
+          .from('companions')
+          .select('rating, review_count, response_time, is_available')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        if (companionError) {
+          console.error('Error loading companion stats:', companionError);
+        }
+
+        const completed = safeBookings.filter((booking) => booking.status === 'completed');
+        const completedOrCancelled = safeBookings.filter((booking) => (
+          booking.status === 'completed'
+          || booking.status === 'cancelled'
+          || booking.status === 'disputed'
+        ));
+        const uniqueClients = new Set(completed.map((booking) => booking.client_id).filter(Boolean)).size;
+        const repeatClients = Math.max(completed.length - uniqueClients, 0);
+
+        const companionRecord = companionRow as Record<string, unknown> | null;
+        setStats({
+          rating: toNumber(companionRecord?.rating, 0),
+          reviewCount: Math.max(0, Math.round(toNumber(companionRecord?.review_count, 0))),
+          responseTime: String(companionRecord?.response_time || 'Usually responds within 1 hour'),
+          completionRate: completedOrCancelled.length > 0
+            ? Math.round((completed.length / completedOrCancelled.length) * 100)
+            : 0,
+          repeatClientRate: completed.length > 0
+            ? Math.round((repeatClients / completed.length) * 100)
+            : 0,
+          isAvailable: companionRecord?.is_available === true,
+        });
+      }
+    } catch (loadError) {
+      console.error('Error loading companion dashboard:', loadError);
+      setError('Something went wrong while loading your dashboard.');
+      setBookings([]);
+      setEarnings({ week: 0, month: 0, year: 0, total: 0 });
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    loadDashboardData();
+  }, [loadDashboardData]);
+
+  const isOnline = stats.isAvailable;
+
+  const currentData = useMemo(() => {
+    const now = new Date();
+    const rangeStart = timeRange === 'week'
+      ? new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+      : timeRange === 'month'
+        ? new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+        : new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+
+    const completedInRange = bookings.filter((booking) => (
+      booking.status === 'completed'
+      && new Date(booking.created_at) >= rangeStart
+    ));
+
+    const completedHours = completedInRange.reduce(
+      (sum, booking) => sum + Math.max(0, Math.round(toNumber(booking.duration_hours, 0))),
+      0
+    );
+
+    return {
+      total: timeRange === 'week' ? earnings.week : timeRange === 'month' ? earnings.month : earnings.year,
+      bookings: completedInRange.length,
+      hours: completedHours,
+    };
+  }, [bookings, earnings.month, earnings.week, earnings.year, timeRange]);
+
+  const visibleBookings = useMemo<Booking[]>(() => (
+    bookings
+      .filter((booking) => booking.status === 'pending' || booking.status === 'confirmed' || booking.status === 'in_progress')
+      .slice(0, 6)
+      .map((booking) => ({
+        id: booking.id,
+        clientId: booking.client_id || '',
+        user: {
+          name: `${booking.client?.first_name || 'Client'} ${booking.client?.last_name || ''}`.trim(),
+          avatar: booking.client?.avatar_url || '',
+        },
+        date: formatBookingDateLabel(booking.date),
+        time: formatTimeLabel(booking.start_time),
+        duration: Math.max(0, Math.round(toNumber(booking.duration_hours, 0))),
+        amount: Math.round(toNumber(booking.subtotal, 0) * 0.9),
+        status: booking.status === 'pending' ? 'pending' : 'upcoming',
+        activity: booking.activity_type || 'Wingman booking',
+      }))
+  ), [bookings]);
 
   const handleBackPress = async () => {
     await haptics.light();
@@ -56,8 +237,62 @@ export const CompanionDashboardScreen: React.FC = () => {
 
   const toggleOnlineStatus = async () => {
     await haptics.medium();
-    setIsOnline(!isOnline);
+    if (!user?.id) return;
+
+    const { error: updateError } = await supabase
+      .from('companions')
+      .update({ is_available: !isOnline })
+      .eq('user_id', user.id);
+
+    if (updateError) {
+      console.error('Error updating companion availability:', updateError);
+      setError('Unable to update your availability right now.');
+      return;
+    }
+
+    await loadDashboardData(true);
   };
+
+  const handleAcceptBooking = useCallback(async (bookingId: string) => {
+    await haptics.success();
+    const { success, error: updateError } = await updateBookingStatus(bookingId, 'confirmed');
+    if (!success || updateError) {
+      console.error('Error accepting booking:', updateError);
+      setError(updateError?.message || 'Unable to accept booking right now.');
+      return;
+    }
+
+    await loadDashboardData(true);
+  }, [loadDashboardData]);
+
+  const handleDeclineBooking = useCallback(async (bookingId: string) => {
+    await haptics.light();
+    const { success, error: declineError } = await cancelBooking(bookingId, 'Declined by wingman');
+    if (!success || declineError) {
+      console.error('Error declining booking:', declineError);
+      setError(declineError?.message || 'Unable to decline booking right now.');
+      return;
+    }
+
+    await loadDashboardData(true);
+  }, [loadDashboardData]);
+
+  const handleMessageClient = useCallback(async (clientId: string) => {
+    if (!clientId) {
+      setError('Client details are unavailable for this booking.');
+      return;
+    }
+
+    const { conversation, error: conversationError } = await getOrCreateConversation(clientId);
+    if (!conversation?.id || conversationError) {
+      console.error('Error opening conversation:', conversationError);
+      setError(conversationError?.message || 'Unable to open messages right now.');
+      return;
+    }
+
+    await haptics.light();
+    navigation.navigate('Chat', { conversationId: conversation.id });
+  }, [navigation]);
 
   return (
     <View style={styles.container}>
@@ -66,8 +301,12 @@ export const CompanionDashboardScreen: React.FC = () => {
           <Ionicons name="chevron-back" size={24} color={colors.text.primary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Wingman Dashboard</Text>
-        <TouchableOpacity onPress={() => haptics.light()}>
-          <Ionicons name="settings-outline" size={24} color={colors.text.primary} />
+        <TouchableOpacity onPress={() => loadDashboardData(true)}>
+          <Ionicons
+            name={isRefreshing ? 'sync' : 'refresh'}
+            size={24}
+            color={colors.text.primary}
+          />
         </TouchableOpacity>
       </View>
 
@@ -76,6 +315,15 @@ export const CompanionDashboardScreen: React.FC = () => {
         contentContainerStyle={{ paddingBottom: 100 }}
         showsVerticalScrollIndicator={false}
       >
+        {error && (
+          <View style={styles.section}>
+            <Card variant="outlined" style={styles.errorCard}>
+              <Ionicons name="alert-circle-outline" size={20} color={colors.status.error} />
+              <Text style={styles.errorText}>{error}</Text>
+            </Card>
+          </View>
+        )}
+
         {/* Status Toggle */}
         <View style={styles.section}>
           <Card
@@ -152,7 +400,7 @@ export const CompanionDashboardScreen: React.FC = () => {
               <View style={styles.earningsStatDivider} />
               <View style={styles.earningStat}>
                 <Text style={styles.earningStatValue}>
-                  ${Math.round(currentData.total / currentData.hours)}
+                  ${currentData.hours > 0 ? Math.round(currentData.total / currentData.hours) : 0}
                 </Text>
                 <Text style={styles.earningStatLabel}>Avg/Hour</Text>
               </View>
@@ -174,28 +422,32 @@ export const CompanionDashboardScreen: React.FC = () => {
               <View style={[styles.statIcon, { backgroundColor: 'rgba(255, 215, 0, 0.15)' }]}>
                 <Ionicons name="star" size={20} color={colors.primary.gold} />
               </View>
-              <Text style={styles.statValue}>4.9</Text>
+              <Text style={styles.statValue}>{stats.rating > 0 ? stats.rating.toFixed(1) : '--'}</Text>
               <Text style={styles.statLabel}>Rating</Text>
             </Card>
             <Card style={styles.statCard}>
               <View style={[styles.statIcon, { backgroundColor: 'rgba(78, 205, 196, 0.15)' }]}>
                 <Ionicons name="flash" size={20} color={colors.primary.blue} />
               </View>
-              <Text style={styles.statValue}>15m</Text>
+              <Text style={styles.statValue}>
+                {stats.responseTime.includes('hour')
+                  ? stats.responseTime.replace('Usually responds within ', '')
+                  : stats.responseTime}
+              </Text>
               <Text style={styles.statLabel}>Avg Response</Text>
             </Card>
             <Card style={styles.statCard}>
               <View style={[styles.statIcon, { backgroundColor: 'rgba(74, 222, 128, 0.15)' }]}>
                 <Ionicons name="checkmark-circle" size={20} color={colors.status.success} />
               </View>
-              <Text style={styles.statValue}>98%</Text>
+              <Text style={styles.statValue}>{stats.completionRate}%</Text>
               <Text style={styles.statLabel}>Completion</Text>
             </Card>
             <Card style={styles.statCard}>
               <View style={[styles.statIcon, { backgroundColor: 'rgba(167, 139, 250, 0.15)' }]}>
                 <Ionicons name="repeat" size={20} color={colors.verification.trusted} />
               </View>
-              <Text style={styles.statValue}>42%</Text>
+              <Text style={styles.statValue}>{stats.repeatClientRate}%</Text>
               <Text style={styles.statLabel}>Repeat Clients</Text>
             </Card>
           </View>
@@ -210,7 +462,21 @@ export const CompanionDashboardScreen: React.FC = () => {
             </TouchableOpacity>
           </View>
 
-          {mockBookings.map((booking) => (
+          {visibleBookings.length === 0 && !isLoading && (
+            <Card variant="outlined" style={styles.emptyBookingsCard}>
+              <Ionicons name="calendar-outline" size={20} color={colors.text.tertiary} />
+              <Text style={styles.emptyBookingsText}>No upcoming bookings yet.</Text>
+            </Card>
+          )}
+
+          {isLoading && (
+            <Card variant="outlined" style={styles.emptyBookingsCard}>
+              <ActivityIndicator size="small" color={colors.primary.blue} />
+              <Text style={styles.emptyBookingsText}>Loading bookings...</Text>
+            </Card>
+          )}
+
+          {visibleBookings.map((booking) => (
             <Card key={booking.id} variant="outlined" style={styles.bookingCard}>
               <View style={styles.bookingHeader}>
                 <Avatar source={booking.user.avatar} name={booking.user.name} size="small" />
@@ -244,15 +510,24 @@ export const CompanionDashboardScreen: React.FC = () => {
                 <Text style={styles.bookingAmount}>${booking.amount}</Text>
                 {booking.status === 'pending' ? (
                   <View style={styles.bookingActions}>
-                    <TouchableOpacity style={styles.declineButton} onPress={() => haptics.light()}>
+                    <TouchableOpacity
+                      style={styles.declineButton}
+                      onPress={() => handleDeclineBooking(booking.id)}
+                    >
                       <Text style={styles.declineText}>Decline</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.acceptButton} onPress={() => haptics.success()}>
+                    <TouchableOpacity
+                      style={styles.acceptButton}
+                      onPress={() => handleAcceptBooking(booking.id)}
+                    >
                       <Text style={styles.acceptText}>Accept</Text>
                     </TouchableOpacity>
                   </View>
                 ) : (
-                  <TouchableOpacity style={styles.messageButton} onPress={() => haptics.light()}>
+                  <TouchableOpacity
+                    style={styles.messageButton}
+                    onPress={() => handleMessageClient(booking.clientId)}
+                  >
                     <Ionicons name="chatbubble-outline" size={16} color={colors.primary.blue} />
                     <Text style={styles.messageText}>Message</Text>
                   </TouchableOpacity>
@@ -309,6 +584,17 @@ const styles = StyleSheet.create({
   },
   section: {
     padding: spacing.screenPadding,
+  },
+  errorCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    borderColor: colors.status.error,
+  },
+  errorText: {
+    ...typography.presets.caption,
+    color: colors.status.error,
+    flex: 1,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -473,6 +759,17 @@ const styles = StyleSheet.create({
   },
   bookingCard: {
     marginBottom: spacing.md,
+  },
+  emptyBookingsCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  emptyBookingsText: {
+    ...typography.presets.caption,
+    color: colors.text.secondary,
   },
   bookingHeader: {
     flexDirection: 'row',

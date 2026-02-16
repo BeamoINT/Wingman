@@ -25,6 +25,9 @@ export interface ProfileData {
   terms_accepted: boolean;
   privacy_accepted: boolean;
   age_confirmed: boolean;
+  electronic_signature_consent?: boolean;
+  electronic_signature_consent_at?: string | null;
+  marketing_opt_in?: boolean;
   subscription_tier: string;
   created_at: string;
   updated_at: string;
@@ -201,7 +204,6 @@ export async function updatePhoneVerification(verified: boolean): Promise<{ succ
     const updates = {
       phone_verified: verified,
       phone_verified_at: verified ? new Date().toISOString() : null,
-      verification_level: verified ? 'verified' : 'basic',
     };
 
     const { error } = await supabase

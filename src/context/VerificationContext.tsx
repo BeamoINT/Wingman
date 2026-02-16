@@ -95,10 +95,11 @@ export const VerificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   // ===========================================
 
   const overallStatus = useMemo((): OverallVerificationStatus => {
-    if (verificationLevel === 'premium') return 'premium_verified';
+    if (idVerified && verificationLevel === 'premium') return 'premium_verified';
     if (idVerified) return 'verified';
+    if (emailVerified || phoneVerified) return 'in_progress';
     return 'not_started';
-  }, [verificationLevel, idVerified]);
+  }, [verificationLevel, idVerified, emailVerified, phoneVerified]);
 
   const getVerificationSteps = useCallback((): VerificationStep[] => {
     const steps: VerificationStep[] = [
@@ -165,7 +166,6 @@ export const VerificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     const unsubscribeVerification = subscribeToVerificationUpdates(
       user.id,
       (data) => {
-        setVerificationLevel(data.verificationLevel);
         if (typeof data.emailVerified === 'boolean') {
           setEmailVerified(data.emailVerified);
         }
@@ -173,12 +173,16 @@ export const VerificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
           setPhoneVerified(data.phoneVerified);
         }
         if (typeof data.idVerified === 'boolean') {
-          setIdVerified(
+          setIdVerified(data.idVerified);
+          setVerificationLevel(
             data.idVerified
-            || data.verificationLevel === 'verified'
-            || data.verificationLevel === 'premium'
+              ? (data.verificationLevel === 'premium' ? 'premium' : 'verified')
+              : 'basic'
           );
+          return;
         }
+
+        // Ignore verification_level-only updates to prevent false ID-complete states.
       }
     );
 

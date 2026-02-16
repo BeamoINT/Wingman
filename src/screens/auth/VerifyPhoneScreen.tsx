@@ -12,6 +12,7 @@ import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button, Input } from '../../components';
 import { useAuth } from '../../context/AuthContext';
+import { useVerification } from '../../context/VerificationContext';
 import {
     formatPhoneForDisplay, isValidPhoneNumber, sendPhoneOtp,
     verifyPhoneOtp
@@ -34,6 +35,7 @@ export const VerifyPhoneScreen: React.FC = () => {
   const route = useRoute<VerifyPhoneRouteProp>();
   const insets = useSafeAreaInsets();
   const { signupData, setPhoneVerified } = useAuth();
+  const { refreshStatus } = useVerification();
   const isSignupFlow = route.params?.source === 'signup';
 
   const [step, setStep] = useState<VerificationStep>('phone');
@@ -133,6 +135,7 @@ export const VerifyPhoneScreen: React.FC = () => {
       if (result.verified) {
         await haptics.success();
         setPhoneVerified();
+        await refreshStatus();
 
         Alert.alert(
           'Phone Verified',

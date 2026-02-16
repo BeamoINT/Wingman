@@ -1,14 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-    FlatList,
+    ActivityIndicator, FlatList,
     Image, StyleSheet, Text, TouchableOpacity, View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RequirementsGate } from '../../components/RequirementsGate';
 import { useRequirements } from '../../context/RequirementsContext';
+import { fetchFriendGroups, joinFriendGroup, leaveFriendGroup } from '../../services/api/friendsApi';
 import { colors } from '../../theme/colors';
 import { spacing } from '../../theme/spacing';
 import { typography } from '../../theme/typography';
@@ -17,88 +18,6 @@ import type { Group } from '../../types/friends';
 import { haptics } from '../../utils/haptics';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
-
-// Mock groups
-const mockGroups: Group[] = [
-  {
-    id: '1',
-    name: 'SF Hiking Buddies',
-    description: 'Weekly hikes around the Bay Area. All skill levels welcome!',
-    category: 'outdoor-adventure',
-    coverImage: 'https://images.unsplash.com/photo-1551632811-561732d1e306?w=600',
-    memberCount: 234,
-    isPublic: true,
-    location: { city: 'San Francisco', state: 'CA', country: 'USA' },
-    rules: [],
-    admins: [],
-    isMember: true,
-    isPendingApproval: false,
-    createdAt: new Date().toISOString(),
-    lastActivityAt: new Date().toISOString(),
-  },
-  {
-    id: '2',
-    name: 'Foodie Friends',
-    description: 'Explore the best restaurants and food trucks in the city together.',
-    category: 'food-dining',
-    coverImage: 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=600',
-    memberCount: 567,
-    isPublic: true,
-    location: { city: 'San Francisco', state: 'CA', country: 'USA' },
-    rules: [],
-    admins: [],
-    isMember: false,
-    isPendingApproval: false,
-    createdAt: new Date().toISOString(),
-    lastActivityAt: new Date().toISOString(),
-  },
-  {
-    id: '3',
-    name: 'Book Club SF',
-    description: 'Monthly book discussions and author meetups.',
-    category: 'book-club',
-    coverImage: 'https://images.unsplash.com/photo-1481627834876-b7833e8f5570?w=600',
-    memberCount: 89,
-    isPublic: true,
-    rules: [],
-    admins: [],
-    isMember: false,
-    isPendingApproval: false,
-    createdAt: new Date().toISOString(),
-    lastActivityAt: new Date().toISOString(),
-  },
-  {
-    id: '4',
-    name: 'Running Buddies',
-    description: 'Morning runs, marathon training, and running events.',
-    category: 'sports-fitness',
-    coverImage: 'https://images.unsplash.com/photo-1571008887538-b36bb32f4571?w=600',
-    memberCount: 156,
-    isPublic: true,
-    location: { city: 'Oakland', state: 'CA', country: 'USA' },
-    rules: [],
-    admins: [],
-    isMember: true,
-    isPendingApproval: false,
-    createdAt: new Date().toISOString(),
-    lastActivityAt: new Date().toISOString(),
-  },
-  {
-    id: '5',
-    name: 'Live Music Lovers',
-    description: 'Concert buddies and music festival crew.',
-    category: 'music-concerts',
-    coverImage: 'https://images.unsplash.com/photo-1459749411175-04bf5292ceea?w=600',
-    memberCount: 312,
-    isPublic: true,
-    rules: [],
-    admins: [],
-    isMember: false,
-    isPendingApproval: true,
-    createdAt: new Date().toISOString(),
-    lastActivityAt: new Date().toISOString(),
-  },
-];
 
 const categoryIcons: Record<string, keyof typeof Ionicons.glyphMap> = {
   'sports-fitness': 'fitness-outline',
@@ -124,16 +43,54 @@ const categoryIcons: Record<string, keyof typeof Ionicons.glyphMap> = {
 const GroupsContent: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
-  const { friendsLimits, friendsUsage, recordGroupJoin, canUseFriendsFeature } = useRequirements();
+  const {
+    friendsLimits,
+    friendsUsage,
+    recordGroupJoin,
+    canUseFriendsFeature,
+    refreshFriendsUsage,
+  } = useRequirements();
 
-  const [groups, setGroups] = useState<Group[]>(mockGroups);
+  const [groups, setGroups] = useState<Group[]>([]);
   const [activeTab, setActiveTab] = useState<'discover' | 'my-groups'>('discover');
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [busyGroupId, setBusyGroupId] = useState<string | null>(null);
 
-  const groupsRemaining = friendsLimits.groupsCanJoin - friendsUsage.groupsJoined;
+  const loadGroups = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const { groups: loadedGroups, error: groupsError } = await fetchFriendGroups();
+      if (groupsError) {
+        console.error('Error loading friend groups:', groupsError);
+        setError('Unable to load groups right now.');
+        setGroups([]);
+        return;
+      }
+
+      setGroups(loadedGroups);
+    } catch (loadError) {
+      console.error('Error in loadGroups:', loadError);
+      setError('Something went wrong while loading groups.');
+      setGroups([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadGroups();
+  }, [loadGroups]);
+
+  const groupsRemaining = friendsLimits.groupsCanJoin === 999
+    ? 999
+    : Math.max(friendsLimits.groupsCanJoin - friendsUsage.groupsJoined, 0);
   const canJoinMore = groupsRemaining > 0 || friendsLimits.groupsCanJoin === 999;
 
-  const myGroups = groups.filter(g => g.isMember);
-  const discoverGroups = groups.filter(g => !g.isMember);
+  const myGroups = useMemo(() => groups.filter((group) => group.isMember), [groups]);
+  const discoverGroups = useMemo(() => groups.filter((group) => !group.isMember), [groups]);
 
   const handleBackPress = async () => {
     await haptics.light();
@@ -147,32 +104,57 @@ const GroupsContent: React.FC = () => {
       return;
     }
 
+    setBusyGroupId(groupId);
     await haptics.medium();
-    await recordGroupJoin();
 
-    setGroups(groups.map(group =>
-      group.id === groupId
-        ? { ...group, isMember: true, memberCount: group.memberCount + 1 }
-        : group
-    ));
+    try {
+      const { success, error: joinError } = await joinFriendGroup(groupId);
+      if (!success || joinError) {
+        console.error('Error joining group:', joinError);
+        setError(joinError?.message || 'Unable to join this group right now.');
+        return;
+      }
+
+      await recordGroupJoin(groupId);
+      await refreshFriendsUsage();
+      await loadGroups();
+    } finally {
+      setBusyGroupId(null);
+    }
   };
 
   const handleLeaveGroup = async (groupId: string) => {
+    setBusyGroupId(groupId);
     await haptics.light();
-    setGroups(groups.map(group =>
-      group.id === groupId
-        ? { ...group, isMember: false, memberCount: group.memberCount - 1 }
-        : group
-    ));
+
+    try {
+      const { success, error: leaveError } = await leaveFriendGroup(groupId);
+      if (!success || leaveError) {
+        console.error('Error leaving group:', leaveError);
+        setError(leaveError?.message || 'Unable to leave this group right now.');
+        return;
+      }
+
+      await refreshFriendsUsage();
+      await loadGroups();
+    } finally {
+      setBusyGroupId(null);
+    }
   };
 
   const renderGroup = ({ item }: { item: Group }) => (
     <TouchableOpacity style={styles.groupCard}>
-      <Image
-        source={{ uri: item.coverImage }}
-        style={styles.groupCover}
-        resizeMode="cover"
-      />
+      {item.coverImage ? (
+        <Image
+          source={{ uri: item.coverImage }}
+          style={styles.groupCover}
+          resizeMode="cover"
+        />
+      ) : (
+        <View style={[styles.groupCover, styles.groupCoverFallback]}>
+          <Ionicons name="people-outline" size={28} color={colors.text.tertiary} />
+        </View>
+      )}
       <View style={styles.groupInfo}>
         <View style={styles.groupHeader}>
           <View style={styles.categoryBadge}>
@@ -196,8 +178,11 @@ const GroupsContent: React.FC = () => {
             <TouchableOpacity
               style={styles.leaveButton}
               onPress={() => handleLeaveGroup(item.id)}
+              disabled={busyGroupId === item.id}
             >
-              <Text style={styles.leaveButtonText}>Joined</Text>
+              <Text style={styles.leaveButtonText}>
+                {busyGroupId === item.id ? 'Updating...' : 'Joined'}
+              </Text>
               <Ionicons name="checkmark" size={14} color={colors.status.success} />
             </TouchableOpacity>
           ) : item.isPendingApproval ? (
@@ -208,9 +193,11 @@ const GroupsContent: React.FC = () => {
             <TouchableOpacity
               style={[styles.joinButton, !canJoinMore && styles.joinButtonDisabled]}
               onPress={() => handleJoinGroup(item.id)}
-              disabled={!canJoinMore}
+              disabled={!canJoinMore || busyGroupId === item.id}
             >
-              <Text style={styles.joinButtonText}>Join</Text>
+              <Text style={styles.joinButtonText}>
+                {busyGroupId === item.id ? 'Joining...' : 'Join'}
+              </Text>
             </TouchableOpacity>
           )}
         </View>
@@ -263,17 +250,37 @@ const GroupsContent: React.FC = () => {
         showsVerticalScrollIndicator={false}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
         ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Ionicons name="people-outline" size={48} color={colors.text.tertiary} />
-            <Text style={styles.emptyTitle}>
-              {activeTab === 'my-groups' ? 'No Groups Yet' : 'No More Groups'}
-            </Text>
-            <Text style={styles.emptySubtitle}>
-              {activeTab === 'my-groups'
-                ? 'Join groups to connect with people who share your interests'
-                : 'Check back later for new groups in your area'}
-            </Text>
-          </View>
+          isLoading ? (
+            <View style={styles.emptyState}>
+              <ActivityIndicator size="large" color={colors.primary.blue} />
+              <Text style={styles.emptyTitle}>Loading groups...</Text>
+            </View>
+          ) : (
+            <View style={styles.emptyState}>
+              <Ionicons
+                name={error ? 'alert-circle-outline' : 'people-outline'}
+                size={48}
+                color={error ? colors.status.error : colors.text.tertiary}
+              />
+              <Text style={styles.emptyTitle}>
+                {error
+                  ? 'Unable to Load Groups'
+                  : activeTab === 'my-groups'
+                    ? 'No Groups Yet'
+                    : 'No More Groups'}
+              </Text>
+              <Text style={styles.emptySubtitle}>
+                {error
+                  ? error
+                  : activeTab === 'my-groups'
+                    ? 'Join groups to connect with people who share your interests'
+                    : 'Check back later for new groups in your area'}
+              </Text>
+              <TouchableOpacity style={styles.retryButton} onPress={() => loadGroups()}>
+                <Text style={styles.retryButtonText}>Refresh</Text>
+              </TouchableOpacity>
+            </View>
+          )
         }
       />
     </View>
@@ -363,6 +370,11 @@ const styles = StyleSheet.create({
   groupCover: {
     width: '100%',
     height: 120,
+  },
+  groupCoverFallback: {
+    backgroundColor: colors.background.tertiary,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   groupInfo: {
     padding: spacing.md,
@@ -463,5 +475,16 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
     textAlign: 'center',
     paddingHorizontal: spacing.xl,
+  },
+  retryButton: {
+    marginTop: spacing.sm,
+    backgroundColor: colors.primary.blue,
+    borderRadius: spacing.radius.full,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+  },
+  retryButtonText: {
+    ...typography.presets.button,
+    color: colors.text.primary,
   },
 });

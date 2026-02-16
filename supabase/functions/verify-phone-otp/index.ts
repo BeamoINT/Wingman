@@ -34,8 +34,8 @@ serve(async (req) => {
     if (!accountSid || !authToken || !verifyServiceSid) {
       console.error('Missing Twilio configuration');
       return new Response(
-        JSON.stringify({ error: 'Server configuration error' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ verified: false, error: 'Server configuration error' }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -70,34 +70,102 @@ serve(async (req) => {
 
     const verified = data.status === 'approved';
 
-    // If verified, update the user's profile in Supabase
+    // If verified, update the user's profile in Supabase.
+    // Verification is only considered complete if account status is persisted.
     if (verified) {
       // Get the authorization header to identify the user
       const authHeader = req.headers.get('Authorization');
 
-      if (authHeader) {
-        const supabaseUrl = Deno.env.get('SUPABASE_URL');
-        const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+      if (!authHeader) {
+        return new Response(
+          JSON.stringify({
+            verified: false,
+            error: 'Please sign in before verifying your phone number.',
+          }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
 
-        if (supabaseUrl && supabaseServiceKey) {
-          const supabase = createClient(supabaseUrl, supabaseServiceKey);
+      const supabaseUrl = Deno.env.get('SUPABASE_URL');
+      const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
-          // Get user from JWT
-          const token = authHeader.replace('Bearer ', '');
-          const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+      if (!supabaseUrl || !supabaseServiceKey) {
+        return new Response(
+          JSON.stringify({
+            verified: false,
+            error: 'Server configuration error',
+          }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
 
-          if (user && !userError) {
-            // Update profile with verified phone
-            await supabase
-              .from('profiles')
-              .update({
-                phone,
-                phone_verified: true,
-                phone_verified_at: new Date().toISOString(),
-                verification_level: 'verified',
-              })
-              .eq('id', user.id);
-          }
+      const supabase = createClient(supabaseUrl, supabaseServiceKey);
+      const token = authHeader.replace('Bearer ', '').trim();
+      const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+
+      if (!user || userError) {
+        console.error('Unable to resolve authenticated user for phone verification:', userError?.message);
+        return new Response(
+          JSON.stringify({
+            verified: false,
+            error: 'Unable to link verification to your account. Please sign in again and retry.',
+          }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const nowIso = new Date().toISOString();
+      const profileUpdate = {
+        phone,
+        phone_verified: true,
+        phone_verified_at: nowIso,
+      };
+
+      const { data: updatedProfile, error: updateError } = await supabase
+        .from('profiles')
+        .update(profileUpdate)
+        .eq('id', user.id)
+        .select('id')
+        .maybeSingle();
+
+      if (updateError) {
+        console.error('Failed to update phone verification status:', updateError.message);
+        return new Response(
+          JSON.stringify({
+            verified: false,
+            error: 'Phone verified, but failed to update your account. Please try again.',
+          }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      if (!updatedProfile) {
+        const metadata = (user.user_metadata || {}) as Record<string, unknown>;
+        const firstName = typeof metadata.first_name === 'string' ? metadata.first_name : '';
+        const lastName = typeof metadata.last_name === 'string' ? metadata.last_name : '';
+
+        const { error: upsertError } = await supabase
+          .from('profiles')
+          .upsert(
+            {
+              id: user.id,
+              first_name: firstName,
+              last_name: lastName,
+              email: user.email || '',
+              ...profileUpdate,
+            },
+            { onConflict: 'id' }
+          );
+
+        if (upsertError) {
+          console.error('Failed to upsert profile after phone verification:', upsertError.message);
+          return new Response(
+            JSON.stringify({
+              verified: false,
+              error: 'Phone verified, but failed to save your account status. Please contact support.',
+            }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
         }
       }
     }
@@ -114,7 +182,7 @@ serve(async (req) => {
     console.error('Error in verify-phone-otp:', error);
     return new Response(
       JSON.stringify({ verified: false, error: 'Internal server error' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });

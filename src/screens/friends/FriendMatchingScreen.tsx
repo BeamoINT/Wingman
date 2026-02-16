@@ -1,14 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import React, { useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-    Animated, Dimensions, PanResponder, StyleSheet, Text, TouchableOpacity, View
+    ActivityIndicator, Animated, Dimensions, PanResponder, StyleSheet, Text, TouchableOpacity, View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar } from '../../components';
 import { RequirementsGate } from '../../components/RequirementsGate';
 import { useRequirements } from '../../context/RequirementsContext';
+import { fetchMatchingProfiles, recordMatchSwipe } from '../../services/api/friendsApi';
 import { colors } from '../../theme/colors';
 import { spacing } from '../../theme/spacing';
 import { typography } from '../../theme/typography';
@@ -21,64 +22,6 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.25;
 
-// Mock friend profiles
-const mockProfiles: FriendProfile[] = [
-  {
-    id: '1',
-    userId: 'u1',
-    firstName: 'Alex',
-    lastName: 'K',
-    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400',
-    bio: 'Love hiking, coffee, and good conversations. Always looking for new adventure buddies!',
-    age: 28,
-    location: { city: 'San Francisco', state: 'CA', country: 'USA' },
-    interests: ['Hiking', 'Photography', 'Coffee', 'Travel'],
-    languages: ['English', 'Spanish'],
-    lookingFor: ['casual-hangouts', 'outdoor-activities', 'coffee-chats'],
-    isOnline: true,
-    lastActive: new Date().toISOString(),
-    verificationLevel: 'verified',
-    mutualFriendsCount: 3,
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: '2',
-    userId: 'u2',
-    firstName: 'Jordan',
-    lastName: 'M',
-    avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=400',
-    bio: 'Foodie and music lover. Looking for concert buddies and people to explore restaurants with.',
-    age: 25,
-    location: { city: 'San Francisco', state: 'CA', country: 'USA' },
-    interests: ['Music', 'Food', 'Concerts', 'Art'],
-    languages: ['English'],
-    lookingFor: ['concerts-events', 'casual-hangouts'],
-    isOnline: false,
-    lastActive: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
-    verificationLevel: 'premium',
-    mutualFriendsCount: 1,
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: '3',
-    userId: 'u3',
-    firstName: 'Sam',
-    lastName: 'R',
-    avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400',
-    bio: 'Fitness enthusiast and bookworm. Looking for gym buddies and book club friends!',
-    age: 31,
-    location: { city: 'Oakland', state: 'CA', country: 'USA' },
-    interests: ['Fitness', 'Reading', 'Running', 'Yoga'],
-    languages: ['English', 'French'],
-    lookingFor: ['workout-buddy', 'hobby-partner'],
-    isOnline: true,
-    lastActive: new Date().toISOString(),
-    verificationLevel: 'verified',
-    mutualFriendsCount: 5,
-    createdAt: new Date().toISOString(),
-  },
-];
-
 /**
  * FriendMatchingScreen - Swipe-based friend matching
  * Subscription-gated: Requires Plus tier or higher
@@ -88,80 +31,146 @@ const FriendMatchingContent: React.FC = () => {
   const insets = useSafeAreaInsets();
   const { friendsLimits, friendsUsage, recordFriendsMatch } = useRequirements();
 
-  const [profiles] = useState<FriendProfile[]>(mockProfiles);
+  const [profiles, setProfiles] = useState<FriendProfile[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showMatch, setShowMatch] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isSubmittingSwipe, setIsSubmittingSwipe] = useState(false);
 
   const pan = useRef(new Animated.ValueXY()).current;
 
+  const loadProfiles = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const { profiles: loadedProfiles, error: profilesError } = await fetchMatchingProfiles();
+      if (profilesError) {
+        console.error('Error loading matching profiles:', profilesError);
+        setError('Unable to load people to match with right now.');
+        setProfiles([]);
+        setCurrentIndex(0);
+        return;
+      }
+
+      setProfiles(loadedProfiles);
+      setCurrentIndex(0);
+    } catch (loadError) {
+      console.error('Error in loadProfiles:', loadError);
+      setError('Something went wrong while loading friend matching.');
+      setProfiles([]);
+      setCurrentIndex(0);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadProfiles();
+  }, [loadProfiles]);
+
   const currentProfile = profiles[currentIndex];
-  const matchesRemaining = friendsLimits.matchesPerMonth - friendsUsage.matchesThisMonth;
+  const matchesRemaining = friendsLimits.matchesPerMonth === 999
+    ? 999
+    : Math.max(friendsLimits.matchesPerMonth - friendsUsage.matchesThisMonth, 0);
   const hasMatchesLeft = matchesRemaining > 0 || friendsLimits.matchesPerMonth === 999;
 
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onPanResponderMove: (_, gesture) => {
-        pan.setValue({ x: gesture.dx, y: gesture.dy });
-      },
-      onPanResponderRelease: (_, gesture) => {
-        if (gesture.dx > SWIPE_THRESHOLD) {
-          swipeRight();
-        } else if (gesture.dx < -SWIPE_THRESHOLD) {
-          swipeLeft();
-        } else {
-          resetPosition();
-        }
-      },
-    })
-  ).current;
-
-  const resetPosition = () => {
+  const resetPosition = useCallback(() => {
     Animated.spring(pan, {
       toValue: { x: 0, y: 0 },
       useNativeDriver: true,
     }).start();
-  };
+  }, [pan]);
 
-  const swipeLeft = async () => {
+  const nextCard = useCallback(() => {
+    pan.setValue({ x: 0, y: 0 });
+    setCurrentIndex((prev) => prev + 1);
+  }, [pan]);
+
+  const swipeLeft = useCallback(async () => {
+    if (!currentProfile || isSubmittingSwipe) {
+      resetPosition();
+      return;
+    }
+
+    setIsSubmittingSwipe(true);
     await haptics.light();
+
+    void recordMatchSwipe(currentProfile.userId || currentProfile.id, 'pass')
+      .then(({ error: swipeError }) => {
+        if (swipeError) {
+          console.error('Error recording pass swipe:', swipeError);
+        }
+      });
+
     Animated.timing(pan, {
       toValue: { x: -SCREEN_WIDTH * 1.5, y: 0 },
       duration: 300,
       useNativeDriver: true,
     }).start(() => {
       nextCard();
+      setIsSubmittingSwipe(false);
     });
-  };
+  }, [currentProfile, isSubmittingSwipe, nextCard, pan, resetPosition]);
 
-  const swipeRight = async () => {
+  const swipeRight = useCallback(async () => {
+    if (!currentProfile || isSubmittingSwipe) {
+      resetPosition();
+      return;
+    }
+
     if (!hasMatchesLeft) {
       resetPosition();
       navigation.navigate('Subscription');
       return;
     }
 
+    setIsSubmittingSwipe(true);
     await haptics.medium();
-    await recordFriendsMatch();
+    void recordFriendsMatch(currentProfile.userId || currentProfile.id)
+      .then(() => {
+        setShowMatch(true);
+        setTimeout(() => setShowMatch(false), 2000);
+      })
+      .catch((swipeError) => {
+        console.error('Error recording like swipe:', swipeError);
+      });
 
     Animated.timing(pan, {
       toValue: { x: SCREEN_WIDTH * 1.5, y: 0 },
       duration: 300,
       useNativeDriver: true,
     }).start(() => {
-      // Simulate a match (50% chance)
-      if (Math.random() > 0.5) {
-        setShowMatch(true);
-        setTimeout(() => setShowMatch(false), 2000);
-      }
       nextCard();
+      setIsSubmittingSwipe(false);
     });
-  };
+  }, [
+    currentProfile,
+    hasMatchesLeft,
+    isSubmittingSwipe,
+    navigation,
+    nextCard,
+    pan,
+    recordFriendsMatch,
+    resetPosition,
+  ]);
 
-  const nextCard = () => {
-    pan.setValue({ x: 0, y: 0 });
-    setCurrentIndex((prev) => (prev + 1) % profiles.length);
-  };
+  const panResponder = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onPanResponderMove: (_, gesture) => {
+      pan.setValue({ x: gesture.dx, y: gesture.dy });
+    },
+    onPanResponderRelease: (_, gesture) => {
+      if (gesture.dx > SWIPE_THRESHOLD) {
+        void swipeRight();
+      } else if (gesture.dx < -SWIPE_THRESHOLD) {
+        void swipeLeft();
+      } else {
+        resetPosition();
+      }
+    },
+  }), [pan, resetPosition, swipeLeft, swipeRight]);
 
   const handleBackPress = async () => {
     await haptics.light();
@@ -193,6 +202,46 @@ const FriendMatchingContent: React.FC = () => {
     extrapolate: 'clamp',
   });
 
+  if (isLoading) {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.backButton} onPress={handleBackPress}>
+            <Ionicons name="chevron-back" size={24} color={colors.text.primary} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Friend Matching</Text>
+          <View style={styles.headerRight} />
+        </View>
+        <View style={styles.emptyState}>
+          <ActivityIndicator size="large" color={colors.primary.blue} />
+          <Text style={styles.emptyTitle}>Loading profiles...</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (error && profiles.length === 0) {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.backButton} onPress={handleBackPress}>
+            <Ionicons name="chevron-back" size={24} color={colors.text.primary} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Friend Matching</Text>
+          <View style={styles.headerRight} />
+        </View>
+        <View style={styles.emptyState}>
+          <Ionicons name="alert-circle-outline" size={56} color={colors.status.error} />
+          <Text style={styles.emptyTitle}>Unable to Load Matches</Text>
+          <Text style={styles.emptySubtitle}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={() => loadProfiles()}>
+            <Text style={styles.retryButtonText}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
   if (!currentProfile) {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -207,6 +256,9 @@ const FriendMatchingContent: React.FC = () => {
           <Ionicons name="people-outline" size={64} color={colors.text.tertiary} />
           <Text style={styles.emptyTitle}>No More Profiles</Text>
           <Text style={styles.emptySubtitle}>Check back later for new people to meet</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={() => loadProfiles()}>
+            <Text style={styles.retryButtonText}>Refresh</Text>
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -262,7 +314,7 @@ const FriendMatchingContent: React.FC = () => {
                 )}
               </View>
               <Text style={styles.profileLocation}>
-                {currentProfile.location.city}, {currentProfile.location.state}
+                {[currentProfile.location.city, currentProfile.location.state].filter(Boolean).join(', ')}
               </Text>
 
               {currentProfile.mutualFriendsCount > 0 && (
@@ -275,16 +327,18 @@ const FriendMatchingContent: React.FC = () => {
               )}
 
               <Text style={styles.profileBio} numberOfLines={3}>
-                {currentProfile.bio}
+                {currentProfile.bio || 'Looking to make new friends on Wingman.'}
               </Text>
 
-              <View style={styles.interests}>
-                {currentProfile.interests.slice(0, 4).map((interest, index) => (
-                  <View key={index} style={styles.interestTag}>
-                    <Text style={styles.interestText}>{interest}</Text>
-                  </View>
-                ))}
-              </View>
+              {currentProfile.interests.length > 0 && (
+                <View style={styles.interests}>
+                  {currentProfile.interests.slice(0, 4).map((interest, index) => (
+                    <View key={index} style={styles.interestTag}>
+                      <Text style={styles.interestText}>{interest}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
             </View>
           </View>
         </Animated.View>
@@ -292,15 +346,23 @@ const FriendMatchingContent: React.FC = () => {
 
       {/* Action Buttons */}
       <View style={styles.actions}>
-        <TouchableOpacity style={[styles.actionButton, styles.nopeButton]} onPress={swipeLeft}>
+        <TouchableOpacity
+          style={[styles.actionButton, styles.nopeButton]}
+          onPress={() => void swipeLeft()}
+          disabled={isSubmittingSwipe}
+        >
           <Ionicons name="close" size={32} color={colors.status.error} />
         </TouchableOpacity>
 
-        <TouchableOpacity style={[styles.actionButton, styles.superLikeButton]}>
+        <TouchableOpacity style={[styles.actionButton, styles.superLikeButton]} disabled>
           <Ionicons name="star" size={28} color={colors.primary.coral} />
         </TouchableOpacity>
 
-        <TouchableOpacity style={[styles.actionButton, styles.likeButton]} onPress={swipeRight}>
+        <TouchableOpacity
+          style={[styles.actionButton, styles.likeButton]}
+          onPress={() => void swipeRight()}
+          disabled={isSubmittingSwipe}
+        >
           <Ionicons name="heart" size={32} color={colors.status.success} />
         </TouchableOpacity>
       </View>
@@ -308,9 +370,9 @@ const FriendMatchingContent: React.FC = () => {
       {/* Match Overlay */}
       {showMatch && (
         <View style={styles.matchOverlay}>
-          <Text style={styles.matchText}>It's a Match!</Text>
+          <Text style={styles.matchText}>Like Sent</Text>
           <Text style={styles.matchSubtext}>
-            You and {currentProfile.firstName} liked each other
+            You liked {currentProfile.firstName}
           </Text>
         </View>
       )}
@@ -505,6 +567,17 @@ const styles = StyleSheet.create({
     ...typography.presets.body,
     color: colors.text.secondary,
     textAlign: 'center',
+  },
+  retryButton: {
+    marginTop: spacing.sm,
+    backgroundColor: colors.primary.blue,
+    borderRadius: spacing.radius.full,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+  },
+  retryButtonText: {
+    ...typography.presets.button,
+    color: colors.text.primary,
   },
   matchOverlay: {
     ...StyleSheet.absoluteFillObject,

@@ -4,7 +4,6 @@
  */
 
 import { supabase } from '../supabase';
-import { updatePhoneVerification } from './profiles';
 
 export interface SendOtpResult {
   success: boolean;
@@ -125,8 +124,6 @@ export async function verifyPhoneOtp(phone: string, code: string): Promise<Verif
     }
 
     if (data?.verified) {
-      // Update the user's profile to mark phone as verified
-      await updatePhoneVerification(true);
       return { verified: true };
     }
 

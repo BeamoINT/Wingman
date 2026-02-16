@@ -112,15 +112,18 @@ export async function getVerificationStatus(userId: string): Promise<Verificatio
       }
 
       const profile = (data || {}) as unknown as Record<string, unknown>;
-      const verificationLevel = (profile.verification_level as VerificationLevel) || 'basic';
-      const idVerified =
-        verificationLevel === 'verified'
-        || verificationLevel === 'premium'
-        || !!profile.id_verified;
+      const storedLevel = (profile.verification_level as VerificationLevel) || 'basic';
+      const emailVerified = authEmailVerified || profile.email_verified === true;
+      const phoneVerified = profile.phone_verified === true;
+      const idVerified = profile.id_verified === true;
+
+      const verificationLevel: VerificationLevel = idVerified
+        ? (storedLevel === 'premium' ? 'premium' : 'verified')
+        : 'basic';
 
       return {
-        emailVerified: authEmailVerified || !!profile.email_verified,
-        phoneVerified: !!profile.phone_verified,
+        emailVerified,
+        phoneVerified,
         idVerified,
         verificationLevel,
       };

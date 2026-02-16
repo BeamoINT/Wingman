@@ -97,7 +97,7 @@ function transformSupabaseUser(supabaseUser: SupabaseUser, profile?: any): User 
       state: profile.state || undefined,
       country: profile.country || 'USA',
     } : undefined,
-    isVerified: profile?.phone_verified || false,
+    isVerified: profile?.id_verified === true,
     isPremium: profile?.subscription_tier !== 'free',
     subscriptionTier: profile?.subscription_tier || 'free',
     createdAt: supabaseUser.created_at || new Date().toISOString(),
@@ -519,6 +519,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 privacy_accepted_at: signupConsents.privacyAccepted ? new Date().toISOString() : null,
                 age_confirmed: signupConsents.ageConfirmed,
                 age_confirmed_at: signupConsents.ageConfirmed ? new Date().toISOString() : null,
+                marketing_opt_in: signupConsents.marketingOptIn,
               };
 
               // Parse date of birth
@@ -721,7 +722,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (data.user) {
+        setSupabaseUser(data.user);
+        if (data.session) {
+          setSession(data.session);
+        }
+
+        const profile = await fetchUserProfile(data.user.id);
+        const appUser = transformSupabaseUser(data.user, profile);
+        setUser(appUser);
+        await storeUser(appUser);
+
         setNeedsEmailVerification(false);
+        setNeedsPhoneVerification(!profile?.phone_verified);
         return { success: true };
       }
 
@@ -729,7 +741,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
       return { success: false, error: 'Failed to verify email' };
     }
-  }, [signupData.email, supabaseUser?.email]);
+  }, [signupData.email, supabaseUser?.email, fetchUserProfile]);
 
   /**
    * Resend email verification
@@ -768,6 +780,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
    */
   const setPhoneVerified = useCallback(() => {
     setNeedsPhoneVerification(false);
+    setUser((currentUser) => {
+      if (!currentUser) {
+        return currentUser;
+      }
+
+      const updatedUser = {
+        ...currentUser,
+        isVerified: true,
+      };
+
+      void storeUser(updatedUser);
+      return updatedUser;
+    });
   }, []);
 
   /**

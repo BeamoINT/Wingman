@@ -1,14 +1,19 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
-    FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View
+    ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, TextInput, TouchableOpacity, View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar, EmptyFeed } from '../../components';
 import { RequirementsGate } from '../../components/RequirementsGate';
 import { useRequirements } from '../../context/RequirementsContext';
+import {
+    createSocialFeedPost,
+    fetchSocialFeedPosts,
+    togglePostLike
+} from '../../services/api/friendsApi';
 import { colors } from '../../theme/colors';
 import { spacing } from '../../theme/spacing';
 import { typography } from '../../theme/typography';
@@ -17,98 +22,6 @@ import type { Post } from '../../types/friends';
 import { haptics } from '../../utils/haptics';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
-
-// Mock posts
-const mockPosts: Post[] = [
-  {
-    id: '1',
-    authorId: 'u1',
-    author: {
-      id: '1',
-      userId: 'u1',
-      firstName: 'Alex',
-      lastName: 'K',
-      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400',
-      age: 28,
-      location: { city: 'San Francisco', state: 'CA', country: 'USA' },
-      interests: [],
-      languages: [],
-      lookingFor: [],
-      isOnline: true,
-      lastActive: new Date().toISOString(),
-      verificationLevel: 'verified',
-      mutualFriendsCount: 0,
-      createdAt: new Date().toISOString(),
-    },
-    type: 'text',
-    content: 'Just had an amazing hike at Twin Peaks! The view was incredible. Anyone want to join next weekend?',
-    likesCount: 12,
-    commentsCount: 4,
-    sharesCount: 2,
-    isLikedByMe: false,
-    createdAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: '2',
-    authorId: 'u2',
-    author: {
-      id: '2',
-      userId: 'u2',
-      firstName: 'Jordan',
-      lastName: 'M',
-      avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=400',
-      age: 25,
-      location: { city: 'San Francisco', state: 'CA', country: 'USA' },
-      interests: [],
-      languages: [],
-      lookingFor: [],
-      isOnline: false,
-      lastActive: new Date().toISOString(),
-      verificationLevel: 'premium',
-      mutualFriendsCount: 0,
-      createdAt: new Date().toISOString(),
-    },
-    type: 'event_share',
-    content: 'Who is joining me at the food truck festival this Saturday? I heard there is an amazing ramen truck!',
-    eventId: 'e1',
-    likesCount: 23,
-    commentsCount: 8,
-    sharesCount: 5,
-    isLikedByMe: true,
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: '3',
-    authorId: 'u3',
-    author: {
-      id: '3',
-      userId: 'u3',
-      firstName: 'Sam',
-      lastName: 'R',
-      avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400',
-      age: 31,
-      location: { city: 'Oakland', state: 'CA', country: 'USA' },
-      interests: [],
-      languages: [],
-      lookingFor: [],
-      isOnline: true,
-      lastActive: new Date().toISOString(),
-      verificationLevel: 'verified',
-      mutualFriendsCount: 0,
-      createdAt: new Date().toISOString(),
-    },
-    type: 'achievement',
-    content: 'Just finished my first marathon! Thanks to everyone in the Running Buddies group for the support!',
-    likesCount: 45,
-    commentsCount: 15,
-    sharesCount: 3,
-    isLikedByMe: false,
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-];
 
 /**
  * SocialFeedScreen - Timeline of posts from friends
@@ -119,11 +32,47 @@ const SocialFeedContent: React.FC = () => {
   const insets = useSafeAreaInsets();
   const { friendsLimits } = useRequirements();
 
-  const [posts, setPosts] = useState<Post[]>(mockPosts);
+  const [posts, setPosts] = useState<Post[]>([]);
   const [newPostText, setNewPostText] = useState('');
   const [showComposer, setShowComposer] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isSubmittingPost, setIsSubmittingPost] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const canPost = friendsLimits.canPost;
+
+  const loadPosts = useCallback(async (showRefresh = false) => {
+    if (showRefresh) {
+      setIsRefreshing(true);
+    } else {
+      setIsLoading(true);
+    }
+
+    setError(null);
+    try {
+      const { posts: loadedPosts, error: postsError } = await fetchSocialFeedPosts();
+      if (postsError) {
+        console.error('Error loading feed posts:', postsError);
+        setError('Unable to load the social feed right now.');
+        setPosts([]);
+        return;
+      }
+
+      setPosts(loadedPosts);
+    } catch (loadError) {
+      console.error('Error in loadPosts:', loadError);
+      setError('Something went wrong while loading the feed.');
+      setPosts([]);
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadPosts();
+  }, [loadPosts]);
 
   const handleBackPress = async () => {
     await haptics.light();
@@ -132,15 +81,30 @@ const SocialFeedContent: React.FC = () => {
 
   const handleLikePress = async (postId: string) => {
     await haptics.light();
-    setPosts(posts.map(post =>
+
+    const currentPost = posts.find((post) => post.id === postId);
+    if (!currentPost) return;
+
+    // Optimistic update for snappier UI.
+    setPosts((previousPosts) => previousPosts.map((post) => (
       post.id === postId
         ? {
-            ...post,
-            isLikedByMe: !post.isLikedByMe,
-            likesCount: post.isLikedByMe ? post.likesCount - 1 : post.likesCount + 1,
-          }
+          ...post,
+          isLikedByMe: !post.isLikedByMe,
+          likesCount: Math.max(0, post.likesCount + (post.isLikedByMe ? -1 : 1)),
+        }
         : post
-    ));
+    )));
+
+    const { success, error: likeError } = await togglePostLike(postId, currentPost.isLikedByMe);
+    if (!success || likeError) {
+      console.error('Error toggling post like:', likeError);
+      await loadPosts(true);
+      return;
+    }
+
+    // Refresh counts from server to keep comments/likes accurate.
+    await loadPosts(true);
   };
 
   const handleCreatePost = async () => {
@@ -151,10 +115,23 @@ const SocialFeedContent: React.FC = () => {
 
     if (!newPostText.trim()) return;
 
+    setIsSubmittingPost(true);
     await haptics.medium();
-    // In a real app, this would create a post via API
-    setNewPostText('');
-    setShowComposer(false);
+
+    try {
+      const { success, error: createError } = await createSocialFeedPost(newPostText.trim(), 'text');
+      if (!success || createError) {
+        console.error('Error creating social post:', createError);
+        setError(createError?.message || 'Unable to create your post right now.');
+        return;
+      }
+
+      setNewPostText('');
+      setShowComposer(false);
+      await loadPosts(true);
+    } finally {
+      setIsSubmittingPost(false);
+    }
   };
 
   const formatTimeAgo = (dateStr: string) => {
@@ -280,11 +257,16 @@ const SocialFeedContent: React.FC = () => {
               <Text style={styles.composerCancel}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.postButton, !newPostText.trim() && styles.postButtonDisabled]}
+              style={[
+                styles.postButton,
+                (!newPostText.trim() || isSubmittingPost) && styles.postButtonDisabled,
+              ]}
               onPress={handleCreatePost}
-              disabled={!newPostText.trim()}
+              disabled={!newPostText.trim() || isSubmittingPost}
             >
-              <Text style={styles.postButtonText}>Post</Text>
+              <Text style={styles.postButtonText}>
+                {isSubmittingPost ? 'Posting...' : 'Post'}
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -314,13 +296,36 @@ const SocialFeedContent: React.FC = () => {
           posts.length === 0 && styles.emptyFeedContent,
         ]}
         showsVerticalScrollIndicator={false}
+        refreshControl={(
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={() => loadPosts(true)}
+            tintColor={colors.primary.blue}
+          />
+        )}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
         ListEmptyComponent={
-          <EmptyFeed
-            onFindFriends={() => navigation.navigate('FriendMatching')}
-          />
+          isLoading
+            ? (
+              <View style={styles.loadingState}>
+                <ActivityIndicator size="large" color={colors.primary.blue} />
+                <Text style={styles.loadingText}>Loading feed...</Text>
+              </View>
+            )
+            : (
+              <EmptyFeed
+                onFindFriends={() => navigation.navigate('FriendMatching')}
+              />
+            )
         }
       />
+
+      {error && (
+        <View style={styles.errorBanner}>
+          <Ionicons name="alert-circle-outline" size={16} color={colors.status.error} />
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      )}
     </View>
   );
 };
@@ -328,7 +333,7 @@ const SocialFeedContent: React.FC = () => {
 export const SocialFeedScreen: React.FC = () => {
   return (
     <RequirementsGate
-      feature="friends_groups"
+      feature="friends_feed"
       modalTitle="Upgrade to View Feed"
     >
       <SocialFeedContent />
@@ -424,6 +429,32 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     minHeight: 400,
+  },
+  loadingState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.xl,
+  },
+  loadingText: {
+    ...typography.presets.body,
+    color: colors.text.secondary,
+  },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginHorizontal: spacing.screenPadding,
+    marginBottom: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: spacing.radius.md,
+    backgroundColor: 'rgba(255, 82, 82, 0.08)',
+  },
+  errorText: {
+    ...typography.presets.caption,
+    color: colors.status.error,
+    flex: 1,
   },
   postCard: {
     backgroundColor: colors.background.card,

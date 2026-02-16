@@ -16,11 +16,11 @@
  * - "Find New Friends" feature is subscription-gated
  */
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, {
     createContext, useCallback, useContext, useEffect, useMemo,
     useRef, useState
 } from 'react';
+import { supabase } from '../services/supabase';
 import type { SubscriptionTier } from '../types';
 import { useAuth } from './AuthContext';
 import { useVerification } from './VerificationContext';
@@ -118,8 +118,9 @@ interface RequirementsContextType {
   friendsLimits: FriendsFeatureLimits;
   friendsUsage: FriendsUsage;
   canUseFriendsFeature: (feature: 'match' | 'join_group' | 'post' | 'create_event') => RequirementCheck;
-  recordFriendsMatch: () => Promise<void>;
-  recordGroupJoin: () => Promise<void>;
+  refreshFriendsUsage: () => Promise<void>;
+  recordFriendsMatch: (targetUserId?: string) => Promise<void>;
+  recordGroupJoin: (groupId: string) => Promise<void>;
 
   // Loading state
   isLoading: boolean;
@@ -135,6 +136,7 @@ export type AppFeature =
   | 'safety_features'
   | 'subscription'
   | 'friends_matching'
+  | 'friends_feed'
   | 'friends_groups'
   | 'friends_post'
   | 'friends_events';
@@ -181,15 +183,6 @@ const FRIENDS_FEATURE_LIMITS: Record<SubscriptionTier, FriendsFeatureLimits> = {
 const CURRENT_TERMS_VERSION = '1.0';
 const CURRENT_PRIVACY_VERSION = '1.0';
 
-// Storage keys
-const STORAGE_KEYS = {
-  CONSENTS: 'user_consents',
-  COMPANION_AGREEMENT: 'companion_agreement_accepted',
-  FRIENDS_MATCHES: 'friends_matches_count',
-  FRIENDS_GROUPS: 'friends_groups_count',
-  FRIENDS_RESET_DATE: 'friends_reset_date',
-};
-
 const defaultConsents: UserConsents = {
   termsAccepted: false,
   termsAcceptedAt: null,
@@ -232,6 +225,126 @@ export const RequirementsProvider: React.FC<{ children: React.ReactNode }> = ({ 
   // Persistence
   // ===========================================
 
+  const toIsoOrNull = (value: unknown): string | null => (
+    typeof value === 'string' && value.trim().length > 0 ? value : null
+  );
+
+  const parseMissingColumn = (message: string): string | null => {
+    const directColumnMatch = message.match(/column\s+([a-zA-Z0-9_]+)\s+does not exist/i);
+    if (directColumnMatch?.[1]) {
+      return directColumnMatch[1];
+    }
+
+    const scopedColumnMatch = message.match(/column\s+([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+)\s+does not exist/i);
+    if (scopedColumnMatch?.[2]) {
+      return scopedColumnMatch[2];
+    }
+
+    return null;
+  };
+
+  const getNextResetDate = (): string => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString();
+  };
+
+  const normalizeConsentVersions = (rawConsents: UserConsents): UserConsents => {
+    const updated = { ...rawConsents };
+
+    if (updated.termsVersion !== CURRENT_TERMS_VERSION) {
+      updated.termsAccepted = false;
+      updated.termsAcceptedAt = null;
+      updated.termsVersion = null;
+    }
+
+    if (updated.privacyVersion !== CURRENT_PRIVACY_VERSION) {
+      updated.privacyAccepted = false;
+      updated.privacyAcceptedAt = null;
+      updated.privacyVersion = null;
+    }
+
+    return updated;
+  };
+
+  const buildConsentUpdates = (newConsents: UserConsents): Record<string, unknown> => ({
+    terms_accepted: newConsents.termsAccepted,
+    terms_accepted_at: newConsents.termsAccepted ? newConsents.termsAcceptedAt : null,
+    terms_version: newConsents.termsAccepted ? newConsents.termsVersion : null,
+    privacy_accepted: newConsents.privacyAccepted,
+    privacy_accepted_at: newConsents.privacyAccepted ? newConsents.privacyAcceptedAt : null,
+    privacy_version: newConsents.privacyAccepted ? newConsents.privacyVersion : null,
+    age_confirmed: newConsents.ageConfirmed,
+    age_confirmed_at: newConsents.ageConfirmed ? newConsents.ageConfirmedAt : null,
+    electronic_signature_consent: newConsents.electronicSignatureConsent,
+    electronic_signature_consent_at: newConsents.electronicSignatureConsent
+      ? newConsents.electronicSignatureConsentAt
+      : null,
+    marketing_opt_in: newConsents.marketingOptIn,
+    updated_at: new Date().toISOString(),
+  });
+
+  const persistConsentsToSupabase = useCallback(async (
+    userId: string,
+    newConsents: UserConsents
+  ) => {
+    const payload = buildConsentUpdates(newConsents);
+
+    while (Object.keys(payload).length > 0) {
+      const { error } = await supabase
+        .from('profiles')
+        .update(payload)
+        .eq('id', userId);
+
+      if (!error) {
+        return;
+      }
+
+      if (error.code === '42703') {
+        const missingColumn = parseMissingColumn(String(error.message || ''));
+        if (missingColumn && missingColumn in payload) {
+          delete payload[missingColumn];
+          continue;
+        }
+      }
+
+      console.error('Error persisting consent data:', error);
+      return;
+    }
+  }, []);
+
+  const loadFriendsUsageFromSupabase = useCallback(async (userId: string) => {
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const nextResetDate = getNextResetDate();
+
+    const [matchesResult, groupsResult] = await Promise.all([
+      supabase
+        .from('match_swipes')
+        .select('id', { count: 'exact', head: true })
+        .eq('from_user_id', userId)
+        .in('action', ['like', 'super_like'])
+        .gte('created_at', monthStart),
+      supabase
+        .from('group_memberships')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId),
+    ]);
+
+    if (matchesResult.error) {
+      console.error('Error loading match usage:', matchesResult.error);
+    }
+
+    if (groupsResult.error) {
+      console.error('Error loading group usage:', groupsResult.error);
+    }
+
+    setFriendsUsage({
+      matchesThisMonth: matchesResult.count || 0,
+      groupsJoined: groupsResult.count || 0,
+      nextResetDate,
+    });
+  }, []);
+
   const loadStoredData = useCallback(async () => {
     if (!user?.id) {
       setIsLoading(false);
@@ -240,62 +353,59 @@ export const RequirementsProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
     setIsLoading(true);
     try {
-      // Load consents
-      const storedConsents = await AsyncStorage.getItem(`${STORAGE_KEYS.CONSENTS}_${user.id}`);
-      if (storedConsents) {
-        const parsed = JSON.parse(storedConsents);
-        // Check if terms/privacy versions are current
-        const updatedConsents = { ...parsed };
-        if (parsed.termsVersion !== CURRENT_TERMS_VERSION) {
-          updatedConsents.termsAccepted = false;
-          updatedConsents.termsAcceptedAt = null;
-          updatedConsents.termsVersion = null;
-        }
-        if (parsed.privacyVersion !== CURRENT_PRIVACY_VERSION) {
-          updatedConsents.privacyAccepted = false;
-          updatedConsents.privacyAcceptedAt = null;
-          updatedConsents.privacyVersion = null;
-        }
-        setConsents(updatedConsents);
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      if (profileError && profileError.code !== 'PGRST116') {
+        console.error('Error loading profile consents:', profileError);
       }
 
-      // Load companion agreement
-      const storedCompanionAgreement = await AsyncStorage.getItem(
-        `${STORAGE_KEYS.COMPANION_AGREEMENT}_${user.id}`
+      const profileData = (profile || {}) as Record<string, unknown>;
+      const loadedConsents: UserConsents = {
+        termsAccepted: profileData.terms_accepted === true,
+        termsAcceptedAt: toIsoOrNull(profileData.terms_accepted_at),
+        termsVersion: toIsoOrNull(profileData.terms_version),
+        privacyAccepted: profileData.privacy_accepted === true,
+        privacyAcceptedAt: toIsoOrNull(profileData.privacy_accepted_at),
+        privacyVersion: toIsoOrNull(profileData.privacy_version),
+        ageConfirmed: profileData.age_confirmed === true,
+        ageConfirmedAt: toIsoOrNull(profileData.age_confirmed_at),
+        electronicSignatureConsent: profileData.electronic_signature_consent === true,
+        electronicSignatureConsentAt: toIsoOrNull(profileData.electronic_signature_consent_at),
+        marketingOptIn: profileData.marketing_opt_in === true,
+      };
+
+      const normalizedConsents = normalizeConsentVersions(loadedConsents);
+      setConsents(normalizedConsents);
+
+      if (JSON.stringify(normalizedConsents) !== JSON.stringify(loadedConsents)) {
+        await persistConsentsToSupabase(user.id, normalizedConsents);
+      }
+
+      const { data: application, error: applicationError } = await supabase
+        .from('companion_applications')
+        .select('companion_agreement_accepted')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (applicationError && applicationError.code !== 'PGRST116' && applicationError.code !== '42P01') {
+        console.error('Error loading companion agreement state:', applicationError);
+      }
+
+      setCompanionAgreementAccepted(
+        (application as { companion_agreement_accepted?: boolean } | null)?.companion_agreement_accepted === true
       );
-      setCompanionAgreementAccepted(storedCompanionAgreement === 'true');
 
-      // Load Friends feature usage
-      const storedMatches = await AsyncStorage.getItem(`${STORAGE_KEYS.FRIENDS_MATCHES}_${user.id}`);
-      const storedGroups = await AsyncStorage.getItem(`${STORAGE_KEYS.FRIENDS_GROUPS}_${user.id}`);
-      const storedResetDate = await AsyncStorage.getItem(`${STORAGE_KEYS.FRIENDS_RESET_DATE}_${user.id}`);
-
-      const now = new Date();
-      const resetDate = storedResetDate ? new Date(storedResetDate) : null;
-
-      if (!resetDate || now >= resetDate) {
-        // Reset count and set new reset date (first of next month)
-        const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-        setFriendsUsage({
-          matchesThisMonth: 0,
-          groupsJoined: parseInt(storedGroups || '0', 10), // Groups don't reset
-          nextResetDate: nextMonth.toISOString(),
-        });
-        await AsyncStorage.setItem(`${STORAGE_KEYS.FRIENDS_MATCHES}_${user.id}`, '0');
-        await AsyncStorage.setItem(`${STORAGE_KEYS.FRIENDS_RESET_DATE}_${user.id}`, nextMonth.toISOString());
-      } else {
-        setFriendsUsage({
-          matchesThisMonth: parseInt(storedMatches || '0', 10),
-          groupsJoined: parseInt(storedGroups || '0', 10),
-          nextResetDate: storedResetDate || '',
-        });
-      }
+      await loadFriendsUsageFromSupabase(user.id);
     } catch (error) {
       console.error('Error loading requirements data:', error);
     } finally {
       setIsLoading(false);
     }
-  }, [user?.id]);
+  }, [user?.id, loadFriendsUsageFromSupabase, persistConsentsToSupabase]);
 
   useEffect(() => {
     if (isAuthenticated && user?.id) {
@@ -336,10 +446,7 @@ export const RequirementsProvider: React.FC<{ children: React.ReactNode }> = ({ 
         };
 
         setConsents(newConsents);
-        await AsyncStorage.setItem(
-          `${STORAGE_KEYS.CONSENTS}_${user.id}`,
-          JSON.stringify(newConsents)
-        );
+        await persistConsentsToSupabase(user.id, newConsents);
 
         hasSyncedNewUserConsents.current = true;
         console.log('Successfully synced signup consents for new user');
@@ -347,7 +454,7 @@ export const RequirementsProvider: React.FC<{ children: React.ReactNode }> = ({ 
     };
 
     syncNewUserConsents();
-  }, [isNewUser, user?.id, signupConsents]);
+  }, [isNewUser, user?.id, signupConsents, persistConsentsToSupabase]);
 
   // ===========================================
   // Consent Actions
@@ -357,12 +464,9 @@ export const RequirementsProvider: React.FC<{ children: React.ReactNode }> = ({ 
     async (newConsents: UserConsents) => {
       if (!user?.id) return;
       setConsents(newConsents);
-      await AsyncStorage.setItem(
-        `${STORAGE_KEYS.CONSENTS}_${user.id}`,
-        JSON.stringify(newConsents)
-      );
+      await persistConsentsToSupabase(user.id, newConsents);
     },
-    [user?.id]
+    [user?.id, persistConsentsToSupabase]
   );
 
   const acceptTerms = useCallback(
@@ -426,8 +530,68 @@ export const RequirementsProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   const acceptCompanionAgreement = useCallback(async () => {
     if (!user?.id) return;
+    const now = new Date().toISOString();
+
+    const { data: existingApplication, error: existingApplicationError } = await supabase
+      .from('companion_applications')
+      .select('id, status, companion_agreement_accepted')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (existingApplicationError && existingApplicationError.code !== 'PGRST116' && existingApplicationError.code !== '42P01') {
+      console.error('Error checking companion application:', existingApplicationError);
+      return;
+    }
+
+    const existing = existingApplication as {
+      id?: string;
+      status?: string;
+      companion_agreement_accepted?: boolean;
+    } | null;
+
+    if (existing?.id) {
+      if (existing.companion_agreement_accepted === true) {
+        setCompanionAgreementAccepted(true);
+        return;
+      }
+
+      if (existing.status && !['draft', 'rejected'].includes(existing.status)) {
+        console.error('Cannot update companion agreement for non-editable application status:', existing.status);
+        return;
+      }
+
+      const { error: updateError } = await supabase
+        .from('companion_applications')
+        .update({
+          companion_agreement_accepted: true,
+          companion_agreement_accepted_at: now,
+        })
+        .eq('id', existing.id);
+
+      if (updateError) {
+        console.error('Error updating companion agreement:', updateError);
+        return;
+      }
+
+      setCompanionAgreementAccepted(true);
+      return;
+    }
+
+    const { error: insertError } = await supabase
+      .from('companion_applications')
+      .insert({
+        user_id: user.id,
+        status: 'draft',
+        companion_agreement_accepted: true,
+        companion_agreement_accepted_at: now,
+      });
+
+    if (insertError && insertError.code !== '23505') {
+      console.error('Error creating companion application with agreement state:', insertError);
+      return;
+    }
+
     setCompanionAgreementAccepted(true);
-    await AsyncStorage.setItem(`${STORAGE_KEYS.COMPANION_AGREEMENT}_${user.id}`, 'true');
   }, [user?.id]);
 
   // ===========================================
@@ -437,19 +601,46 @@ export const RequirementsProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const subscriptionTier = user?.subscriptionTier || 'free';
   const friendsLimits = FRIENDS_FEATURE_LIMITS[subscriptionTier];
 
-  const recordFriendsMatch = useCallback(async () => {
+  const recordFriendsMatch = useCallback(async (targetUserId?: string) => {
     if (!user?.id) return;
-    const newCount = friendsUsage.matchesThisMonth + 1;
-    setFriendsUsage(prev => ({ ...prev, matchesThisMonth: newCount }));
-    await AsyncStorage.setItem(`${STORAGE_KEYS.FRIENDS_MATCHES}_${user.id}`, newCount.toString());
-  }, [user?.id, friendsUsage.matchesThisMonth]);
+    if (targetUserId && targetUserId !== user.id) {
+      const { error } = await supabase
+        .from('match_swipes')
+        .insert({
+          from_user_id: user.id,
+          to_user_id: targetUserId,
+          action: 'like',
+        });
 
-  const recordGroupJoin = useCallback(async () => {
+      if (error && error.code !== '23505') {
+        console.error('Error recording friend match swipe:', error);
+      }
+    }
+
+    await loadFriendsUsageFromSupabase(user.id);
+  }, [loadFriendsUsageFromSupabase, user?.id]);
+
+  const recordGroupJoin = useCallback(async (groupId: string) => {
     if (!user?.id) return;
-    const newCount = friendsUsage.groupsJoined + 1;
-    setFriendsUsage(prev => ({ ...prev, groupsJoined: newCount }));
-    await AsyncStorage.setItem(`${STORAGE_KEYS.FRIENDS_GROUPS}_${user.id}`, newCount.toString());
-  }, [user?.id, friendsUsage.groupsJoined]);
+    const { error } = await supabase
+      .from('group_memberships')
+      .insert({
+        group_id: groupId,
+        user_id: user.id,
+      });
+
+    if (error && error.code !== '23505') {
+      console.error('Error recording group join usage:', error);
+      return;
+    }
+
+    await loadFriendsUsageFromSupabase(user.id);
+  }, [loadFriendsUsageFromSupabase, user?.id]);
+
+  const refreshFriendsUsageState = useCallback(async () => {
+    if (!user?.id) return;
+    await loadFriendsUsageFromSupabase(user.id);
+  }, [loadFriendsUsageFromSupabase, user?.id]);
 
   const canUseFriendsFeature = useCallback(
     (feature: 'match' | 'join_group' | 'post' | 'create_event'): RequirementCheck => {
@@ -725,6 +916,20 @@ export const RequirementsProvider: React.FC<{ children: React.ReactNode }> = ({ 
         case 'friends_matching':
           return canUseFriendsFeature('match');
 
+        case 'friends_feed':
+          if (!isAuthenticated) {
+            return { met: false, requirement: 'Sign in required', navigateTo: 'SignIn' };
+          }
+          if (friendsLimits.matchesPerMonth === 0) {
+            return {
+              met: false,
+              requirement: 'Upgrade to Plus or higher to access the social feed',
+              action: 'Upgrade',
+              navigateTo: 'Subscription',
+            };
+          }
+          return { met: true, requirement: '' };
+
         case 'friends_groups':
           return canUseFriendsFeature('join_group');
 
@@ -745,7 +950,7 @@ export const RequirementsProvider: React.FC<{ children: React.ReactNode }> = ({ 
           return { met: true, requirement: '' };
       }
     },
-    [isAuthenticated, consents, checkBookingRequirements, checkCompanionRequirements, canUseFriendsFeature]
+    [isAuthenticated, consents, checkBookingRequirements, checkCompanionRequirements, canUseFriendsFeature, friendsLimits.matchesPerMonth]
   );
 
   // ===========================================
@@ -775,6 +980,7 @@ export const RequirementsProvider: React.FC<{ children: React.ReactNode }> = ({ 
     friendsLimits,
     friendsUsage,
     canUseFriendsFeature,
+    refreshFriendsUsage: refreshFriendsUsageState,
     recordFriendsMatch,
     recordGroupJoin,
 

@@ -1,127 +1,26 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+    ActivityIndicator,
     FlatList,
     Image, StyleSheet, Text, TouchableOpacity, View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar } from '../../components';
 import { RequirementsGate } from '../../components/RequirementsGate';
+import { useAuth } from '../../context/AuthContext';
 import { useRequirements } from '../../context/RequirementsContext';
+import { fetchFriendEvents, setEventRsvp } from '../../services/api/friendsApi';
 import { colors } from '../../theme/colors';
 import { spacing } from '../../theme/spacing';
 import { typography } from '../../theme/typography';
 import type { RootStackParamList } from '../../types';
-import type { FriendEvent, FriendProfile } from '../../types/friends';
+import type { FriendEvent } from '../../types/friends';
 import { haptics } from '../../utils/haptics';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
-
-// Mock host profile
-const mockHost: FriendProfile = {
-  id: '1',
-  userId: 'u1',
-  firstName: 'Alex',
-  lastName: 'K',
-  avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400',
-  age: 28,
-  location: { city: 'San Francisco', state: 'CA', country: 'USA' },
-  interests: [],
-  languages: [],
-  lookingFor: [],
-  isOnline: true,
-  lastActive: new Date().toISOString(),
-  verificationLevel: 'verified',
-  mutualFriendsCount: 0,
-  createdAt: new Date().toISOString(),
-};
-
-// Mock events
-const mockEvents: FriendEvent[] = [
-  {
-    id: '1',
-    title: 'Saturday Morning Hike',
-    description: 'Join us for a scenic hike at Lands End. All fitness levels welcome! We will meet at the parking lot and start at 9 AM sharp.',
-    category: 'outdoor',
-    hostId: 'u1',
-    host: mockHost,
-    coverImage: 'https://images.unsplash.com/photo-1551632811-561732d1e306?w=600',
-    location: {
-      name: 'Lands End Lookout',
-      address: '680 Point Lobos Ave',
-      city: 'San Francisco',
-    },
-    dateTime: new Date(Date.now() + 1000 * 60 * 60 * 48).toISOString(),
-    maxAttendees: 15,
-    currentAttendees: 8,
-    isPublic: true,
-    rsvpStatus: 'going',
-    attendees: [],
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: '2',
-    title: 'Food Truck Festival Meetup',
-    description: 'Let us explore the Off the Grid food truck festival together! Plenty of great food options.',
-    category: 'dinner',
-    hostId: 'u2',
-    host: { ...mockHost, id: '2', firstName: 'Jordan', lastName: 'M' },
-    coverImage: 'https://images.unsplash.com/photo-1565123409695-7b5ef63a2efb?w=600',
-    location: {
-      name: 'Fort Mason Center',
-      address: '2 Marina Blvd',
-      city: 'San Francisco',
-    },
-    dateTime: new Date(Date.now() + 1000 * 60 * 60 * 72).toISOString(),
-    currentAttendees: 12,
-    isPublic: true,
-    rsvpStatus: 'interested',
-    attendees: [],
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: '3',
-    title: 'Board Game Night',
-    description: 'Monthly board game night at the Folsom Street Foundry. Bring your favorite games or try new ones!',
-    category: 'game-night',
-    hostId: 'u3',
-    host: { ...mockHost, id: '3', firstName: 'Sam', lastName: 'R' },
-    coverImage: 'https://images.unsplash.com/photo-1610890716171-6b1bb98ffd09?w=600',
-    location: {
-      name: 'Folsom Street Foundry',
-      address: '1425 Folsom St',
-      city: 'San Francisco',
-    },
-    dateTime: new Date(Date.now() + 1000 * 60 * 60 * 24 * 5).toISOString(),
-    maxAttendees: 20,
-    currentAttendees: 14,
-    isPublic: true,
-    attendees: [],
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: '4',
-    title: 'Jazz Night at The Saloon',
-    description: 'Live jazz at San Francisco oldest bar. Great music and good vibes!',
-    category: 'concert',
-    hostId: 'u1',
-    host: mockHost,
-    coverImage: 'https://images.unsplash.com/photo-1415201364774-f6f0bb35f28f?w=600',
-    location: {
-      name: 'The Saloon',
-      address: '1232 Grant Ave',
-      city: 'San Francisco',
-    },
-    dateTime: new Date(Date.now() + 1000 * 60 * 60 * 24 * 7).toISOString(),
-    currentAttendees: 6,
-    price: 10,
-    isPublic: true,
-    attendees: [],
-    createdAt: new Date().toISOString(),
-  },
-];
 
 const categoryIcons: Record<string, keyof typeof Ionicons.glyphMap> = {
   meetup: 'people-outline',
@@ -143,13 +42,46 @@ const categoryIcons: Record<string, keyof typeof Ionicons.glyphMap> = {
 const EventsContent: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
   const { friendsLimits, canUseFriendsFeature } = useRequirements();
 
-  const [events, setEvents] = useState<FriendEvent[]>(mockEvents);
+  const [events, setEvents] = useState<FriendEvent[]>([]);
   const [activeTab, setActiveTab] = useState<'upcoming' | 'my-events'>('upcoming');
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [updatingEventId, setUpdatingEventId] = useState<string | null>(null);
+
+  const loadEvents = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const { events: loadedEvents, error: eventsError } = await fetchFriendEvents();
+      if (eventsError) {
+        console.error('Error loading events:', eventsError);
+        setError('Unable to load events right now.');
+        setEvents([]);
+        return;
+      }
+
+      setEvents(loadedEvents);
+    } catch (loadError) {
+      console.error('Error in loadEvents:', loadError);
+      setError('Something went wrong while loading events.');
+      setEvents([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadEvents();
+  }, [loadEvents]);
 
   const canCreateEvents = friendsLimits.canCreateEvents;
-  const myEvents = events.filter(e => e.rsvpStatus === 'going' || e.hostId === 'me');
+  const myEvents = useMemo(() => (
+    events.filter((event) => event.rsvpStatus === 'going' || event.hostId === user?.id)
+  ), [events, user?.id]);
 
   const handleBackPress = async () => {
     await haptics.light();
@@ -167,20 +99,27 @@ const EventsContent: React.FC = () => {
   };
 
   const handleRSVP = async (eventId: string, status: 'going' | 'interested' | 'not_going') => {
+    setUpdatingEventId(eventId);
     await haptics.light();
-    setEvents(events.map(event =>
+    setEvents((previousEvents) => previousEvents.map((event) => (
       event.id === eventId
-        ? {
-            ...event,
-            rsvpStatus: status,
-            currentAttendees: status === 'going'
-              ? event.currentAttendees + 1
-              : status === 'not_going' && event.rsvpStatus === 'going'
-              ? event.currentAttendees - 1
-              : event.currentAttendees,
-          }
+        ? { ...event, rsvpStatus: status }
         : event
-    ));
+    )));
+
+    try {
+      const { success, error: rsvpError } = await setEventRsvp(eventId, status);
+      if (!success || rsvpError) {
+        console.error('Error updating RSVP:', rsvpError);
+        setError(rsvpError?.message || 'Unable to update RSVP right now.');
+        await loadEvents();
+        return;
+      }
+
+      await loadEvents();
+    } finally {
+      setUpdatingEventId(null);
+    }
   };
 
   const formatEventDate = (dateStr: string) => {
@@ -207,11 +146,17 @@ const EventsContent: React.FC = () => {
 
   const renderEvent = ({ item }: { item: FriendEvent }) => (
     <TouchableOpacity style={styles.eventCard}>
-      <Image
-        source={{ uri: item.coverImage }}
-        style={styles.eventCover}
-        resizeMode="cover"
-      />
+      {item.coverImage ? (
+        <Image
+          source={{ uri: item.coverImage }}
+          style={styles.eventCover}
+          resizeMode="cover"
+        />
+      ) : (
+        <View style={[styles.eventCover, styles.eventCoverFallback]}>
+          <Ionicons name="calendar-outline" size={26} color={colors.text.tertiary} />
+        </View>
+      )}
 
       <View style={styles.dateOverlay}>
         <Text style={styles.dateDay}>
@@ -277,6 +222,7 @@ const EventsContent: React.FC = () => {
               item.rsvpStatus === 'going' && styles.rsvpButtonActive,
             ]}
             onPress={() => handleRSVP(item.id, 'going')}
+            disabled={updatingEventId === item.id}
           >
             <Ionicons
               name={item.rsvpStatus === 'going' ? 'checkmark-circle' : 'checkmark-circle-outline'}
@@ -297,6 +243,7 @@ const EventsContent: React.FC = () => {
               item.rsvpStatus === 'interested' && styles.rsvpButtonInterested,
             ]}
             onPress={() => handleRSVP(item.id, 'interested')}
+            disabled={updatingEventId === item.id}
           >
             <Ionicons
               name={item.rsvpStatus === 'interested' ? 'star' : 'star-outline'}
@@ -378,15 +325,33 @@ const EventsContent: React.FC = () => {
         showsVerticalScrollIndicator={false}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
         ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Ionicons name="calendar-outline" size={48} color={colors.text.tertiary} />
-            <Text style={styles.emptyTitle}>No Events</Text>
-            <Text style={styles.emptySubtitle}>
-              {activeTab === 'my-events'
-                ? 'Events you are going to will appear here'
-                : 'Check back later for new events in your area'}
-            </Text>
-          </View>
+          isLoading ? (
+            <View style={styles.emptyState}>
+              <ActivityIndicator size="large" color={colors.primary.blue} />
+              <Text style={styles.emptyTitle}>Loading events...</Text>
+            </View>
+          ) : (
+            <View style={styles.emptyState}>
+              <Ionicons
+                name={error ? 'alert-circle-outline' : 'calendar-outline'}
+                size={48}
+                color={error ? colors.status.error : colors.text.tertiary}
+              />
+              <Text style={styles.emptyTitle}>
+                {error ? 'Unable to Load Events' : 'No Events'}
+              </Text>
+              <Text style={styles.emptySubtitle}>
+                {error
+                  ? error
+                  : activeTab === 'my-events'
+                    ? 'Events you are going to will appear here'
+                    : 'Check back later for new events in your area'}
+              </Text>
+              <TouchableOpacity style={styles.retryButton} onPress={() => loadEvents()}>
+                <Text style={styles.retryButtonText}>Refresh</Text>
+              </TouchableOpacity>
+            </View>
+          )
         }
       />
     </View>
@@ -396,7 +361,7 @@ const EventsContent: React.FC = () => {
 export const EventsScreen: React.FC = () => {
   return (
     <RequirementsGate
-      feature="friends_groups"
+      feature="friends_feed"
       modalTitle="Upgrade to View Events"
     >
       <EventsContent />
@@ -484,6 +449,11 @@ const styles = StyleSheet.create({
   eventCover: {
     width: '100%',
     height: 140,
+  },
+  eventCoverFallback: {
+    backgroundColor: colors.background.tertiary,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   dateOverlay: {
     position: 'absolute',
@@ -615,5 +585,16 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
     textAlign: 'center',
     paddingHorizontal: spacing.xl,
+  },
+  retryButton: {
+    marginTop: spacing.sm,
+    backgroundColor: colors.primary.blue,
+    borderRadius: spacing.radius.full,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+  },
+  retryButtonText: {
+    ...typography.presets.button,
+    color: colors.text.primary,
   },
 });
