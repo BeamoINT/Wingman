@@ -12,12 +12,11 @@ import {
 import { useFonts } from 'expo-font';
 import { StatusBar } from 'expo-status-bar';
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { configureReanimatedLogger, ReanimatedLogLevel } from 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ErrorBoundary, LoadingScreen, OfflineBanner } from './src/components';
-import { isExpoGo } from './src/config/runtime';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { NetworkProvider } from './src/context/NetworkContext';
 import { RequirementsProvider } from './src/context/RequirementsContext';
@@ -36,7 +35,7 @@ configureReanimatedLogger({
  */
 function AppContent() {
   const { isRestoringSession } = useAuth();
-  const { isDark, isThemeReady, tokens } = useTheme();
+  const { isDark, isThemeReady } = useTheme();
 
   if (!isThemeReady) {
     return <LoadingScreen message="Loading your appearance..." />;
@@ -50,13 +49,6 @@ function AppContent() {
     <>
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <OfflineBanner />
-      {isExpoGo ? (
-        <View style={[styles.expoGoBanner, { backgroundColor: tokens.colors.status.warningLight }]}>
-          <Text style={[styles.expoGoBannerText, { color: tokens.colors.status.warning }]}>
-            Video messaging is disabled in Expo Go. Install a development build to send compressed videos.
-          </Text>
-        </View>
-      ) : null}
       <RootNavigator />
     </>
   );
@@ -116,17 +108,5 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  expoGoBanner: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.08)',
-  },
-  expoGoBannerText: {
-    fontSize: 12,
-    lineHeight: 17,
-    textAlign: 'center',
-    fontWeight: '600',
   },
 });

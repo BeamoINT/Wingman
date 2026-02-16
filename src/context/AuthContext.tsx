@@ -2,7 +2,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Session, User as SupabaseUser } from '@supabase/supabase-js';
 import * as SecureStore from 'expo-secure-store';
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import { getOrCreateDeviceIdentity, heartbeatDeviceIdentity } from '../services/crypto/deviceIdentity';
+import {
+  DeviceIdentityError,
+  getOrCreateDeviceIdentity,
+  heartbeatDeviceIdentity,
+} from '../services/crypto/deviceIdentity';
 import { getMessagingIdentity } from '../services/crypto/messagingEncryption';
 import { supabase } from '../services/supabase';
 import type { SignupData, User } from '../types';
@@ -159,6 +163,9 @@ async function primeSecureMessagingIdentity(userId: string): Promise<void> {
       getOrCreateDeviceIdentity(userId),
     ]);
   } catch (error) {
+    if (error instanceof DeviceIdentityError && error.code === 'schema_unavailable') {
+      return;
+    }
     safeLog('Secure messaging identity setup failed', { error: String(error) });
   }
 }
@@ -346,6 +353,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const heartbeat = () => {
       void heartbeatDeviceIdentity(supabaseUser.id).catch((error) => {
+        if (error instanceof DeviceIdentityError && error.code === 'schema_unavailable') {
+          return;
+        }
         safeLog('Secure messaging device heartbeat failed', { error: String(error) });
       });
     };

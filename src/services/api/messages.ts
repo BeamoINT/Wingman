@@ -187,6 +187,48 @@ function getOptionalString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim().length > 0 ? value : undefined;
 }
 
+function parseParticipantIdsValue(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return uniqueIds(value.map((entry) => getString(entry)).filter(Boolean));
+  }
+
+  if (typeof value !== 'string') {
+    return [];
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return [];
+  }
+
+  if (trimmed.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return uniqueIds(parsed.map((entry) => getString(entry)).filter(Boolean));
+      }
+    } catch {
+      // fall through to other parsers
+    }
+  }
+
+  if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+    const rawItems = trimmed.slice(1, -1).split(',');
+    return uniqueIds(rawItems.map((item) => item.replace(/^"+|"+$/g, '').trim()).filter(Boolean));
+  }
+
+  return [trimmed];
+}
+
+function extractConversationParticipantIds(row: RawRecord): string[] {
+  const explicit = [
+    getString(row.participant_1),
+    getString(row.participant_2),
+  ];
+  const aggregated = parseParticipantIdsValue(row.participant_ids);
+  return uniqueIds([...explicit, ...aggregated]);
+}
+
 function normalizeMessageKind(value: unknown): MessageKind {
   const normalized = String(value || 'text').trim().toLowerCase().replace(/-/g, '_');
 
@@ -263,10 +305,16 @@ function normalizeProfile(rawProfile: unknown): ProfileData | undefined {
 
 function normalizeConversation(row: RawRecord): ConversationData {
   const now = new Date().toISOString();
+  const participantIds = extractConversationParticipantIds(row);
+  const participant1 = getString(row.participant_1) || participantIds[0] || '';
+  const participant2 = getString(row.participant_2)
+    || participantIds.find((id) => id !== participant1)
+    || '';
+
   return {
     id: getString(row.id),
-    participant_1: getString(row.participant_1),
-    participant_2: getString(row.participant_2),
+    participant_1: participant1,
+    participant_2: participant2,
     booking_id: getOptionalString(row.booking_id),
     last_message_at: getOptionalString(row.last_message_at),
     last_message_preview: getOptionalString(row.last_message_preview),
@@ -463,6 +511,42 @@ async function fetchLegacyDirectConversationRows(userId: string): Promise<RawRec
     return (data || []) as RawRecord[];
   }
 
+  const shouldTryParticipantIds = (
+    isMissingSchemaError(error, 'participant_1')
+    || isMissingSchemaError(error, 'participant_2')
+    || isMissingSchemaError(error, 'participant_ids')
+  );
+
+  if (shouldTryParticipantIds) {
+    const byParticipantIds = await supabase
+      .from('conversations')
+      .select('*')
+      .contains('participant_ids', [userId])
+      .order('last_message_at', { ascending: false, nullsFirst: false });
+
+    if (!byParticipantIds.error) {
+      return (byParticipantIds.data || []) as RawRecord[];
+    }
+
+    if (isMissingSchemaError(byParticipantIds.error, 'last_message_at')) {
+      const fallbackByParticipantIds = await supabase
+        .from('conversations')
+        .select('*')
+        .contains('participant_ids', [userId])
+        .order('created_at', { ascending: false, nullsFirst: false });
+
+      if (!fallbackByParticipantIds.error) {
+        return (fallbackByParticipantIds.data || []) as RawRecord[];
+      }
+
+      console.error('Error fetching direct conversations (participant_ids fallback):', fallbackByParticipantIds.error);
+      return [];
+    }
+
+    console.error('Error fetching direct conversations (participant_ids):', byParticipantIds.error);
+    return [];
+  }
+
   if (isMissingSchemaError(error, 'last_message_at')) {
     const fallback = await supabase
       .from('conversations')
@@ -578,6 +662,18 @@ function mergeConversationParticipants(
   currentUserId: string,
 ): ConversationData {
   if (members.length === 0) {
+    if (conversation.kind === 'direct') {
+      const participantIds = uniqueIds([conversation.participant_1, conversation.participant_2]);
+      if (participantIds.includes(currentUserId)) {
+        const otherId = participantIds.find((id) => id !== currentUserId) || '';
+        return {
+          ...conversation,
+          participant_1: currentUserId,
+          participant_2: otherId,
+          member_count: participantIds.length || undefined,
+        };
+      }
+    }
     return conversation;
   }
 
@@ -679,21 +775,57 @@ async function hydrateConversationRows(
   return hydrated;
 }
 
-async function resolveLegacyConversationParticipants(
+async function fetchLegacyConversationParticipantIds(
   conversationId: string,
-): Promise<{ participant_1: string; participant_2: string } | null> {
-  const { data, error } = await supabase
+): Promise<string[]> {
+  const primary = await supabase
     .from('conversations')
     .select('participant_1,participant_2')
     .eq('id', conversationId)
     .maybeSingle();
 
-  if (error || !data) {
+  if (!primary.error && primary.data) {
+    return extractConversationParticipantIds(primary.data as RawRecord);
+  }
+
+  if (!isMissingSchemaError(primary.error, 'participant_1') && !isMissingSchemaError(primary.error, 'participant_2')) {
+    return [];
+  }
+
+  const fallback = await supabase
+    .from('conversations')
+    .select('participant_ids')
+    .eq('id', conversationId)
+    .maybeSingle();
+
+  if (fallback.error || !fallback.data) {
+    return [];
+  }
+
+  return extractConversationParticipantIds(fallback.data as RawRecord);
+}
+
+async function resolveLegacyConversationParticipants(
+  conversationId: string,
+  currentUserId?: string,
+): Promise<{ participant_1: string; participant_2: string } | null> {
+  const participantIds = await fetchLegacyConversationParticipantIds(conversationId);
+  if (participantIds.length < 2) {
     return null;
   }
 
-  const participant1 = getString((data as RawRecord).participant_1);
-  const participant2 = getString((data as RawRecord).participant_2);
+  if (currentUserId && participantIds.includes(currentUserId)) {
+    const otherId = participantIds.find((id) => id !== currentUserId);
+    if (otherId) {
+      return {
+        participant_1: currentUserId,
+        participant_2: otherId,
+      };
+    }
+  }
+
+  const participant1 = participantIds[0];
+  const participant2 = participantIds.find((id) => id !== participant1) || '';
   if (!participant1 || !participant2) {
     return null;
   }
@@ -723,7 +855,7 @@ async function decryptLegacyV1Messages(
     return messages;
   }
 
-  const participants = await resolveLegacyConversationParticipants(conversationId);
+  const participants = await resolveLegacyConversationParticipants(conversationId, currentUserId);
   if (!participants) {
     return messages.map((message) => ({
       ...message,
@@ -1194,20 +1326,7 @@ async function getConversationMemberUserIds(
     }
   }
 
-  const { data: conversation, error } = await supabase
-    .from('conversations')
-    .select('participant_1,participant_2')
-    .eq('id', conversationId)
-    .maybeSingle();
-
-  if (error || !conversation) {
-    return [];
-  }
-
-  return uniqueIds([
-    getString((conversation as RawRecord).participant_1),
-    getString((conversation as RawRecord).participant_2),
-  ]);
+  return fetchLegacyConversationParticipantIds(conversationId);
 }
 
 function buildMediaPayload(params: {
@@ -1357,7 +1476,7 @@ async function sendLegacyV1Message(
       return { message: null, error: authError || new Error('Not authenticated') };
     }
 
-    const participants = await resolveLegacyConversationParticipants(conversationId);
+    const participants = await resolveLegacyConversationParticipants(conversationId, userId);
     if (!participants) {
       return { message: null, error: new Error('Unable to resolve conversation participants.') };
     }
@@ -1801,6 +1920,48 @@ export async function sendMessage(
   return sendLegacyV1Message(conversationId, trimmed, normalizedType);
 }
 
+function hasExactDirectPair(row: RawRecord, canonicalPair: string[]): boolean {
+  const participantIds = extractConversationParticipantIds(row).sort();
+  return (
+    participantIds.length === 2
+    && participantIds[0] === canonicalPair[0]
+    && participantIds[1] === canonicalPair[1]
+  );
+}
+
+async function findLegacyDirectConversationByPair(canonicalPair: string[]): Promise<RawRecord | null> {
+  const byPairColumns = await supabase
+    .from('conversations')
+    .select('*')
+    .or(`and(participant_1.eq.${canonicalPair[0]},participant_2.eq.${canonicalPair[1]}),and(participant_1.eq.${canonicalPair[1]},participant_2.eq.${canonicalPair[0]})`)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (!byPairColumns.error && byPairColumns.data) {
+    return byPairColumns.data as RawRecord;
+  }
+
+  const byParticipantIds = await supabase
+    .from('conversations')
+    .select('*')
+    .contains('participant_ids', canonicalPair)
+    .order('created_at', { ascending: true })
+    .limit(20);
+
+  if (byParticipantIds.error) {
+    if (!isMissingSchemaError(byParticipantIds.error, 'participant_ids')) {
+      console.error('Error finding direct conversation by participant_ids:', byParticipantIds.error);
+    }
+    return null;
+  }
+
+  const matching = ((byParticipantIds.data || []) as RawRecord[]).find((row) => (
+    hasExactDirectPair(row, canonicalPair)
+  ));
+  return matching || null;
+}
+
 export async function getOrCreateConversation(
   otherUserId: string,
 ): Promise<{ conversation: ConversationData | null; error: Error | null }> {
@@ -1816,25 +1977,18 @@ export async function getOrCreateConversation(
 
     const canonicalPair = [userId, otherUserId].sort();
 
-    const existing = await supabase
-      .from('conversations')
-      .select('*')
-      .or(`and(participant_1.eq.${canonicalPair[0]},participant_2.eq.${canonicalPair[1]}),and(participant_1.eq.${canonicalPair[1]},participant_2.eq.${canonicalPair[0]})`)
-      .order('created_at', { ascending: true })
-      .limit(1)
-      .maybeSingle();
-
-    if (!existing.error && existing.data) {
+    const existing = await findLegacyDirectConversationByPair(canonicalPair);
+    if (existing) {
       await ensureConversationMembersForDirect(
-        getString((existing.data as RawRecord).id),
+        getString(existing.id),
         canonicalPair[0],
         canonicalPair[1],
       );
-      return fetchConversationById(getString((existing.data as RawRecord).id));
+      return fetchConversationById(getString(existing.id));
     }
 
     const now = new Date().toISOString();
-    const { data: created, error: createError } = await supabase
+    const createByPairColumns = await supabase
       .from('conversations')
       .insert({
         participant_1: canonicalPair[0],
@@ -1847,6 +2001,53 @@ export async function getOrCreateConversation(
       .select('*')
       .maybeSingle();
 
+    let createdRow = createByPairColumns.data as RawRecord | null;
+    let createError = createByPairColumns.error;
+
+    const shouldTryParticipantIdsInsert = (
+      createError
+      && (
+        isMissingSchemaError(createError, 'participant_1')
+        || isMissingSchemaError(createError, 'participant_2')
+      )
+    );
+
+    if (shouldTryParticipantIdsInsert) {
+      const createByParticipantIds = await supabase
+        .from('conversations')
+        .insert({
+          participant_ids: canonicalPair,
+          kind: 'direct',
+          created_by: userId,
+          created_at: now,
+          updated_at: now,
+        })
+        .select('*')
+        .maybeSingle();
+
+      if (!createByParticipantIds.error) {
+        createdRow = createByParticipantIds.data as RawRecord | null;
+        createError = null;
+      } else if (createByParticipantIds.error?.code !== '23505' && isMissingSchemaError(createByParticipantIds.error)) {
+        const minimalCreateByParticipantIds = await supabase
+          .from('conversations')
+          .insert({
+            participant_ids: canonicalPair,
+          })
+          .select('*')
+          .maybeSingle();
+
+        if (!minimalCreateByParticipantIds.error) {
+          createdRow = minimalCreateByParticipantIds.data as RawRecord | null;
+          createError = null;
+        } else {
+          createError = minimalCreateByParticipantIds.error;
+        }
+      } else {
+        createError = createByParticipantIds.error;
+      }
+    }
+
     if (createError && createError.code !== '23505') {
       console.error('Error creating direct conversation:', createError);
       return {
@@ -1855,27 +2056,21 @@ export async function getOrCreateConversation(
       };
     }
 
-    const conversationId = getString((created as RawRecord | null)?.id);
+    const conversationId = getString(createdRow?.id);
     if (conversationId) {
       await ensureConversationMembersForDirect(conversationId, canonicalPair[0], canonicalPair[1]);
       return fetchConversationById(conversationId);
     }
 
-    const retry = await supabase
-      .from('conversations')
-      .select('*')
-      .or(`and(participant_1.eq.${canonicalPair[0]},participant_2.eq.${canonicalPair[1]}),and(participant_1.eq.${canonicalPair[1]},participant_2.eq.${canonicalPair[0]})`)
-      .limit(1)
-      .maybeSingle();
-
-    if (retry.error || !retry.data) {
+    const retry = await findLegacyDirectConversationByPair(canonicalPair);
+    if (!retry) {
       return {
         conversation: null,
-        error: new Error(retry.error?.message || 'Failed to resolve conversation after creation'),
+        error: new Error('Failed to resolve conversation after creation'),
       };
     }
 
-    const retryConversationId = getString((retry.data as RawRecord).id);
+    const retryConversationId = getString(retry.id);
     await ensureConversationMembersForDirect(retryConversationId, canonicalPair[0], canonicalPair[1]);
     return fetchConversationById(retryConversationId);
   } catch (error) {
