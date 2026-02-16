@@ -9,8 +9,8 @@ import Animated, {
     Extrapolation, interpolate, runOnJS, useAnimatedStyle, useSharedValue, withSpring
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors } from '../theme/colors';
-import { spacing } from '../theme/spacing';
+import { useTheme } from '../context/ThemeContext';
+import { useThemedStyles } from '../theme/useThemedStyles';
 import { springConfigs } from '../utils/animations';
 import { haptics } from '../utils/haptics';
 
@@ -38,9 +38,45 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
   backdropOpacity = 0.6,
 }) => {
   const insets = useSafeAreaInsets();
+  const { tokens } = useTheme();
+  const { colors, spacing } = tokens;
   const translateY = useSharedValue(SCREEN_HEIGHT);
   const context = useSharedValue({ y: 0 });
   const isOpen = useSharedValue(false);
+  const styles = useThemedStyles((themeTokens) => StyleSheet.create({
+    overlay: {
+      ...StyleSheet.absoluteFillObject,
+      zIndex: 1000,
+    },
+    backdrop: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: themeTokens.colors.background.overlay,
+    },
+    sheet: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: themeTokens.colors.surface.level0,
+      borderTopLeftRadius: themeTokens.spacing.radius.lg,
+      borderTopRightRadius: themeTokens.spacing.radius.lg,
+      overflow: 'hidden',
+      borderTopWidth: 1,
+      borderTopColor: themeTokens.colors.border.subtle,
+      shadowColor: themeTokens.colors.shadow.medium,
+      ...themeTokens.spacing.elevation.lg,
+    },
+    handleContainer: {
+      alignItems: 'center',
+      paddingVertical: themeTokens.spacing.sm,
+    },
+    handle: {
+      width: 34,
+      height: 4,
+      backgroundColor: themeTokens.colors.border.medium,
+      borderRadius: 2,
+    },
+  }));
 
   const maxHeight = snapPoints[snapPoints.length - 1] * SCREEN_HEIGHT;
   const initialHeight = snapPoints[initialSnapIndex] * SCREEN_HEIGHT;
@@ -149,43 +185,3 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
     </View>
   );
 };
-
-const styles = StyleSheet.create({
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 1000,
-  },
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: colors.background.overlay,
-  },
-  sheet: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: colors.background.elevated,
-    borderTopLeftRadius: spacing.radius.xxl,
-    borderTopRightRadius: spacing.radius.xxl,
-    overflow: 'hidden',
-    // Subtle top border for definition
-    borderTopWidth: 1,
-    borderTopColor: colors.border.subtle,
-    // Shadow
-    shadowColor: colors.shadow.heavy,
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 20,
-    elevation: 20,
-  },
-  handleContainer: {
-    alignItems: 'center',
-    paddingVertical: spacing.md,
-  },
-  handle: {
-    width: 36,
-    height: 4,
-    backgroundColor: colors.border.medium,
-    borderRadius: 2,
-  },
-});

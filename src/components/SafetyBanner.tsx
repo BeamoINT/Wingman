@@ -1,10 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { colors } from '../theme/colors';
-import { spacing } from '../theme/spacing';
-import { typography } from '../theme/typography';
+import { useTheme } from '../context/ThemeContext';
+import { useThemedStyles } from '../theme/useThemedStyles';
 import { haptics } from '../utils/haptics';
 
 interface SafetyBannerProps {
@@ -16,6 +14,107 @@ export const SafetyBanner: React.FC<SafetyBannerProps> = ({
   variant = 'info',
   onPress,
 }) => {
+  const { tokens } = useTheme();
+  const { colors } = tokens;
+  const styles = useThemedStyles((themeTokens) => StyleSheet.create({
+    container: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: themeTokens.spacing.md,
+      borderRadius: themeTokens.spacing.radius.md,
+      borderWidth: 1,
+      borderColor: themeTokens.colors.border.light,
+      backgroundColor: themeTokens.colors.surface.level1,
+      borderLeftWidth: 3,
+      borderLeftColor: themeTokens.colors.accent.primary,
+      gap: themeTokens.spacing.sm,
+    },
+    iconContainer: {
+      width: 40,
+      height: 40,
+      borderRadius: themeTokens.spacing.radius.sm,
+      backgroundColor: themeTokens.colors.accent.soft,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    content: {
+      flex: 1,
+    },
+    title: {
+      ...themeTokens.typography.presets.bodyMedium,
+      color: themeTokens.colors.text.primary,
+      marginBottom: 2,
+    },
+    subtitle: {
+      ...themeTokens.typography.presets.caption,
+      color: themeTokens.colors.text.secondary,
+    },
+    features: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: themeTokens.spacing.sm,
+      marginTop: themeTokens.spacing.xs,
+    },
+    feature: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+    },
+    featureText: {
+      ...themeTokens.typography.presets.caption,
+      color: themeTokens.colors.text.tertiary,
+    },
+    compactContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: themeTokens.spacing.sm,
+      backgroundColor: themeTokens.colors.surface.level1,
+      borderRadius: themeTokens.spacing.radius.md,
+      borderWidth: 1,
+      borderColor: themeTokens.colors.border.subtle,
+      gap: themeTokens.spacing.sm,
+      borderLeftWidth: 3,
+      borderLeftColor: themeTokens.colors.accent.primary,
+    },
+    compactIcon: {
+      width: 26,
+      height: 26,
+      borderRadius: themeTokens.spacing.radius.sm,
+      backgroundColor: themeTokens.colors.accent.soft,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    compactText: {
+      ...themeTokens.typography.presets.bodySmall,
+      color: themeTokens.colors.text.secondary,
+      flex: 1,
+    },
+    emergencyContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: themeTokens.spacing.md,
+      borderRadius: themeTokens.spacing.radius.md,
+      gap: themeTokens.spacing.sm,
+      borderWidth: 1,
+      borderColor: themeTokens.colors.status.error,
+      backgroundColor: themeTokens.colors.status.errorLight,
+      borderLeftWidth: 3,
+      borderLeftColor: themeTokens.colors.status.error,
+    },
+    emergencyContent: {
+      flex: 1,
+    },
+    emergencyTitle: {
+      ...themeTokens.typography.presets.bodyMedium,
+      color: themeTokens.colors.text.primary,
+    },
+    emergencySubtitle: {
+      ...themeTokens.typography.presets.caption,
+      color: themeTokens.colors.text.secondary,
+      marginTop: 2,
+    },
+  }));
+
   const handlePress = async () => {
     await haptics.medium();
     onPress?.();
@@ -23,22 +122,15 @@ export const SafetyBanner: React.FC<SafetyBannerProps> = ({
 
   if (variant === 'emergency') {
     return (
-      <TouchableOpacity onPress={handlePress} activeOpacity={0.8}>
-        <LinearGradient
-          colors={[colors.status.error, colors.status.warning]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={styles.emergencyContainer}
-        >
-          <Ionicons name="warning" size={24} color={colors.text.primary} />
+      <TouchableOpacity onPress={handlePress} activeOpacity={0.85}>
+        <View style={styles.emergencyContainer}>
+          <Ionicons name="warning-outline" size={22} color={colors.status.error} />
           <View style={styles.emergencyContent}>
             <Text style={styles.emergencyTitle}>Emergency SOS</Text>
-            <Text style={styles.emergencySubtitle}>
-              Tap to alert emergency contacts
-            </Text>
+            <Text style={styles.emergencySubtitle}>Tap to alert emergency contacts</Text>
           </View>
-          <Ionicons name="chevron-forward" size={20} color={colors.text.primary} />
-        </LinearGradient>
+          <Ionicons name="chevron-forward" size={18} color={colors.text.tertiary} />
+        </View>
       </TouchableOpacity>
     );
   }
@@ -47,7 +139,7 @@ export const SafetyBanner: React.FC<SafetyBannerProps> = ({
     return (
       <TouchableOpacity onPress={handlePress} style={styles.compactContainer}>
         <View style={styles.compactIcon}>
-          <Ionicons name="shield-checkmark" size={16} color={colors.primary.blue} />
+          <Ionicons name="shield-checkmark-outline" size={15} color={colors.accent.primary} />
         </View>
         <Text style={styles.compactText}>Safety features enabled</Text>
         <Ionicons name="chevron-forward" size={16} color={colors.text.tertiary} />
@@ -56,132 +148,37 @@ export const SafetyBanner: React.FC<SafetyBannerProps> = ({
   }
 
   return (
-    <TouchableOpacity onPress={handlePress} activeOpacity={0.8}>
-      <LinearGradient
-        colors={[colors.primary.blueSoft, colors.primary.blueSoft]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={styles.container}
-      >
+    <TouchableOpacity onPress={handlePress} activeOpacity={0.85}>
+      <View style={styles.container}>
         <View style={styles.iconContainer}>
-          <Ionicons name="shield-checkmark" size={28} color={colors.primary.blue} />
+          <Ionicons name="shield-checkmark-outline" size={22} color={colors.accent.primary} />
         </View>
 
         <View style={styles.content}>
           <Text style={styles.title}>Your Safety is Our Priority</Text>
           <Text style={styles.subtitle}>
-            All wingmen are ID and photo verified for your safety
+            All Wingmen are ID and photo verified before bookings.
           </Text>
 
           <View style={styles.features}>
             <View style={styles.feature}>
-              <Ionicons name="checkmark-circle" size={14} color={colors.status.success} />
+              <Ionicons name="checkmark-circle" size={12} color={colors.status.success} />
               <Text style={styles.featureText}>ID Verification</Text>
             </View>
             <View style={styles.feature}>
-              <Ionicons name="checkmark-circle" size={14} color={colors.status.success} />
+              <Ionicons name="checkmark-circle" size={12} color={colors.status.success} />
               <Text style={styles.featureText}>Emergency SOS</Text>
             </View>
             <View style={styles.feature}>
-              <Ionicons name="checkmark-circle" size={14} color={colors.status.success} />
+              <Ionicons name="checkmark-circle" size={12} color={colors.status.success} />
               <Text style={styles.featureText}>24/7 Support</Text>
             </View>
           </View>
         </View>
 
-        <Ionicons name="chevron-forward" size={20} color={colors.text.tertiary} />
-      </LinearGradient>
+        <Ionicons name="chevron-forward" size={18} color={colors.text.tertiary} />
+      </View>
     </TouchableOpacity>
   );
 };
 
-const styles = StyleSheet.create({
-  container: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: spacing.lg,
-    borderRadius: spacing.radius.xl,
-    borderWidth: 1,
-    borderColor: colors.border.accent,
-  },
-  iconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: colors.primary.blueSoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: spacing.md,
-  },
-  content: {
-    flex: 1,
-  },
-  title: {
-    ...typography.presets.h4,
-    color: colors.text.primary,
-    marginBottom: spacing.xs,
-  },
-  subtitle: {
-    ...typography.presets.caption,
-    color: colors.text.secondary,
-    marginBottom: spacing.sm,
-  },
-  features: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.md,
-  },
-  feature: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  featureText: {
-    ...typography.presets.caption,
-    color: colors.text.tertiary,
-  },
-
-  // Compact styles
-  compactContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: spacing.md,
-    backgroundColor: colors.background.tertiary,
-    borderRadius: spacing.radius.md,
-    gap: spacing.sm,
-  },
-  compactIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: colors.primary.blueSoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  compactText: {
-    ...typography.presets.bodySmall,
-    color: colors.text.secondary,
-    flex: 1,
-  },
-
-  // Emergency styles
-  emergencyContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: spacing.lg,
-    borderRadius: spacing.radius.xl,
-    gap: spacing.md,
-  },
-  emergencyContent: {
-    flex: 1,
-  },
-  emergencyTitle: {
-    ...typography.presets.h4,
-    color: colors.text.primary,
-  },
-  emergencySubtitle: {
-    ...typography.presets.caption,
-    color: colors.text.primary,
-    marginTop: 2,
-  },
-});

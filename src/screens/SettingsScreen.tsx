@@ -1,21 +1,29 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
-    ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View
+  Pressable,
+  StyleSheet,
+  Switch,
+  Text,
+  View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Card } from '../components';
+import {
+  Card,
+  Header,
+  ScreenScaffold,
+  SectionHeader,
+} from '../components';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import { colors } from '../theme/colors';
-import { spacing } from '../theme/spacing';
-import { typography } from '../theme/typography';
+import { useThemedStyles } from '../theme/useThemedStyles';
 import type { RootStackParamList } from '../types';
 import { haptics } from '../utils/haptics';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+
+type AppearanceModeOption = 'light' | 'dark' | 'system';
 
 interface SettingItem {
   id: string;
@@ -31,16 +39,118 @@ interface SettingSection {
   items: SettingItem[];
 }
 
+const APPEARANCE_OPTIONS: Array<{ id: AppearanceModeOption; label: string }> = [
+  { id: 'light', label: 'Light' },
+  { id: 'dark', label: 'Dark' },
+  { id: 'system', label: 'System' },
+];
+
 export const SettingsScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
-  const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const { themeMode, resolvedTheme, setThemeMode } = useTheme();
+  const { tokens, themeMode, resolvedTheme, setThemeMode } = useTheme();
+  const { colors, spacing, typography } = tokens;
 
   const [notifications, setNotifications] = useState(true);
   const [emailUpdates, setEmailUpdates] = useState(true);
   const [locationServices, setLocationServices] = useState(true);
   const [hapticFeedback, setHapticFeedback] = useState(true);
+
+  const styles = useThemedStyles((themeTokens) => StyleSheet.create({
+    content: {
+      gap: themeTokens.spacing.lg,
+    },
+    section: {
+      gap: themeTokens.spacing.sm,
+    },
+    row: {
+      minHeight: 56,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingVertical: themeTokens.spacing.sm,
+      gap: themeTokens.spacing.md,
+    },
+    rowBorder: {
+      borderBottomWidth: 1,
+      borderBottomColor: themeTokens.colors.border.subtle,
+    },
+    left: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: themeTokens.spacing.sm,
+      flex: 1,
+    },
+    iconShell: {
+      width: 32,
+      height: 32,
+      borderRadius: themeTokens.spacing.radius.sm,
+      backgroundColor: themeTokens.colors.surface.level2,
+      borderWidth: 1,
+      borderColor: themeTokens.colors.border.subtle,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    label: {
+      ...themeTokens.typography.presets.bodyMedium,
+      color: themeTokens.colors.text.primary,
+      flexShrink: 1,
+    },
+    value: {
+      ...themeTokens.typography.presets.caption,
+      color: themeTokens.colors.text.secondary,
+      textAlign: 'right',
+      maxWidth: 180,
+    },
+    right: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: themeTokens.spacing.xs,
+      marginLeft: themeTokens.spacing.sm,
+    },
+    appearanceCard: {
+      borderLeftWidth: 3,
+      borderLeftColor: themeTokens.colors.accent.primary,
+    },
+    appearanceText: {
+      ...themeTokens.typography.presets.caption,
+      color: themeTokens.colors.text.secondary,
+      marginTop: themeTokens.spacing.xxs,
+      marginBottom: themeTokens.spacing.sm,
+    },
+    segmentTrack: {
+      flexDirection: 'row',
+      backgroundColor: themeTokens.colors.surface.level2,
+      borderRadius: themeTokens.spacing.radius.md,
+      padding: 4,
+      borderWidth: 1,
+      borderColor: themeTokens.colors.border.light,
+    },
+    segment: {
+      flex: 1,
+      minHeight: 38,
+      borderRadius: themeTokens.spacing.radius.sm,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    segmentActive: {
+      backgroundColor: themeTokens.colors.surface.level0,
+      borderWidth: 1,
+      borderColor: themeTokens.colors.border.light,
+    },
+    segmentText: {
+      ...themeTokens.typography.presets.buttonSmall,
+      color: themeTokens.colors.text.secondary,
+    },
+    segmentTextActive: {
+      color: themeTokens.colors.text.primary,
+    },
+    helper: {
+      ...themeTokens.typography.presets.caption,
+      color: themeTokens.colors.text.tertiary,
+      marginTop: themeTokens.spacing.xs,
+    },
+  }));
 
   const handleBackPress = async () => {
     await haptics.light();
@@ -55,35 +165,26 @@ export const SettingsScreen: React.FC = () => {
     setter(value);
   };
 
-  const cycleThemeMode = async () => {
+  const handleChangeThemeMode = async (mode: AppearanceModeOption) => {
+    if (mode === themeMode) {
+      return;
+    }
+
     await haptics.selection();
-
-    if (themeMode === 'system') {
-      await setThemeMode('light');
-      return;
-    }
-
-    if (themeMode === 'light') {
-      await setThemeMode('dark');
-      return;
-    }
-
-    await setThemeMode('system');
+    await setThemeMode(mode);
   };
 
-  const appearanceValue = themeMode === 'system'
-    ? `System (${resolvedTheme === 'dark' ? 'Dark' : 'Light'})`
-    : themeMode === 'dark'
-      ? 'Dark'
-      : 'Light';
+  const appearanceLabel = themeMode === 'system'
+    ? `Following system (${resolvedTheme})`
+    : `Using ${themeMode} mode`;
 
-  const settingSections: SettingSection[] = [
+  const settingSections: SettingSection[] = useMemo(() => [
     {
-      title: 'Account & Security',
+      title: 'Account',
       items: [
         {
           id: 'change-email',
-          icon: 'mail',
+          icon: 'mail-outline',
           label: 'Change Email',
           type: 'value',
           value: user?.email || '',
@@ -91,7 +192,7 @@ export const SettingsScreen: React.FC = () => {
         },
         {
           id: 'change-password',
-          icon: 'lock-closed',
+          icon: 'lock-closed-outline',
           label: 'Change Password',
           type: 'link',
           onPress: () => navigation.navigate('ChangePassword'),
@@ -103,14 +204,14 @@ export const SettingsScreen: React.FC = () => {
       items: [
         {
           id: 'push',
-          icon: 'notifications',
+          icon: 'notifications-outline',
           label: 'Push Notifications',
           type: 'toggle',
           value: notifications,
         },
         {
           id: 'email',
-          icon: 'mail',
+          icon: 'mail-outline',
           label: 'Email Updates',
           type: 'toggle',
           value: emailUpdates,
@@ -122,21 +223,14 @@ export const SettingsScreen: React.FC = () => {
       items: [
         {
           id: 'location',
-          icon: 'location',
+          icon: 'location-outline',
           label: 'Location Services',
           type: 'toggle',
           value: locationServices,
         },
         {
-          id: 'visibility',
-          icon: 'eye',
-          label: 'Profile Visibility',
-          type: 'value',
-          value: 'Everyone',
-        },
-        {
           id: 'blocked',
-          icon: 'ban',
+          icon: 'ban-outline',
           label: 'Blocked Users',
           type: 'link',
         },
@@ -147,29 +241,21 @@ export const SettingsScreen: React.FC = () => {
       items: [
         {
           id: 'haptic',
-          icon: 'phone-portrait',
+          icon: 'phone-portrait-outline',
           label: 'Haptic Feedback',
           type: 'toggle',
           value: hapticFeedback,
         },
         {
-          id: 'appearance',
-          icon: 'color-palette',
-          label: 'Appearance',
-          type: 'value',
-          value: appearanceValue,
-          onPress: cycleThemeMode,
-        },
-        {
           id: 'language',
-          icon: 'globe',
+          icon: 'globe-outline',
           label: 'Language',
           type: 'value',
           value: 'English',
         },
         {
           id: 'currency',
-          icon: 'cash',
+          icon: 'cash-outline',
           label: 'Currency',
           type: 'value',
           value: 'USD ($)',
@@ -181,20 +267,14 @@ export const SettingsScreen: React.FC = () => {
       items: [
         {
           id: 'help',
-          icon: 'help-circle',
+          icon: 'help-circle-outline',
           label: 'Help Center',
           type: 'link',
         },
         {
           id: 'report',
-          icon: 'flag',
+          icon: 'flag-outline',
           label: 'Report a Problem',
-          type: 'link',
-        },
-        {
-          id: 'feedback',
-          icon: 'chatbox',
-          label: 'Send Feedback',
           type: 'link',
         },
       ],
@@ -204,77 +284,42 @@ export const SettingsScreen: React.FC = () => {
       items: [
         {
           id: 'terms',
-          icon: 'document-text',
+          icon: 'document-text-outline',
           label: 'Terms of Service',
           type: 'link',
           onPress: () => navigation.navigate('LegalDocument', { documentType: 'terms-of-service' }),
         },
         {
           id: 'privacy',
-          icon: 'shield-checkmark',
+          icon: 'shield-checkmark-outline',
           label: 'Privacy Policy',
           type: 'link',
           onPress: () => navigation.navigate('LegalDocument', { documentType: 'privacy-policy' }),
         },
         {
           id: 'community',
-          icon: 'people',
+          icon: 'people-outline',
           label: 'Community Guidelines',
           type: 'link',
           onPress: () => navigation.navigate('LegalDocument', { documentType: 'community-guidelines' }),
         },
         {
           id: 'refund',
-          icon: 'card',
+          icon: 'card-outline',
           label: 'Refund Policy',
           type: 'link',
           onPress: () => navigation.navigate('LegalDocument', { documentType: 'refund-policy' }),
         },
-        {
-          id: 'safety',
-          icon: 'warning',
-          label: 'Safety Disclaimer',
-          type: 'link',
-          onPress: () => navigation.navigate('LegalDocument', { documentType: 'safety-disclaimer' }),
-        },
-        {
-          id: 'cookies',
-          icon: 'analytics',
-          label: 'Cookie Policy',
-          type: 'link',
-          onPress: () => navigation.navigate('LegalDocument', { documentType: 'cookie-policy' }),
-        },
-        {
-          id: 'acceptable-use',
-          icon: 'checkmark-circle',
-          label: 'Acceptable Use Policy',
-          type: 'link',
-          onPress: () => navigation.navigate('LegalDocument', { documentType: 'acceptable-use' }),
-        },
-        {
-          id: 'copyright',
-          icon: 'copy',
-          label: 'DMCA & Copyright Policy',
-          type: 'link',
-          onPress: () => navigation.navigate('LegalDocument', { documentType: 'copyright-policy' }),
-        },
-        {
-          id: 'california',
-          icon: 'location',
-          label: 'California Privacy Notice',
-          type: 'link',
-          onPress: () => navigation.navigate('LegalDocument', { documentType: 'california-privacy' }),
-        },
-        {
-          id: 'esign',
-          icon: 'create',
-          label: 'Electronic Signature Consent',
-          type: 'link',
-          onPress: () => navigation.navigate('LegalDocument', { documentType: 'electronic-signature' }),
-        },
       ],
     },
-  ];
+  ], [
+    emailUpdates,
+    hapticFeedback,
+    locationServices,
+    navigation,
+    notifications,
+    user?.email,
+  ]);
 
   const getToggleSetter = (id: string) => {
     switch (id) {
@@ -292,199 +337,112 @@ export const SettingsScreen: React.FC = () => {
   };
 
   return (
-    <View style={styles.container}>
-      <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
-        <TouchableOpacity style={styles.backButton} onPress={handleBackPress}>
-          <Ionicons name="chevron-back" size={24} color={colors.text.primary} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Settings</Text>
-        <View style={styles.placeholder} />
-      </View>
+    <ScreenScaffold scrollable withBottomPadding contentContainerStyle={styles.content}>
+      <Header title="Settings" showBack onBackPress={handleBackPress} />
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={{ paddingBottom: 100 }}
-        showsVerticalScrollIndicator={false}
-      >
-        {settingSections.map((section) => (
-          <View key={section.title} style={styles.section}>
-            <Text style={styles.sectionTitle}>{section.title}</Text>
+      <Card variant="outlined" style={styles.appearanceCard}>
+        <SectionHeader title="Appearance" subtitle="Choose your preferred look" />
+        <Text style={styles.appearanceText}>{appearanceLabel}</Text>
+        <View style={styles.segmentTrack}>
+          {APPEARANCE_OPTIONS.map((option) => {
+            const isActive = themeMode === option.id;
+            return (
+              <Pressable
+                key={option.id}
+                style={[styles.segment, isActive && styles.segmentActive]}
+                onPress={() => {
+                  void handleChangeThemeMode(option.id);
+                }}
+              >
+                <Text style={[styles.segmentText, isActive && styles.segmentTextActive]}>
+                  {option.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        <Text style={styles.helper}>
+          Light and Dark apply instantly. System follows your device setting.
+        </Text>
+      </Card>
 
-            <Card variant="outlined" style={styles.sectionCard}>
-              {section.items.map((item, index) => (
-                <TouchableOpacity
+      {settingSections.map((section) => (
+        <View key={section.title} style={styles.section}>
+          <SectionHeader title={section.title} />
+          <Card variant="outlined" padding="small">
+            {section.items.map((item, index) => {
+              const isLast = index === section.items.length - 1;
+              const toggleSetter = getToggleSetter(item.id);
+              const value = item.value;
+              const isToggle = item.type === 'toggle';
+              const isLink = item.type === 'link';
+              const rowPressable = Boolean(item.onPress) || isToggle;
+
+              return (
+                <Pressable
                   key={item.id}
-                  style={[
-                    styles.settingRow,
-                    index < section.items.length - 1 && styles.settingRowBorder,
-                  ]}
+                  disabled={!rowPressable}
                   onPress={() => {
-                    if (item.type !== 'toggle') {
-                      haptics.light();
-                      item.onPress?.();
+                    if (item.onPress) {
+                      void haptics.light().then(item.onPress);
+                      return;
+                    }
+                    if (isToggle) {
+                      void handleToggle(!(value as boolean), toggleSetter);
                     }
                   }}
-                  activeOpacity={item.type === 'toggle' ? 1 : 0.7}
+                  style={({ pressed }) => [
+                    styles.row,
+                    !isLast && styles.rowBorder,
+                    pressed && rowPressable
+                      ? { backgroundColor: colors.interactive.pressed }
+                      : null,
+                  ]}
                 >
-                  <View style={styles.settingIcon}>
-                    <Ionicons name={item.icon} size={20} color={colors.primary.blue} />
+                  <View style={styles.left}>
+                    <View style={styles.iconShell}>
+                      <Ionicons
+                        name={item.icon}
+                        size={18}
+                        color={isLink ? colors.accent.primary : colors.text.secondary}
+                      />
+                    </View>
+                    <Text style={styles.label}>{item.label}</Text>
                   </View>
 
-                  <Text style={styles.settingLabel}>{item.label}</Text>
+                  <View style={styles.right}>
+                    {item.type === 'value' ? (
+                      <Text numberOfLines={1} style={styles.value}>
+                        {String(item.value || '')}
+                      </Text>
+                    ) : null}
 
-                  {item.type === 'toggle' && (
-                    <Switch
-                      value={item.value as boolean}
-                      onValueChange={(v) => handleToggle(v, getToggleSetter(item.id))}
-                      trackColor={{ false: colors.background.tertiary, true: colors.primary.blue }}
-                      thumbColor={colors.text.primary}
-                    />
-                  )}
-
-                  {item.type === 'value' && (
-                    <View style={styles.valueContainer}>
-                      <Text style={styles.valueText}>{item.value as string}</Text>
-                      <Ionicons name="chevron-forward" size={18} color={colors.text.tertiary} />
-                    </View>
-                  )}
-
-                  {item.type === 'link' && (
-                    <Ionicons name="chevron-forward" size={18} color={colors.text.tertiary} />
-                  )}
-                </TouchableOpacity>
-              ))}
-            </Card>
-          </View>
-        ))}
-
-        {/* Account Actions */}
-        <View style={styles.section}>
-          <TouchableOpacity
-            style={styles.dangerButton}
-            onPress={() => haptics.warning()}
-          >
-            <Ionicons name="trash-outline" size={20} color={colors.status.error} />
-            <Text style={styles.dangerText}>Delete Account</Text>
-          </TouchableOpacity>
+                    {isToggle ? (
+                      <Switch
+                        value={item.value === true}
+                        onValueChange={(next) => {
+                          void handleToggle(next, toggleSetter);
+                        }}
+                        thumbColor={item.value === true ? colors.accent.primary : colors.surface.level3}
+                        trackColor={{
+                          false: colors.border.light,
+                          true: colors.accent.soft,
+                        }}
+                      />
+                    ) : (
+                      <Ionicons
+                        name="chevron-forward"
+                        size={16}
+                        color={colors.text.tertiary}
+                      />
+                    )}
+                  </View>
+                </Pressable>
+              );
+            })}
+          </Card>
         </View>
-
-        {/* App Info */}
-        <View style={styles.appInfo}>
-          <Text style={styles.appName}>Wingman</Text>
-          <Text style={styles.appVersion}>Version 1.0.0</Text>
-          <Text style={styles.copyright}>© 2026 Beamo LLC</Text>
-        </View>
-      </ScrollView>
-    </View>
+      ))}
+    </ScreenScaffold>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background.primary,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.screenPadding,
-    paddingBottom: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border.light,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    ...typography.presets.h4,
-    color: colors.text.primary,
-  },
-  placeholder: {
-    width: 40,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  section: {
-    paddingHorizontal: spacing.screenPadding,
-    paddingTop: spacing.xl,
-  },
-  sectionTitle: {
-    ...typography.presets.label,
-    color: colors.text.tertiary,
-    marginBottom: spacing.sm,
-    marginLeft: spacing.sm,
-  },
-  sectionCard: {
-    padding: 0,
-    overflow: 'hidden',
-  },
-  settingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-  },
-  settingRowBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border.light,
-  },
-  settingIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: colors.primary.blueSoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: spacing.md,
-  },
-  settingLabel: {
-    ...typography.presets.body,
-    color: colors.text.primary,
-    flex: 1,
-  },
-  valueContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  valueText: {
-    ...typography.presets.bodySmall,
-    color: colors.text.tertiary,
-  },
-  dangerButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    paddingVertical: spacing.lg,
-    backgroundColor: colors.status.errorLight,
-    borderRadius: spacing.radius.lg,
-  },
-  dangerText: {
-    ...typography.presets.button,
-    color: colors.status.error,
-  },
-  appInfo: {
-    alignItems: 'center',
-    paddingVertical: spacing.xxl,
-  },
-  appName: {
-    ...typography.presets.h4,
-    color: colors.text.tertiary,
-  },
-  appVersion: {
-    ...typography.presets.caption,
-    color: colors.text.tertiary,
-    marginTop: spacing.xs,
-  },
-  copyright: {
-    ...typography.presets.caption,
-    color: colors.text.muted,
-    marginTop: spacing.sm,
-  },
-});

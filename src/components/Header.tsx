@@ -1,8 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
 import React from 'react';
 import {
-  Platform,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -50,23 +48,16 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   const styles = StyleSheet.create({
-    blur: {
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      right: 0,
-      zIndex: 100,
+    shell: {
       borderBottomWidth: 1,
       borderBottomColor: colors.border.subtle,
-      overflow: 'hidden',
-    },
-    webBlur: {
-      backgroundColor: tokens.isDark ? colors.surface.overlay : colors.surface.level1,
+      backgroundColor: colors.surface.level0,
+      zIndex: 100,
     },
     container: {
       paddingHorizontal: spacing.screenPadding,
       paddingTop: insets.top + spacing.xs,
-      paddingBottom: large ? spacing.lg : spacing.md,
+      paddingBottom: large ? spacing.md : spacing.sm,
       maxWidth: spacing.contentMaxWidthWide,
       alignSelf: 'center',
       width: '100%',
@@ -96,14 +87,14 @@ export const Header: React.FC<HeaderProps> = ({
       gap: spacing.sm,
     },
     iconButton: {
-      width: 38,
-      height: 38,
-      borderRadius: spacing.radius.round,
+      width: 36,
+      height: 36,
+      borderRadius: spacing.radius.md,
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: colors.surface.level3,
+      backgroundColor: colors.surface.level1,
       borderWidth: 1,
-      borderColor: colors.border.light,
+      borderColor: colors.border.subtle,
     },
     title: {
       ...typography.presets.h4,
@@ -113,7 +104,7 @@ export const Header: React.FC<HeaderProps> = ({
     subtitle: {
       ...typography.presets.caption,
       color: colors.text.tertiary,
-      marginTop: 2,
+      marginTop: 1,
       textAlign: large ? 'left' : 'center',
     },
     largeTitle: {
@@ -187,17 +178,5 @@ export const Header: React.FC<HeaderProps> = ({
     return content;
   }
 
-  if (Platform.OS === 'web') {
-    return <View style={[styles.blur, styles.webBlur]}>{content}</View>;
-  }
-
-  return (
-    <BlurView
-      intensity={tokens.isDark ? 95 : 75}
-      tint={tokens.isDark ? 'dark' : 'light'}
-      style={styles.blur}
-    >
-      {content}
-    </BlurView>
-  );
+  return <View style={styles.shell}>{content}</View>;
 };

@@ -1,11 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { BlurView } from 'expo-blur';
 import React from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
-import { spacing } from '../theme/spacing';
-import { typography } from '../theme/typography';
 import type { MainTabParamList } from '../types';
 import { haptics } from '../utils/haptics';
 
@@ -21,74 +18,44 @@ const Tab = createBottomTabNavigator<MainTabParamList>();
 
 export const MainTabNavigator: React.FC = () => {
   const { tokens } = useTheme();
-  const { colors } = tokens;
+  const { colors, spacing, typography } = tokens;
 
   const styles = StyleSheet.create({
     tabBar: {
       position: 'absolute',
       left: spacing.sm,
       right: spacing.sm,
-      bottom: Platform.OS === 'ios' ? spacing.md : spacing.sm,
-      borderRadius: spacing.radius.xxl,
-      borderTopWidth: 0,
-      height: Platform.OS === 'ios' ? 76 : 70,
+      bottom: Platform.OS === 'ios' ? spacing.sm : spacing.xs,
+      borderRadius: spacing.radius.lg,
+      borderTopWidth: 1,
+      borderWidth: 1,
+      borderColor: colors.border.light,
+      height: Platform.OS === 'ios' ? 64 : 60,
       paddingTop: spacing.xs,
-      paddingBottom: Platform.OS === 'ios' ? spacing.md : spacing.sm,
-      backgroundColor: 'transparent',
-      elevation: 0,
-      shadowOpacity: 0,
-      overflow: 'hidden',
+      paddingBottom: Platform.OS === 'ios' ? spacing.xs : spacing.xxs,
+      backgroundColor: colors.surface.level1,
+      ...spacing.elevation.md,
+      shadowColor: colors.shadow.medium,
     },
     tabBarLabel: {
       ...typography.presets.caption,
       fontSize: 11,
-      lineHeight: 14,
+      lineHeight: 13,
       marginTop: 0,
-      marginBottom: Platform.OS === 'ios' ? 0 : 2,
+      marginBottom: 0,
       fontFamily: typography.fontFamily.medium,
+      letterSpacing: 0.1,
     },
     activeIconContainer: {
       backgroundColor: colors.accent.soft,
-      borderColor: colors.border.light,
-      borderWidth: 1,
-      borderRadius: spacing.radius.pill,
+      borderRadius: spacing.radius.md,
       paddingHorizontal: spacing.sm,
-      paddingVertical: 3,
-      marginTop: -1,
+      paddingVertical: 2,
+      marginTop: -2,
+      borderTopWidth: 2,
+      borderTopColor: colors.accent.primary,
     },
   });
-
-  const TabBarBackground = () => {
-    if (Platform.OS === 'web') {
-      return (
-        <View
-          style={[
-            StyleSheet.absoluteFill,
-            {
-              backgroundColor: colors.surface.level1,
-              borderWidth: 1,
-              borderColor: colors.border.light,
-            },
-          ]}
-        />
-      );
-    }
-
-    return (
-      <BlurView
-        intensity={85}
-        tint={tokens.isDark ? 'dark' : 'light'}
-        style={[
-          StyleSheet.absoluteFill,
-          {
-            borderWidth: 1,
-            borderColor: colors.border.light,
-            backgroundColor: tokens.isDark ? colors.surface.overlay : colors.surface.level1,
-          },
-        ]}
-      />
-    );
-  };
 
   return (
     <Tab.Navigator
@@ -98,7 +65,6 @@ export const MainTabNavigator: React.FC = () => {
         tabBarActiveTintColor: colors.accent.primary,
         tabBarInactiveTintColor: colors.text.tertiary,
         tabBarStyle: styles.tabBar,
-        tabBarBackground: TabBarBackground,
         tabBarLabelStyle: styles.tabBarLabel,
         tabBarHideOnKeyboard: true,
         tabBarIcon: ({ focused, color }) => {
@@ -129,7 +95,7 @@ export const MainTabNavigator: React.FC = () => {
 
           return (
             <View style={focused ? styles.activeIconContainer : undefined}>
-              <Ionicons name={iconName} size={20} color={color} />
+              <Ionicons name={iconName} size={19} color={color} />
             </View>
           );
         },

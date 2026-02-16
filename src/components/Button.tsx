@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import React, { useCallback, useEffect, useMemo } from 'react';
 import {
   ActivityIndicator,
@@ -114,7 +113,7 @@ export const Button: React.FC<ButtonProps> = ({
     () =>
       StyleSheet.create({
         base: {
-          borderRadius: spacing.radius.xl,
+          borderRadius: spacing.radius.md,
           borderWidth: 1,
           borderColor: 'transparent',
           alignItems: 'center',
@@ -125,17 +124,17 @@ export const Button: React.FC<ButtonProps> = ({
         },
         small: {
           minHeight: 40,
-          paddingHorizontal: spacing.lg,
-          borderRadius: spacing.radius.lg,
+          paddingHorizontal: spacing.md,
+          borderRadius: spacing.radius.sm,
         },
         medium: {
           minHeight: 48,
-          paddingHorizontal: spacing.xl,
+          paddingHorizontal: spacing.lg,
         },
         large: {
-          minHeight: 56,
-          paddingHorizontal: spacing.xxl,
-          borderRadius: spacing.radius.xxl,
+          minHeight: 54,
+          paddingHorizontal: spacing.xl,
+          borderRadius: spacing.radius.lg,
         },
         contentContainer: {
           flexDirection: 'row',
@@ -144,23 +143,27 @@ export const Button: React.FC<ButtonProps> = ({
           gap: spacing.sm,
         },
         primary: {
+          backgroundColor: colors.accent.primary,
+          borderColor: colors.accent.primary,
+          ...spacing.elevation.sm,
           shadowColor: colors.shadow.blueStrong,
-          ...spacing.elevation.lg,
         },
         accent: {
-          shadowColor: colors.shadow.goldStrong,
-          ...spacing.elevation.md,
+          backgroundColor: colors.surface.level2,
+          borderColor: colors.border.light,
+          borderLeftWidth: 3,
+          borderLeftColor: colors.accent.primary,
         },
         secondary: {
-          backgroundColor: colors.surface.level3,
+          backgroundColor: colors.surface.level2,
           borderColor: colors.border.light,
         },
         outline: {
           backgroundColor: 'transparent',
-          borderColor: colors.border.accent,
+          borderColor: colors.border.strong,
         },
         ghost: {
-          backgroundColor: colors.interactive.selected,
+          backgroundColor: colors.interactive.pressed,
           borderColor: 'transparent',
         },
         danger: {
@@ -169,13 +172,16 @@ export const Button: React.FC<ButtonProps> = ({
         },
         text: {
           ...typography.presets.button,
-          color: colors.text.primary,
+          color: colors.text.inverse,
         },
         smallText: {
           ...typography.presets.buttonSmall,
         },
+        primaryText: {
+          color: colors.text.inverse,
+        },
         outlineText: {
-          color: colors.accent.primary,
+          color: colors.text.primary,
         },
         ghostText: {
           color: colors.text.primary,
@@ -184,21 +190,13 @@ export const Button: React.FC<ButtonProps> = ({
           color: colors.text.primary,
         },
         dangerText: {
-          color: colors.text.primary,
+          color: colors.text.inverse,
         },
         secondaryText: {
           color: colors.text.primary,
         },
         disabledText: {
           color: colors.text.tertiary,
-        },
-        gradient: {
-          borderRadius: spacing.radius.xl,
-          minHeight: size === 'small' ? 40 : size === 'large' ? 56 : 48,
-          width: '100%',
-          alignItems: 'center',
-          justifyContent: 'center',
-          paddingHorizontal: size === 'small' ? spacing.lg : size === 'large' ? spacing.xxl : spacing.xl,
         },
       }),
     [colors, size, spacing, typography],
@@ -215,6 +213,7 @@ export const Button: React.FC<ButtonProps> = ({
   const textStyles = [
     styles.text,
     size === 'small' && styles.smallText,
+    resolvedVariant === 'primary' && styles.primaryText,
     resolvedVariant === 'outline' && styles.outlineText,
     resolvedVariant === 'ghost' && styles.ghostText,
     resolvedVariant === 'accent' && styles.accentText,
@@ -230,7 +229,11 @@ export const Button: React.FC<ButtonProps> = ({
     }
 
     if (resolvedVariant === 'outline') {
-      return colors.accent.primary;
+      return colors.text.primary;
+    }
+
+    if (resolvedVariant === 'primary' || resolvedVariant === 'danger') {
+      return colors.text.inverse;
     }
 
     return colors.text.primary;
@@ -238,7 +241,11 @@ export const Button: React.FC<ButtonProps> = ({
 
   const iconSize = size === 'small' ? 16 : size === 'large' ? 22 : 18;
 
-  const spinnerColor = resolvedVariant === 'outline' ? colors.accent.primary : colors.text.primary;
+  const spinnerColor = (
+    resolvedVariant === 'primary' || resolvedVariant === 'danger'
+      ? colors.text.inverse
+      : colors.text.primary
+  );
 
   const renderContent = () => (
     <View style={styles.contentContainer}>
@@ -268,39 +275,6 @@ export const Button: React.FC<ButtonProps> = ({
     },
     testID,
   };
-
-  const gradientColors =
-    resolvedVariant === 'primary'
-      ? isDisabled
-        ? [colors.surface.level3, colors.surface.level2]
-        : colors.gradients.primary
-      : resolvedVariant === 'accent'
-      ? isDisabled
-        ? [colors.surface.level3, colors.surface.level2]
-        : colors.gradients.premium
-      : null;
-
-  if (gradientColors) {
-    return (
-      <AnimatedPressable
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
-        onPress={handlePress}
-        disabled={isDisabled}
-        style={animatedStyle}
-        {...accessibilityProps}
-      >
-        <LinearGradient
-          colors={gradientColors as readonly [string, string, ...string[]]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={[buttonStyles, styles.gradient]}
-        >
-          {renderContent()}
-        </LinearGradient>
-      </AnimatedPressable>
-    );
-  }
 
   return (
     <AnimatedPressable

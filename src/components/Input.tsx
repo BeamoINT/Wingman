@@ -50,26 +50,25 @@ export const Input: React.FC<InputProps> = ({
 
   const styles = StyleSheet.create({
     container: {
-      marginBottom: spacing.lg,
+      marginBottom: spacing.md,
     },
     label: {
-      ...typography.presets.label,
-      color: colors.text.tertiary,
-      marginBottom: spacing.sm,
-      textTransform: 'uppercase',
+      ...typography.presets.caption,
+      color: colors.text.secondary,
+      marginBottom: spacing.xs,
     },
     inputContainer: {
       flexDirection: 'row',
       alignItems: 'center',
-      backgroundColor: colors.surface.level3,
-      borderRadius: spacing.radius.lg,
+      backgroundColor: colors.surface.level1,
+      borderRadius: spacing.radius.md,
       borderWidth: 1,
-      borderColor: colors.border.light,
-      minHeight: 50,
+      borderColor: colors.border.subtle,
+      minHeight: 48,
     },
     inputFocused: {
-      borderColor: colors.border.accent,
-      backgroundColor: colors.surface.level4,
+      borderColor: colors.accent.primary,
+      backgroundColor: colors.surface.level0,
     },
     inputError: {
       borderColor: colors.status.error,
@@ -77,7 +76,7 @@ export const Input: React.FC<InputProps> = ({
     },
     input: {
       flex: 1,
-      paddingVertical: spacing.md,
+      paddingVertical: spacing.sm,
       paddingHorizontal: spacing.inputPadding,
       fontFamily: typography.fontFamily.regular,
       fontSize: typography.sizes.md,
@@ -93,7 +92,7 @@ export const Input: React.FC<InputProps> = ({
       marginLeft: spacing.inputPadding,
     },
     rightIconButton: {
-      padding: spacing.inputPadding,
+      padding: spacing.sm,
       opacity: props.editable === false ? 0.5 : 1,
     },
     messageContainer: {
@@ -101,7 +100,7 @@ export const Input: React.FC<InputProps> = ({
       alignItems: 'center',
       gap: spacing.xs,
       marginTop: spacing.xs,
-      minHeight: 18,
+      minHeight: 16,
     },
     errorText: {
       ...typography.presets.caption,
@@ -131,12 +130,12 @@ export const Input: React.FC<InputProps> = ({
       >
         {leftIcon ? (
           <View pointerEvents="none">
-            <Ionicons
-              name={leftIcon}
-              size={20}
-              color={isFocused ? colors.accent.primary : colors.text.tertiary}
-              style={styles.leftIcon}
-            />
+              <Ionicons
+                name={leftIcon}
+                size={18}
+                color={isFocused ? colors.accent.primary : colors.text.tertiary}
+                style={styles.leftIcon}
+              />
           </View>
         ) : null}
 
@@ -164,7 +163,7 @@ export const Input: React.FC<InputProps> = ({
 
         {rightIcon ? (
           <TouchableOpacity onPress={onRightIconPress} style={styles.rightIconButton}>
-            <Ionicons name={rightIcon} size={20} color={colors.text.tertiary} />
+            <Ionicons name={rightIcon} size={18} color={colors.text.tertiary} />
           </TouchableOpacity>
         ) : null}
       </View>

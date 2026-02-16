@@ -41,31 +41,33 @@ export const Card: React.FC<CardProps> = ({
 
   const styles = StyleSheet.create({
     base: {
-      borderRadius: spacing.radius.xl,
+      borderRadius: spacing.radius.md,
       overflow: 'hidden',
       borderWidth: 1,
       borderColor: 'transparent',
     },
     default: {
-      backgroundColor: colors.surface.level3,
+      backgroundColor: colors.surface.level1,
       borderColor: colors.border.subtle,
     },
     elevated: {
-      backgroundColor: colors.surface.level4,
+      backgroundColor: colors.surface.level1,
       borderColor: colors.border.light,
-      shadowColor: colors.shadow.medium,
-      ...spacing.elevation.md,
+      shadowColor: colors.shadow.light,
+      ...spacing.elevation.sm,
     },
     outlined: {
-      backgroundColor: colors.surface.level2,
-      borderColor: colors.border.light,
+      backgroundColor: colors.surface.level0,
+      borderColor: colors.border.strong,
     },
     gradient: {
       borderColor: colors.border.light,
     },
     accent: {
-      backgroundColor: colors.accent.soft,
-      borderColor: colors.border.accent,
+      backgroundColor: colors.surface.level1,
+      borderColor: colors.border.light,
+      borderLeftWidth: 3,
+      borderLeftColor: colors.accent.primary,
     },
     paddingNone: {
       padding: 0,
@@ -80,11 +82,11 @@ export const Card: React.FC<CardProps> = ({
       padding: spacing.xl,
     },
     pressed: {
-      opacity: 0.94,
-      transform: [{ scale: 0.992 }],
+      opacity: 0.96,
+      transform: [{ scale: 0.985 }],
     },
     gradientContainer: {
-      borderRadius: spacing.radius.xl,
+      borderRadius: spacing.radius.md,
       overflow: 'hidden',
       borderWidth: 1,
       borderColor: colors.border.light,

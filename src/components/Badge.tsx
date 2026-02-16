@@ -1,10 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import React from 'react';
 import { StyleSheet, Text, View, ViewStyle } from 'react-native';
-import { colors } from '../theme/colors';
-import { spacing } from '../theme/spacing';
-import { typography } from '../theme/typography';
+import { useTheme } from '../context/ThemeContext';
+import { useThemedStyles } from '../theme/useThemedStyles';
 
 interface BadgeProps {
   label: string;
@@ -21,6 +19,40 @@ export const Badge: React.FC<BadgeProps> = ({
   icon,
   style,
 }) => {
+  const { tokens } = useTheme();
+  const { colors } = tokens;
+  const styles = useThemedStyles((themeTokens) => StyleSheet.create({
+    base: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      borderRadius: themeTokens.spacing.radius.round,
+      gap: themeTokens.spacing.xs,
+      borderWidth: 1,
+      borderColor: themeTokens.colors.border.subtle,
+    },
+    small: {
+      paddingHorizontal: themeTokens.spacing.sm,
+      paddingVertical: 4,
+    },
+    medium: {
+      paddingHorizontal: themeTokens.spacing.md,
+      paddingVertical: themeTokens.spacing.xs,
+    },
+    text: {
+      fontWeight: themeTokens.typography.weights.medium,
+    },
+    smallText: {
+      fontSize: themeTokens.typography.sizes.xxs,
+    },
+    mediumText: {
+      fontSize: themeTokens.typography.sizes.xs,
+    },
+    accentRail: {
+      borderLeftWidth: 2,
+      borderLeftColor: themeTokens.colors.accent.primary,
+    },
+  }));
+
   const getBackgroundColor = () => {
     switch (variant) {
       case 'success':
@@ -30,15 +62,13 @@ export const Badge: React.FC<BadgeProps> = ({
       case 'error':
         return colors.status.errorLight;
       case 'info':
-        return colors.status.infoLight;
-      case 'gold':
-        return colors.primary.goldSoft;
       case 'verified':
-        return colors.primary.blueSoft;
       case 'premium':
-        return colors.verification.trustedLight;
+        return colors.accent.soft;
+      case 'gold':
+        return colors.surface.level2;
       default:
-        return colors.background.tertiary;
+        return colors.surface.level2;
     }
   };
 
@@ -51,13 +81,11 @@ export const Badge: React.FC<BadgeProps> = ({
       case 'error':
         return colors.status.error;
       case 'info':
-        return colors.status.info;
-      case 'gold':
-        return colors.primary.gold;
       case 'verified':
-        return colors.primary.blue;
       case 'premium':
-        return colors.verification.trusted;
+        return colors.accent.primary;
+      case 'gold':
+        return colors.text.secondary;
       default:
         return colors.text.secondary;
     }
@@ -66,45 +94,17 @@ export const Badge: React.FC<BadgeProps> = ({
   const iconSize = size === 'small' ? 10 : 12;
   const textColor = getTextColor();
 
-  if (variant === 'premium') {
-    return (
-      <LinearGradient
-        colors={[colors.primary.goldSoft, colors.verification.trustedLight]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={[
-          styles.base,
-          size === 'small' ? styles.small : styles.medium,
-          styles.premiumBorder,
-          style,
-        ]}
-      >
-        {icon && (
-          <Ionicons name={icon} size={iconSize} color={colors.primary.gold} />
-        )}
-        <Text
-          style={[
-            styles.text,
-            size === 'small' ? styles.smallText : styles.mediumText,
-            { color: colors.primary.gold },
-          ]}
-        >
-          {label}
-        </Text>
-      </LinearGradient>
-    );
-  }
-
   return (
     <View
       style={[
         styles.base,
         size === 'small' ? styles.small : styles.medium,
         { backgroundColor: getBackgroundColor() },
+        (variant === 'premium' || variant === 'verified') && styles.accentRail,
         style,
       ]}
     >
-      {icon && <Ionicons name={icon} size={iconSize} color={textColor} />}
+      {icon ? <Ionicons name={icon} size={iconSize} color={textColor} /> : null}
       <Text
         style={[
           styles.text,
@@ -118,32 +118,3 @@ export const Badge: React.FC<BadgeProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
-  base: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: spacing.radius.round,
-    gap: spacing.xs,
-  },
-  small: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-  },
-  medium: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  premiumBorder: {
-    borderWidth: 1,
-    borderColor: colors.border.gold,
-  },
-  text: {
-    fontWeight: typography.weights.medium,
-  },
-  smallText: {
-    fontSize: typography.sizes.xxs,
-  },
-  mediumText: {
-    fontSize: typography.sizes.xs,
-  },
-});

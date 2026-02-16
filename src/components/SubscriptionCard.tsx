@@ -39,7 +39,7 @@ export const SubscriptionCard: React.FC<SubscriptionCardProps> = ({
       activeOpacity={0.85}
       onPress={handlePress}
     >
-      <View style={styles.header}>
+        <View style={styles.header}>
         <View style={[styles.iconWrap, isProPlan && styles.iconWrapPro]}>
           <Ionicons
             name={isProPlan ? 'sparkles' : 'person-outline'}
@@ -58,7 +58,7 @@ export const SubscriptionCard: React.FC<SubscriptionCardProps> = ({
         </View>
 
         {isSelected ? (
-          <Ionicons name="checkmark-circle" size={22} color={colors.primary.blue} />
+          <Ionicons name="checkmark-circle" size={22} color={colors.accent.primary} />
         ) : null}
       </View>
 
@@ -82,18 +82,19 @@ export const SubscriptionCard: React.FC<SubscriptionCardProps> = ({
 
 const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
   container: {
-    borderRadius: spacing.radius.xl,
+    borderRadius: spacing.radius.md,
     borderWidth: 1,
     borderColor: colors.border.light,
-    backgroundColor: colors.background.card,
+    backgroundColor: colors.surface.level1,
     padding: spacing.md,
     gap: spacing.md,
   },
   selectedContainer: {
-    borderColor: colors.primary.blue,
+    borderColor: colors.accent.primary,
   },
   proContainer: {
-    backgroundColor: colors.surface.level1,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.accent.primary,
   },
   header: {
     flexDirection: 'row',
@@ -103,13 +104,13 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
   iconWrap: {
     width: 34,
     height: 34,
-    borderRadius: spacing.radius.round,
+    borderRadius: spacing.radius.sm,
     backgroundColor: colors.surface.level1,
     alignItems: 'center',
     justifyContent: 'center',
   },
   iconWrapPro: {
-    backgroundColor: colors.primary.blueSoft,
+    backgroundColor: colors.accent.soft,
   },
   headerText: {
     flex: 1,
