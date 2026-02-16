@@ -86,7 +86,7 @@ export const VerificationTabScreen: React.FC = () => {
 
       <InlineBanner
         title="Identity checks protect every booking"
-        message="All users must complete ID and photo verification before checkout."
+        message="All users must complete ID verification and use a profile photo that clearly matches their photo ID before checkout."
         variant="info"
       />
 
@@ -147,7 +147,7 @@ export const VerificationTabScreen: React.FC = () => {
 
       <InlineBanner
         title="Verification requirement"
-        message="Every user must be ID and photo verified before completing a booking on Wingman."
+        message="Every user must be ID verified and confirm their profile photo matches their government photo ID before completing a booking."
         variant="success"
       />
     </ScreenScaffold>

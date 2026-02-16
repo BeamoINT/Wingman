@@ -18,6 +18,8 @@ export interface User {
   isPremium: boolean;
   subscriptionTier?: SubscriptionTier;
   proStatus?: ProStatus;
+  profilePhotoIdMatchAttested?: boolean;
+  profilePhotoIdMatchAttestedAt?: string | null;
   createdAt: string;
   lastActive?: string;
 }

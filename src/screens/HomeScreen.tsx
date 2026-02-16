@@ -139,13 +139,15 @@ export const HomeScreen: React.FC = () => {
               <Ionicons name="star" size={18} color={colors.accent.primary} />
             </View>
             <View style={styles.premiumText}>
-              <Text style={styles.premiumTitle}>Upgrade to Pro</Text>
-              <Text style={styles.premiumSubtitle}>
+              <Text style={styles.premiumTitle} numberOfLines={1}>Upgrade to Pro</Text>
+              <Text style={styles.premiumSubtitle} numberOfLines={2}>
                 Friends matching, requests, groups, and events
               </Text>
             </View>
           </View>
-          <Ionicons name="chevron-forward" size={20} color={colors.text.secondary} />
+          <View style={styles.premiumChevronWrap}>
+            <Ionicons name="chevron-forward" size={18} color={colors.text.secondary} />
+          </View>
         </TouchableOpacity>
 
         {/* Loading State */}
@@ -304,9 +306,7 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     marginBottom: spacing.xl,
     backgroundColor: colors.surface.level1,
     borderWidth: 1,
-    borderColor: colors.border.light,
-    borderLeftWidth: 3,
-    borderLeftColor: colors.accent.primary,
+    borderColor: colors.border.subtle,
   },
   verificationNotice: {
     flexDirection: 'row',
@@ -327,6 +327,8 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
+    flex: 1,
+    minWidth: 0,
   },
   premiumIconWrap: {
     width: 36,
@@ -336,7 +338,11 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     justifyContent: 'center',
     backgroundColor: colors.accent.soft,
   },
-  premiumText: {},
+  premiumText: {
+    flex: 1,
+    minWidth: 0,
+    gap: spacing.xxs,
+  },
   premiumTitle: {
     ...typography.presets.h4,
     color: colors.text.primary,
@@ -344,6 +350,15 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
   premiumSubtitle: {
     ...typography.presets.caption,
     color: colors.text.secondary,
+  },
+  premiumChevronWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: spacing.radius.round,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface.level2,
+    marginLeft: spacing.md,
   },
   loadingContainer: {
     paddingVertical: spacing.massive,

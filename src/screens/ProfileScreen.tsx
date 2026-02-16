@@ -189,7 +189,7 @@ export const ProfileScreen: React.FC = () => {
           activeOpacity={0.8}
           onPress={async () => {
             await haptics.light();
-            // Navigate to edit profile
+            navigation.navigate('EditProfile');
           }}
         >
           <Card variant="gradient" style={styles.profileCard}>
@@ -231,6 +231,9 @@ export const ProfileScreen: React.FC = () => {
             </View>
           </Card>
         </TouchableOpacity>
+        <Text style={styles.profileHint}>
+          Your profile photo must clearly match your government photo ID before booking.
+        </Text>
 
         {/* Become a Wingman / Wingman Status Banner */}
         <TouchableOpacity
@@ -356,6 +359,11 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     color: colors.text.primary,
   },
   profileCard: {
+    marginBottom: spacing.sm,
+  },
+  profileHint: {
+    ...typography.presets.caption,
+    color: colors.text.tertiary,
     marginBottom: spacing.lg,
   },
   profileHeader: {

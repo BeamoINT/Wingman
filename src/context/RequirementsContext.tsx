@@ -59,6 +59,7 @@ export interface BookingRequirements {
   phoneVerified: RequirementCheck;
   idVerified: RequirementCheck;
   photoVerified: RequirementCheck;
+  photoIdMatchAttested: RequirementCheck;
   profileComplete: RequirementCheck;
   allMet: boolean;
   unmetRequirements: RequirementCheck[];
@@ -775,6 +776,12 @@ export const RequirementsProvider: React.FC<{ children: React.ReactNode }> = ({ 
         action: 'Add Photo',
         navigateTo: 'EditProfile',
       },
+      photoIdMatchAttested: {
+        met: user?.profilePhotoIdMatchAttested === true,
+        requirement: 'Your profile photo must clearly match your government photo ID',
+        action: 'Confirm Photo-ID Match',
+        navigateTo: 'EditProfile',
+      },
       profileComplete: {
         met: profileCompletionData.isComplete,
         requirement: 'You must complete your profile details',
@@ -796,6 +803,7 @@ export const RequirementsProvider: React.FC<{ children: React.ReactNode }> = ({ 
             'phoneVerified',
             'idVerified',
             'photoVerified',
+            'photoIdMatchAttested',
             'profileComplete',
           ]
         : [

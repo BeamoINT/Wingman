@@ -48,6 +48,7 @@ export const VerificationScreen: React.FC = () => {
   const verificationSource = route.params?.source || 'profile';
   const openedFromFinalBookingStep = verificationSource === 'booking_final_step';
   const hasProfilePhoto = Boolean(user?.avatar?.trim());
+  const photoIdMatchAttested = user?.profilePhotoIdMatchAttested === true;
 
   const verificationSteps = useMemo<VerificationStep[]>(
     () => [
@@ -68,10 +69,12 @@ export const VerificationScreen: React.FC = () => {
       {
         id: 'photo',
         title: 'Photo Verification',
-        description: 'Upload a clear profile photo',
+        description: 'Use a clear profile photo that visibly matches your government photo ID',
         icon: 'camera',
-        status: hasProfilePhoto ? 'completed' : 'pending',
-        action: !hasProfilePhoto && openedFromFinalBookingStep ? 'Add Photo' : undefined,
+        status: hasProfilePhoto && photoIdMatchAttested ? 'completed' : 'pending',
+        action: (!hasProfilePhoto || !photoIdMatchAttested) && openedFromFinalBookingStep
+          ? 'Update Photo'
+          : undefined,
       },
       {
         id: 'id',
@@ -82,7 +85,7 @@ export const VerificationScreen: React.FC = () => {
         action: !idVerified && openedFromFinalBookingStep ? 'Start ID Verification' : undefined,
       },
     ],
-    [emailVerified, phoneVerified, hasProfilePhoto, idVerified, openedFromFinalBookingStep],
+    [emailVerified, phoneVerified, hasProfilePhoto, photoIdMatchAttested, idVerified, openedFromFinalBookingStep],
   );
 
   const completedSteps = verificationSteps.filter((step) => step.status === 'completed').length;
@@ -109,10 +112,7 @@ export const VerificationScreen: React.FC = () => {
     await haptics.medium();
 
     if (step.id === 'photo') {
-      Alert.alert(
-        'Add Profile Photo',
-        'Upload a clear profile photo before confirming your booking.',
-      );
+      navigation.navigate('EditProfile');
       return;
     }
 
@@ -173,7 +173,7 @@ export const VerificationScreen: React.FC = () => {
       {!openedFromFinalBookingStep && (!idVerified || !hasProfilePhoto) ? (
         <InlineBanner
           title="Final-step verification"
-          message="ID and photo verification only unlock right before checkout to reduce verification API costs."
+          message="ID checks unlock right before checkout, and your profile photo must clearly match your photo ID."
           variant="info"
         />
       ) : null}
@@ -186,7 +186,7 @@ export const VerificationScreen: React.FC = () => {
         <Card variant="outlined" style={styles.benefitsCard}>
           {[
             'All users must complete ID verification before booking',
-            'Photo verification prevents fake identity usage',
+            'Profile photos must clearly match the submitted photo ID',
             'Phone verification adds account recovery protection',
             'Verification state is reviewed before final checkout',
           ].map((line) => (

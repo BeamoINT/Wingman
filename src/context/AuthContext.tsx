@@ -59,6 +59,7 @@ interface AuthContextType {
   completeTutorial: () => void;
   validateSignupConsents: () => { valid: boolean; errors: string[] };
   refreshSession: () => Promise<boolean>;
+  refreshUserProfile: () => Promise<boolean>;
   verifyEmail: (token: string) => Promise<{ success: boolean; error?: string }>;
   resendEmailVerification: () => Promise<{ success: boolean; error?: string }>;
   setEmailVerified: () => void;
@@ -129,6 +130,8 @@ function transformSupabaseUser(supabaseUser: SupabaseUser, profile?: any): User 
     isPremium: normalizedSubscriptionTier === 'pro',
     subscriptionTier: normalizedSubscriptionTier,
     proStatus: normalizedProStatus,
+    profilePhotoIdMatchAttested: profile?.profile_photo_id_match_attested === true,
+    profilePhotoIdMatchAttestedAt: profile?.profile_photo_id_match_attested_at || null,
     createdAt: supabaseUser.created_at || new Date().toISOString(),
     lastActive: new Date().toISOString(),
   };
@@ -1021,6 +1024,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   /**
+   * Refresh the current user's profile row and update in-memory auth state.
+   */
+  const refreshUserProfile = useCallback(async (): Promise<boolean> => {
+    if (!supabaseUser) {
+      return false;
+    }
+
+    try {
+      const profile = await fetchUserProfile(supabaseUser.id);
+      const refreshedUser = transformSupabaseUser(supabaseUser, profile);
+      setUser(refreshedUser);
+      await storeUser(refreshedUser);
+      setNeedsEmailVerification(!supabaseUser.email_confirmed_at);
+      setNeedsPhoneVerification(!profile?.phone_verified);
+      return true;
+    } catch (error) {
+      safeLog('Failed to refresh user profile', { error: String(error) });
+      return false;
+    }
+  }, [fetchUserProfile, supabaseUser]);
+
+  /**
    * Request a password reset OTP for the given email
    */
   const requestPasswordReset = useCallback(async (email: string): Promise<{ success: boolean; error?: string }> => {
@@ -1235,6 +1260,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         completeTutorial,
         validateSignupConsents,
         refreshSession,
+        refreshUserProfile,
         verifyEmail,
         resendEmailVerification,
         setEmailVerified,

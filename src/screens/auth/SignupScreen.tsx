@@ -708,7 +708,7 @@ export const SignupScreen: React.FC = () => {
         return (
           <View key="step-6" style={styles.stepContent}>
             <Text style={styles.stepTitle}>Add a profile photo</Text>
-            <Text style={styles.stepSubtitle}>Help others recognize you</Text>
+            <Text style={styles.stepSubtitle}>Use a clear photo that matches your government photo ID</Text>
 
             <TouchableOpacity style={styles.photoUpload} onPress={handlePhotoUpload}>
               {signupData.avatar ? (
@@ -731,7 +731,7 @@ export const SignupScreen: React.FC = () => {
             )}
 
             <Text style={styles.photoHint}>
-              You can skip this step and add a photo later
+              You can skip this step and add it later, but bookings require a photo that clearly matches your photo ID.
             </Text>
           </View>
         );

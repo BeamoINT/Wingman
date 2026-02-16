@@ -25,8 +25,6 @@ export const SafetyBanner: React.FC<SafetyBannerProps> = ({
       borderWidth: 1,
       borderColor: themeTokens.colors.border.light,
       backgroundColor: themeTokens.colors.surface.level1,
-      borderLeftWidth: 3,
-      borderLeftColor: themeTokens.colors.accent.primary,
       gap: themeTokens.spacing.sm,
     },
     iconContainer: {
@@ -73,8 +71,6 @@ export const SafetyBanner: React.FC<SafetyBannerProps> = ({
       borderWidth: 1,
       borderColor: themeTokens.colors.border.subtle,
       gap: themeTokens.spacing.sm,
-      borderLeftWidth: 3,
-      borderLeftColor: themeTokens.colors.accent.primary,
     },
     compactIcon: {
       width: 26,
@@ -98,8 +94,6 @@ export const SafetyBanner: React.FC<SafetyBannerProps> = ({
       borderWidth: 1,
       borderColor: themeTokens.colors.status.error,
       backgroundColor: themeTokens.colors.status.errorLight,
-      borderLeftWidth: 3,
-      borderLeftColor: themeTokens.colors.status.error,
     },
     emergencyContent: {
       flex: 1,
@@ -181,4 +175,3 @@ export const SafetyBanner: React.FC<SafetyBannerProps> = ({
     </TouchableOpacity>
   );
 };
-

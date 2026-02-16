@@ -109,8 +109,8 @@ export const SettingsScreen: React.FC = () => {
       marginLeft: themeTokens.spacing.sm,
     },
     appearanceCard: {
-      borderLeftWidth: 3,
-      borderLeftColor: themeTokens.colors.accent.primary,
+      borderColor: themeTokens.colors.accent.primary,
+      backgroundColor: themeTokens.colors.surface.level1,
     },
     appearanceText: {
       ...themeTokens.typography.presets.caption,

@@ -159,6 +159,7 @@ const BookingScreenContent: React.FC = () => {
     if (!phoneVerified) missing.push('phone');
     if (!idVerified) missing.push('ID');
     if (!photoVerified) missing.push('profile photo');
+    if (!bookingRequirements.photoIdMatchAttested.met) missing.push('photo-ID match confirmation');
 
     if (missing.length === 0) {
       return '';
@@ -175,7 +176,7 @@ const BookingScreenContent: React.FC = () => {
     const missingLast = missing[missing.length - 1];
     const missingPrefix = missing.slice(0, -1).join(', ');
     return `Complete ${missingPrefix}, and ${missingLast} verification to book.`;
-  }, [emailVerified, phoneVerified, idVerified, photoVerified]);
+  }, [bookingRequirements.photoIdMatchAttested.met, emailVerified, phoneVerified, idVerified, photoVerified]);
 
   const dates = useMemo(() => {
     return Array.from({ length: 14 }, (_, index) => {
@@ -272,6 +273,13 @@ const BookingScreenContent: React.FC = () => {
       return { valid: false, message: 'You must upload a profile photo before booking.' };
     }
 
+    if (!requirements.photoIdMatchAttested.met) {
+      return {
+        valid: false,
+        message: 'Confirm in Edit Profile that your profile photo clearly matches your government photo ID.',
+      };
+    }
+
     if (!requirements.profileComplete.met) {
       return { valid: false, message: 'Please complete your profile before booking.' };
     }
@@ -315,8 +323,9 @@ const BookingScreenContent: React.FC = () => {
         !bookingRequirements.emailVerified.met || !bookingRequirements.idVerified.met;
       const needsPhoneVerification = !bookingRequirements.phoneVerified.met;
       const needsProfilePhoto = !bookingRequirements.photoVerified.met;
+      const needsPhotoIdMatch = !bookingRequirements.photoIdMatchAttested.met;
 
-      if (needsEmailOrIdVerification || needsPhoneVerification || needsProfilePhoto) {
+      if (needsEmailOrIdVerification || needsPhoneVerification || needsProfilePhoto || needsPhotoIdMatch) {
         Alert.alert(
           'Complete Verification to Book',
           validation.message || verificationWarningMessage || 'Complete verification to place your booking.',
@@ -328,7 +337,7 @@ const BookingScreenContent: React.FC = () => {
             {
               text: needsPhoneVerification
                 ? 'Verify Phone'
-                : (needsEmailOrIdVerification ? 'Complete Verification' : 'Add Profile Photo'),
+                : (needsEmailOrIdVerification ? 'Complete Verification' : 'Update Profile'),
               onPress: () => {
                 if (needsPhoneVerification) {
                   navigation.navigate('VerifyPhone', { source: 'booking' });
@@ -347,10 +356,12 @@ const BookingScreenContent: React.FC = () => {
                   return;
                 }
 
-                Alert.alert(
-                  'Add Profile Photo',
-                  'Please upload a profile photo from your Profile tab before completing this booking.'
-                );
+                if (needsProfilePhoto || needsPhotoIdMatch) {
+                  navigation.navigate('EditProfile');
+                  return;
+                }
+
+                Alert.alert('Booking Requirements', 'Please complete your profile before finalizing this booking.');
               },
             },
           ]

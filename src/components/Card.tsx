@@ -65,9 +65,7 @@ export const Card: React.FC<CardProps> = ({
     },
     accent: {
       backgroundColor: colors.surface.level1,
-      borderColor: colors.border.light,
-      borderLeftWidth: 3,
-      borderLeftColor: colors.accent.primary,
+      borderColor: colors.accent.primary,
     },
     paddingNone: {
       padding: 0,

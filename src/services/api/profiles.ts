@@ -6,6 +6,8 @@
 import { supabase } from '../supabase';
 import { resolveMetroArea } from './locationApi';
 
+const PROFILE_AVATARS_BUCKET = 'profile-avatars';
+
 export interface ProfileData {
   id: string;
   first_name: string;
@@ -43,6 +45,8 @@ export interface ProfileData {
   pro_renews_at?: string | null;
   pro_expires_at?: string | null;
   pro_entitlement_updated_at?: string | null;
+  profile_photo_id_match_attested?: boolean;
+  profile_photo_id_match_attested_at?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -50,14 +54,16 @@ export interface ProfileData {
 export interface UpdateProfileInput {
   first_name?: string;
   last_name?: string;
-  phone?: string;
-  avatar_url?: string;
-  bio?: string;
-  date_of_birth?: string;
-  gender?: string;
-  city?: string;
-  state?: string;
-  country?: string;
+  phone?: string | null;
+  avatar_url?: string | null;
+  bio?: string | null;
+  date_of_birth?: string | null;
+  gender?: string | null;
+  city?: string | null;
+  state?: string | null;
+  country?: string | null;
+  profile_photo_id_match_attested?: boolean;
+  profile_photo_id_match_attested_at?: string | null;
 }
 
 export interface UpdateLegalConsentsInput {
@@ -131,10 +137,14 @@ export async function updateProfile(updates: UpdateProfileInput): Promise<{ prof
       return { profile: null, error: new Error('Not authenticated') };
     }
 
+    const sanitizedUpdates = Object.fromEntries(
+      Object.entries(updates).filter(([, value]) => value !== undefined)
+    );
+
     const { data, error } = await supabase
       .from('profiles')
       .update({
-        ...updates,
+        ...sanitizedUpdates,
         updated_at: new Date().toISOString(),
       })
       .eq('id', user.id)
@@ -193,6 +203,82 @@ export async function updateProfile(updates: UpdateProfileInput): Promise<{ prof
     return { profile, error: null };
   } catch (err) {
     console.error('Error in updateProfile:', err);
+    return { profile: null, error: err as Error };
+  }
+}
+
+/**
+ * Upload and persist the current user's profile avatar.
+ * Resets photo-ID attestation so users must reconfirm after changing photo.
+ */
+export async function uploadProfileAvatar(fileUri: string): Promise<{ profile: ProfileData | null; error: Error | null }> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      return { profile: null, error: new Error('Not authenticated') };
+    }
+
+    const response = await fetch(fileUri);
+    const blob = await response.blob();
+
+    const extension = (() => {
+      const filename = fileUri.split('?')[0] || '';
+      const raw = filename.split('.').pop()?.toLowerCase();
+      if (!raw) return 'jpg';
+      if (raw === 'jpeg' || raw === 'jpg' || raw === 'png' || raw === 'webp' || raw === 'heic') {
+        return raw;
+      }
+      return 'jpg';
+    })();
+
+    const contentType = (() => {
+      if (extension === 'png') return 'image/png';
+      if (extension === 'webp') return 'image/webp';
+      if (extension === 'heic') return 'image/heic';
+      return 'image/jpeg';
+    })();
+
+    const objectPath = `${user.id}/avatar-${Date.now()}.${extension}`;
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from(PROFILE_AVATARS_BUCKET)
+      .upload(objectPath, blob, {
+        contentType,
+        upsert: true,
+      });
+
+    if (uploadError || !uploadData?.path) {
+      return { profile: null, error: uploadError || new Error('Failed to upload profile photo') };
+    }
+
+    const { data: publicUrlData } = supabase.storage
+      .from(PROFILE_AVATARS_BUCKET)
+      .getPublicUrl(uploadData.path);
+
+    const avatarUrl = publicUrlData?.publicUrl;
+    if (!avatarUrl) {
+      return { profile: null, error: new Error('Unable to generate profile photo URL') };
+    }
+
+    const { data: updatedProfile, error: profileError } = await supabase
+      .from('profiles')
+      .update({
+        avatar_url: avatarUrl,
+        profile_photo_id_match_attested: false,
+        profile_photo_id_match_attested_at: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', user.id)
+      .select('*')
+      .single();
+
+    if (profileError) {
+      return { profile: null, error: profileError };
+    }
+
+    return { profile: updatedProfile as ProfileData, error: null };
+  } catch (err) {
+    console.error('Error uploading profile avatar:', err);
     return { profile: null, error: err as Error };
   }
 }

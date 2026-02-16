@@ -24,6 +24,7 @@ import { BookingConfirmationScreen } from '../screens/BookingConfirmationScreen'
 import { BookingScreen } from '../screens/BookingScreen';
 import { ChatScreen } from '../screens/ChatScreen';
 import { CompanionProfileScreen } from '../screens/CompanionProfileScreen';
+import { EditProfileScreen } from '../screens/EditProfileScreen';
 import { NotificationsScreen } from '../screens/NotificationsScreen';
 import { SafetyScreen } from '../screens/SafetyScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
@@ -96,6 +97,7 @@ const ProtectedVerificationScreen = withAuthGuard(VerificationScreen, 'Verificat
 const ProtectedVerificationHistoryScreen = withAuthGuard(VerificationHistoryScreen, 'VerificationHistory');
 const ProtectedChangePasswordScreen = withAuthGuard(ChangePasswordScreen, 'ChangePassword');
 const ProtectedChangeEmailScreen = withAuthGuard(ChangeEmailScreen, 'ChangeEmail');
+const ProtectedEditProfileScreen = withAuthGuard(EditProfileScreen, 'EditProfile');
 const ProtectedNotificationsScreen = withAuthGuard(NotificationsScreen, 'Notifications');
 
 // Companion Feature - Protected
@@ -232,6 +234,7 @@ export const RootNavigator: React.FC = () => {
           options={{ animation: reduceMotionEnabled ? 'none' : 'fade' }}
         />
         <Stack.Screen name="Chat" component={ProtectedChatScreen} />
+        <Stack.Screen name="EditProfile" component={ProtectedEditProfileScreen} />
         <Stack.Screen name="Settings" component={ProtectedSettingsScreen} />
         <Stack.Screen name="ChangePassword" component={ProtectedChangePasswordScreen} />
         <Stack.Screen name="ChangeEmail" component={ProtectedChangeEmailScreen} />

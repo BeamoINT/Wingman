@@ -149,10 +149,8 @@ export const Button: React.FC<ButtonProps> = ({
           shadowColor: colors.shadow.blueStrong,
         },
         accent: {
-          backgroundColor: colors.surface.level2,
-          borderColor: colors.border.light,
-          borderLeftWidth: 3,
-          borderLeftColor: colors.accent.primary,
+          backgroundColor: colors.accent.soft,
+          borderColor: colors.accent.primary,
         },
         secondary: {
           backgroundColor: colors.surface.level2,

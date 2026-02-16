@@ -103,8 +103,8 @@ export const CompanionCard: React.FC<CompanionCardProps> = ({
     },
     info: {
       padding: themeTokens.spacing.sm,
-      borderLeftWidth: 3,
-      borderLeftColor: themeTokens.colors.accent.primary,
+      borderTopWidth: 1,
+      borderTopColor: themeTokens.colors.border.subtle,
     },
     header: {
       flexDirection: 'row',
@@ -156,8 +156,6 @@ export const CompanionCard: React.FC<CompanionCardProps> = ({
       borderColor: themeTokens.colors.border.subtle,
       padding: themeTokens.spacing.sm,
       gap: themeTokens.spacing.sm,
-      borderLeftWidth: 3,
-      borderLeftColor: themeTokens.colors.accent.primary,
     },
     compactImage: {
       width: 56,
@@ -213,8 +211,6 @@ export const CompanionCard: React.FC<CompanionCardProps> = ({
       padding: themeTokens.spacing.md,
       borderTopWidth: 1,
       borderTopColor: themeTokens.colors.border.subtle,
-      borderLeftWidth: 3,
-      borderLeftColor: themeTokens.colors.accent.primary,
       gap: themeTokens.spacing.sm,
     },
     featuredTop: {
@@ -418,4 +414,3 @@ export const CompanionCard: React.FC<CompanionCardProps> = ({
     </TouchableOpacity>
   );
 };
-

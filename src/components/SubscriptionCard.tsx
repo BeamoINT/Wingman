@@ -99,8 +99,8 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     borderColor: colors.accent.primary,
   },
   proContainer: {
-    borderLeftWidth: 3,
-    borderLeftColor: colors.accent.primary,
+    borderColor: colors.accent.primary,
+    backgroundColor: colors.surface.level1,
   },
   header: {
     flexDirection: 'row',
