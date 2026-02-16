@@ -28,7 +28,14 @@ export interface ProfileData {
   electronic_signature_consent?: boolean;
   electronic_signature_consent_at?: string | null;
   marketing_opt_in?: boolean;
-  subscription_tier: string;
+  subscription_tier: 'free' | 'pro' | string;
+  pro_status?: 'inactive' | 'active' | 'grace' | 'past_due' | 'canceled' | string;
+  pro_platform?: 'ios' | 'android' | 'web' | string | null;
+  pro_product_id?: string | null;
+  pro_started_at?: string | null;
+  pro_renews_at?: string | null;
+  pro_expires_at?: string | null;
+  pro_entitlement_updated_at?: string | null;
   created_at: string;
   updated_at: string;
 }

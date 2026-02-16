@@ -35,7 +35,7 @@ import { MainTabNavigator } from './MainTabNavigator';
 
 // Friends Feature Screens
 import {
-  EventsScreen, FriendMatchingScreen, FriendsScreen, GroupsScreen, SocialFeedScreen,
+  EventsScreen, FriendMatchingScreen, FriendRequestsScreen, FriendsScreen, GroupsScreen, SocialFeedScreen,
 } from '../screens/friends';
 
 // Companion Screens
@@ -105,6 +105,7 @@ const ProtectedCompanionDashboardScreen = withAuthGuard(CompanionDashboardScreen
 // Friends Feature - Protected
 const ProtectedFriendsScreen = withAuthGuard(FriendsScreen, 'Friends');
 const ProtectedFriendMatchingScreen = withAuthGuard(FriendMatchingScreen, 'FriendMatching');
+const ProtectedFriendRequestsScreen = withAuthGuard(FriendRequestsScreen, 'FriendRequests');
 const ProtectedSocialFeedScreen = withAuthGuard(SocialFeedScreen, 'SocialFeed');
 const ProtectedGroupsScreen = withAuthGuard(GroupsScreen, 'Groups');
 const ProtectedEventsScreen = withAuthGuard(EventsScreen, 'Events');
@@ -239,6 +240,7 @@ export const RootNavigator: React.FC = () => {
           options={{ animation: modalAnimation }}
         />
         <Stack.Screen name="FriendMatching" component={ProtectedFriendMatchingScreen} />
+        <Stack.Screen name="FriendRequests" component={ProtectedFriendRequestsScreen} />
         <Stack.Screen name="SocialFeed" component={ProtectedSocialFeedScreen} />
         <Stack.Screen name="Groups" component={ProtectedGroupsScreen} />
         <Stack.Screen name="Events" component={ProtectedEventsScreen} />

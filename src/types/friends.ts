@@ -1,11 +1,9 @@
 /**
  * Types for the "Find New Friends" Feature
  *
- * This feature is subscription-gated:
- * - FREE: Browse only, no matching/posting
- * - PLUS: 5 matches/month, 3 groups
- * - PREMIUM: Unlimited matches/groups, can post
- * - ELITE: All Premium + create events + priority matching
+ * Subscription model:
+ * - FREE: read-only friend profile preview
+ * - PRO: full friends suite access
  */
 
 // ===========================================
@@ -32,6 +30,12 @@ export interface FriendProfile {
   lastActive: string;
   verificationLevel: 'basic' | 'verified' | 'premium';
   mutualFriendsCount: number;
+  compatibilityScore?: number;
+  commonalities?: {
+    interests: string[];
+    languages: string[];
+    goals: string[];
+  };
   createdAt: string;
 }
 
@@ -70,6 +74,23 @@ export interface MatchSwipe {
   toUserId: string;
   action: MatchAction;
   createdAt: string;
+}
+
+export type FriendConnectionStatus =
+  | 'pending'
+  | 'accepted'
+  | 'declined'
+  | 'canceled'
+  | 'blocked';
+
+export interface FriendConnection {
+  id: string;
+  requesterId: string;
+  recipientId: string;
+  status: FriendConnectionStatus;
+  requestedAt: string;
+  respondedAt?: string | null;
+  otherProfile?: FriendProfile;
 }
 
 // ===========================================

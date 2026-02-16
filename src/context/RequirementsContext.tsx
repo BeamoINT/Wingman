@@ -117,6 +117,8 @@ interface RequirementsContextType {
   // Friends feature limits (subscription-gated)
   friendsLimits: FriendsFeatureLimits;
   friendsUsage: FriendsUsage;
+  canAccessFriendsPreview: () => RequirementCheck;
+  canAccessFriendsProFeatures: () => RequirementCheck;
   canUseFriendsFeature: (feature: 'match' | 'join_group' | 'post' | 'create_event') => RequirementCheck;
   refreshFriendsUsage: () => Promise<void>;
   recordFriendsMatch: (targetUserId?: string) => Promise<void>;
@@ -142,11 +144,9 @@ export type AppFeature =
   | 'friends_events';
 
 /**
- * Friends feature limits per subscription tier
- * FREE: Browse only, no matching/posting
- * PLUS: 5 matches/month, 3 groups
- * PREMIUM: Unlimited matches/groups, can post
- * ELITE: All Premium + create events + priority matching
+ * Friends feature limits per subscription tier.
+ * FREE: read-only friend profile preview.
+ * PRO: full friends suite.
  */
 const FRIENDS_FEATURE_LIMITS: Record<SubscriptionTier, FriendsFeatureLimits> = {
   free: {
@@ -156,21 +156,7 @@ const FRIENDS_FEATURE_LIMITS: Record<SubscriptionTier, FriendsFeatureLimits> = {
     canCreateEvents: false,
     priorityMatching: false,
   },
-  plus: {
-    matchesPerMonth: 5,
-    groupsCanJoin: 3,
-    canPost: false,
-    canCreateEvents: false,
-    priorityMatching: false,
-  },
-  premium: {
-    matchesPerMonth: 999, // Effectively unlimited
-    groupsCanJoin: 999,
-    canPost: true,
-    canCreateEvents: false,
-    priorityMatching: false,
-  },
-  elite: {
+  pro: {
     matchesPerMonth: 999,
     groupsCanJoin: 999,
     canPost: true,
@@ -600,39 +586,43 @@ export const RequirementsProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   const subscriptionTier = user?.subscriptionTier || 'free';
   const friendsLimits = FRIENDS_FEATURE_LIMITS[subscriptionTier];
+  const isProSubscriber = subscriptionTier === 'pro';
+
+  const canAccessFriendsPreview = useCallback((): RequirementCheck => {
+    if (!isAuthenticated) {
+      return { met: false, requirement: 'Sign in required', navigateTo: 'SignIn' };
+    }
+
+    return { met: true, requirement: '' };
+  }, [isAuthenticated]);
+
+  const canAccessFriendsProFeatures = useCallback((): RequirementCheck => {
+    if (!isAuthenticated) {
+      return { met: false, requirement: 'Sign in required', navigateTo: 'SignIn' };
+    }
+
+    if (!isProSubscriber) {
+      return {
+        met: false,
+        requirement: 'Upgrade to Pro to unlock Friends features',
+        action: 'Upgrade',
+        navigateTo: 'Subscription',
+      };
+    }
+
+    return { met: true, requirement: '' };
+  }, [isAuthenticated, isProSubscriber]);
 
   const recordFriendsMatch = useCallback(async (targetUserId?: string) => {
     if (!user?.id) return;
-    if (targetUserId && targetUserId !== user.id) {
-      const { error } = await supabase
-        .from('match_swipes')
-        .insert({
-          from_user_id: user.id,
-          to_user_id: targetUserId,
-          action: 'like',
-        });
-
-      if (error && error.code !== '23505') {
-        console.error('Error recording friend match swipe:', error);
-      }
-    }
+    void targetUserId;
 
     await loadFriendsUsageFromSupabase(user.id);
   }, [loadFriendsUsageFromSupabase, user?.id]);
 
   const recordGroupJoin = useCallback(async (groupId: string) => {
     if (!user?.id) return;
-    const { error } = await supabase
-      .from('group_memberships')
-      .insert({
-        group_id: groupId,
-        user_id: user.id,
-      });
-
-    if (error && error.code !== '23505') {
-      console.error('Error recording group join usage:', error);
-      return;
-    }
+    void groupId;
 
     await loadFriendsUsageFromSupabase(user.id);
   }, [loadFriendsUsageFromSupabase, user?.id]);
@@ -650,18 +640,10 @@ export const RequirementsProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
       switch (feature) {
         case 'match':
-          if (friendsLimits.matchesPerMonth === 0) {
+          if (!isProSubscriber) {
             return {
               met: false,
-              requirement: 'Upgrade to Plus or higher to match with friends',
-              action: 'Upgrade',
-              navigateTo: 'Subscription',
-            };
-          }
-          if (friendsUsage.matchesThisMonth >= friendsLimits.matchesPerMonth) {
-            return {
-              met: false,
-              requirement: `You've reached your monthly match limit (${friendsLimits.matchesPerMonth})`,
+              requirement: 'Upgrade to Pro to send friend requests',
               action: 'Upgrade',
               navigateTo: 'Subscription',
             };
@@ -669,18 +651,10 @@ export const RequirementsProvider: React.FC<{ children: React.ReactNode }> = ({ 
           return { met: true, requirement: '' };
 
         case 'join_group':
-          if (friendsLimits.groupsCanJoin === 0) {
+          if (!isProSubscriber) {
             return {
               met: false,
-              requirement: 'Upgrade to Plus or higher to join groups',
-              action: 'Upgrade',
-              navigateTo: 'Subscription',
-            };
-          }
-          if (friendsUsage.groupsJoined >= friendsLimits.groupsCanJoin) {
-            return {
-              met: false,
-              requirement: `You've reached your group limit (${friendsLimits.groupsCanJoin})`,
+              requirement: 'Upgrade to Pro to join groups',
               action: 'Upgrade',
               navigateTo: 'Subscription',
             };
@@ -688,10 +662,10 @@ export const RequirementsProvider: React.FC<{ children: React.ReactNode }> = ({ 
           return { met: true, requirement: '' };
 
         case 'post':
-          if (!friendsLimits.canPost) {
+          if (!isProSubscriber) {
             return {
               met: false,
-              requirement: 'Upgrade to Premium or higher to post',
+              requirement: 'Upgrade to Pro to post in feed',
               action: 'Upgrade',
               navigateTo: 'Subscription',
             };
@@ -699,10 +673,10 @@ export const RequirementsProvider: React.FC<{ children: React.ReactNode }> = ({ 
           return { met: true, requirement: '' };
 
         case 'create_event':
-          if (!friendsLimits.canCreateEvents) {
+          if (!isProSubscriber) {
             return {
               met: false,
-              requirement: 'Upgrade to Elite to create events',
+              requirement: 'Upgrade to Pro to create events',
               action: 'Upgrade',
               navigateTo: 'Subscription',
             };
@@ -713,7 +687,7 @@ export const RequirementsProvider: React.FC<{ children: React.ReactNode }> = ({ 
           return { met: true, requirement: '' };
       }
     },
-    [isAuthenticated, friendsLimits, friendsUsage]
+    [isAuthenticated, isProSubscriber]
   );
 
   // ===========================================
@@ -914,30 +888,19 @@ export const RequirementsProvider: React.FC<{ children: React.ReactNode }> = ({ 
           return { met: true, requirement: '' };
 
         case 'friends_matching':
-          return canUseFriendsFeature('match');
+          return canAccessFriendsPreview();
 
         case 'friends_feed':
-          if (!isAuthenticated) {
-            return { met: false, requirement: 'Sign in required', navigateTo: 'SignIn' };
-          }
-          if (friendsLimits.matchesPerMonth === 0) {
-            return {
-              met: false,
-              requirement: 'Upgrade to Plus or higher to access the social feed',
-              action: 'Upgrade',
-              navigateTo: 'Subscription',
-            };
-          }
-          return { met: true, requirement: '' };
+          return canAccessFriendsProFeatures();
 
         case 'friends_groups':
-          return canUseFriendsFeature('join_group');
+          return canAccessFriendsProFeatures();
 
         case 'friends_post':
-          return canUseFriendsFeature('post');
+          return canAccessFriendsProFeatures();
 
         case 'friends_events':
-          return canUseFriendsFeature('create_event');
+          return canAccessFriendsProFeatures();
 
         case 'safety_features':
         case 'subscription':
@@ -950,7 +913,7 @@ export const RequirementsProvider: React.FC<{ children: React.ReactNode }> = ({ 
           return { met: true, requirement: '' };
       }
     },
-    [isAuthenticated, consents, checkBookingRequirements, checkCompanionRequirements, canUseFriendsFeature, friendsLimits.matchesPerMonth]
+    [isAuthenticated, consents, checkBookingRequirements, checkCompanionRequirements, canAccessFriendsPreview, canAccessFriendsProFeatures]
   );
 
   // ===========================================
@@ -979,6 +942,8 @@ export const RequirementsProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
     friendsLimits,
     friendsUsage,
+    canAccessFriendsPreview,
+    canAccessFriendsProFeatures,
     canUseFriendsFeature,
     refreshFriendsUsage: refreshFriendsUsageState,
     recordFriendsMatch,

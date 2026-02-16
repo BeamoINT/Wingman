@@ -6,6 +6,8 @@
 
 import type {
   EventCategory,
+  FriendConnection,
+  FriendConnectionStatus,
   FriendEvent,
   FriendProfile,
   FriendshipGoal,
@@ -15,6 +17,7 @@ import type {
   Post,
   PostType,
 } from '../../types/friends';
+import { friendsFeatureFlags } from '../../config/featureFlags';
 import { supabase } from '../supabase';
 
 type RawRecord = Record<string, unknown>;
@@ -113,6 +116,11 @@ function normalizeFriendshipGoals(value: unknown): FriendshipGoal[] {
   )) as FriendshipGoal[];
 }
 
+function normalizeTextArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === 'string');
+}
+
 function normalizeProfileVerificationLevel(profile: RawRecord): FriendProfile['verificationLevel'] {
   const level = toStringValue(profile.verification_level, 'basic');
   const idVerified = profile.id_verified === true;
@@ -140,14 +148,51 @@ function transformProfileToFriendProfile(profileData: unknown): FriendProfile {
       state: toOptionalString(profile.state),
       country: toStringValue(profile.country, FALLBACK_COUNTRY),
     },
-    interests: [],
-    languages: [],
+    interests: normalizeTextArray(profile.interests),
+    languages: normalizeTextArray(profile.languages),
     lookingFor: normalizeFriendshipGoals(profile.looking_for),
     isOnline: false,
     lastActive: toStringValue(profile.updated_at, new Date().toISOString()),
     verificationLevel: normalizeProfileVerificationLevel(profile),
     mutualFriendsCount: 0,
     createdAt: toStringValue(profile.created_at, new Date().toISOString()),
+  };
+}
+
+function transformRecommendationRowToFriendProfile(rowData: unknown): FriendProfile {
+  const row = (rowData || {}) as RawRecord;
+
+  const commonInterests = normalizeTextArray(row.shared_interests);
+  const commonLanguages = normalizeTextArray(row.shared_languages);
+  const commonGoals = normalizeTextArray(row.shared_goals);
+
+  return {
+    id: toStringValue(row.user_id),
+    userId: toStringValue(row.user_id),
+    firstName: toStringValue(row.first_name, 'User'),
+    lastName: toStringValue(row.last_name),
+    avatar: toOptionalString(row.avatar_url),
+    bio: toOptionalString(row.about),
+    age: 18,
+    location: {
+      city: toStringValue(row.city, 'Unknown'),
+      state: toOptionalString(row.state),
+      country: toStringValue(row.country, FALLBACK_COUNTRY),
+    },
+    interests: [],
+    languages: [],
+    lookingFor: [],
+    isOnline: false,
+    lastActive: new Date().toISOString(),
+    verificationLevel: 'verified',
+    mutualFriendsCount: 0,
+    compatibilityScore: toNumber(row.compatibility_score, 0),
+    commonalities: {
+      interests: commonInterests,
+      languages: commonLanguages,
+      goals: commonGoals,
+    },
+    createdAt: new Date().toISOString(),
   };
 }
 
@@ -236,50 +281,90 @@ export async function fetchMatchingProfiles(limit = 30): Promise<{
   profiles: FriendProfile[];
   error: Error | null;
 }> {
+  // Legacy compatibility wrapper.
+  return fetchRankedFriendProfiles(limit, 0);
+}
+
+export async function fetchRankedFriendProfiles(limit = 30, offset = 0): Promise<{
+  profiles: FriendProfile[];
+  error: Error | null;
+}> {
   try {
     const { userId, error: authError } = await getAuthenticatedUserId();
     if (authError || !userId) {
       return { profiles: [], error: authError || new Error('Not authenticated') };
     }
 
-    const [{ data: profileRows, error: profileError }, { data: swipeRows, error: swipeError }] = await Promise.all([
-      supabase
+    if (!friendsFeatureFlags.friendsRankedListEnabled) {
+      const { data: profileRows, error: profileError } = await supabase
         .from('profiles')
         .select('*')
         .neq('id', userId)
-        .order('created_at', { ascending: false })
-        .limit(limit * 4),
-      supabase
-        .from('match_swipes')
-        .select('to_user_id')
-        .eq('from_user_id', userId),
-    ]);
+        .order('updated_at', { ascending: false })
+        .range(offset, offset + Math.max(limit, 1) - 1);
 
-    if (profileError) {
-      console.error('Error loading friend matching profiles:', profileError);
-      return { profiles: [], error: new Error(profileError.message || 'Failed to load profiles') };
+      if (profileError) {
+        return {
+          profiles: [],
+          error: new Error(profileError.message || 'Failed to load profiles'),
+        };
+      }
+
+      return {
+        profiles: (profileRows || []).map((row) => transformProfileToFriendProfile(row as RawRecord)),
+        error: null,
+      };
     }
 
-    if (swipeError) {
-      console.error('Error loading prior match swipes:', swipeError);
+    const { data, error } = await supabase.rpc('get_friend_recommendations_v2', {
+      p_limit: limit,
+      p_offset: offset,
+    });
+
+    if (error) {
+      const errorMessage = String(error.message || '').toLowerCase();
+      const isMissingRpc = (
+        errorMessage.includes('get_friend_recommendations_v2')
+        || errorMessage.includes('function')
+        || errorMessage.includes('schema cache')
+      );
+
+      if (isMissingRpc) {
+        const { data: fallbackProfiles, error: fallbackError } = await supabase
+          .from('profiles')
+          .select('*')
+          .neq('id', userId)
+          .order('updated_at', { ascending: false })
+          .range(offset, offset + Math.max(limit, 1) - 1);
+
+        if (fallbackError) {
+          return {
+            profiles: [],
+            error: new Error(fallbackError.message || 'Failed to load fallback recommendations'),
+          };
+        }
+
+        return {
+          profiles: (fallbackProfiles || []).map((row) => transformProfileToFriendProfile(row as RawRecord)),
+          error: null,
+        };
+      }
+
+      console.error('Error loading ranked friend recommendations:', error);
+      return {
+        profiles: [],
+        error: new Error(error.message || 'Failed to load recommendations'),
+      };
     }
 
-    const swipedUserIds = new Set(
-      (swipeRows || []).map((row) => toStringValue((row as RawRecord).to_user_id)).filter(Boolean)
-    );
-
-    const profiles = (profileRows || [])
-      .map((row) => transformProfileToFriendProfile(row as RawRecord))
-      .filter((profile) => (
-        profile.id
-        && !swipedUserIds.has(profile.id)
-        && (profile.verificationLevel === 'verified' || profile.verificationLevel === 'premium')
-      ))
-      .slice(0, limit);
+    const rows = Array.isArray(data) ? data : [];
+    const profiles = rows
+      .map((row) => transformRecommendationRowToFriendProfile(row as RawRecord))
+      .filter((profile) => !!profile.id);
 
     return { profiles, error: null };
   } catch (err) {
-    console.error('Error in fetchMatchingProfiles:', err);
+    console.error('Error in fetchRankedFriendProfiles:', err);
     return {
       profiles: [],
       error: err instanceof Error ? err : new Error('Failed to load matching profiles'),
@@ -291,35 +376,199 @@ export async function recordMatchSwipe(
   targetUserId: string,
   action: MatchAction
 ): Promise<{ success: boolean; error: Error | null }> {
+  void targetUserId;
+  void action;
+  // Legacy no-op. Friend connections now use request/accept APIs.
+  return { success: true, error: null };
+}
+
+function normalizeConnectionStatus(value: unknown): FriendConnectionStatus {
+  const status = toStringValue(value, 'pending');
+  switch (status) {
+    case 'accepted':
+    case 'declined':
+    case 'canceled':
+    case 'blocked':
+      return status;
+    case 'pending':
+    default:
+      return 'pending';
+  }
+}
+
+export async function sendConnectionRequest(targetUserId: string): Promise<{
+  success: boolean;
+  connectionId: string | null;
+  error: Error | null;
+}> {
+  if (!friendsFeatureFlags.friendsConnectionRequestsEnabled) {
+    return {
+      success: false,
+      connectionId: null,
+      error: new Error('Friend connection requests are currently disabled.'),
+    };
+  }
+
+  try {
+    const { userId, error: authError } = await getAuthenticatedUserId();
+    if (authError || !userId) {
+      return { success: false, connectionId: null, error: authError || new Error('Not authenticated') };
+    }
+
+    if (!targetUserId || targetUserId === userId) {
+      return { success: false, connectionId: null, error: new Error('Invalid target user') };
+    }
+
+    const { data, error } = await supabase.rpc('send_connection_request_v1', {
+      p_target_user_id: targetUserId,
+    });
+
+    if (error) {
+      console.error('Error sending connection request:', error);
+      return {
+        success: false,
+        connectionId: null,
+        error: new Error(error.message || 'Failed to send connection request'),
+      };
+    }
+
+    const connectionId = typeof data === 'string'
+      ? data
+      : Array.isArray(data)
+        ? toStringValue((data[0] as RawRecord | undefined)?.send_connection_request_v1)
+        : toStringValue((data as RawRecord | null)?.send_connection_request_v1);
+
+    return { success: true, connectionId: connectionId || null, error: null };
+  } catch (err) {
+    console.error('Error in sendConnectionRequest:', err);
+    return {
+      success: false,
+      connectionId: null,
+      error: err instanceof Error ? err : new Error('Failed to send connection request'),
+    };
+  }
+}
+
+export async function respondToConnectionRequest(
+  connectionId: string,
+  decision: 'accepted' | 'declined' | 'canceled' | 'blocked'
+): Promise<{ success: boolean; error: Error | null }> {
+  if (!friendsFeatureFlags.friendsConnectionRequestsEnabled) {
+    return { success: false, error: new Error('Friend connection requests are currently disabled.') };
+  }
+
   try {
     const { userId, error: authError } = await getAuthenticatedUserId();
     if (authError || !userId) {
       return { success: false, error: authError || new Error('Not authenticated') };
     }
 
-    if (!targetUserId || targetUserId === userId) {
-      return { success: false, error: new Error('Invalid target user') };
-    }
+    const { error } = await supabase.rpc('respond_connection_request_v1', {
+      p_connection_id: connectionId,
+      p_decision: decision,
+    });
 
-    const { error } = await supabase
-      .from('match_swipes')
-      .insert({
-        from_user_id: userId,
-        to_user_id: targetUserId,
-        action,
-      });
-
-    if (error && error.code !== '23505') {
-      console.error('Error recording match swipe:', error);
-      return { success: false, error: new Error(error.message || 'Failed to save swipe') };
+    if (error) {
+      console.error('Error responding to connection request:', error);
+      return { success: false, error: new Error(error.message || 'Failed to update request') };
     }
 
     return { success: true, error: null };
   } catch (err) {
-    console.error('Error in recordMatchSwipe:', err);
+    console.error('Error in respondToConnectionRequest:', err);
     return {
       success: false,
-      error: err instanceof Error ? err : new Error('Failed to save swipe'),
+      error: err instanceof Error ? err : new Error('Failed to update request'),
+    };
+  }
+}
+
+export async function fetchConnectionInbox(): Promise<{
+  incoming: FriendConnection[];
+  outgoing: FriendConnection[];
+  accepted: FriendConnection[];
+  error: Error | null;
+}> {
+  if (!friendsFeatureFlags.friendsConnectionRequestsEnabled) {
+    return {
+      incoming: [],
+      outgoing: [],
+      accepted: [],
+      error: new Error('Friend connection requests are currently disabled.'),
+    };
+  }
+
+  try {
+    const { userId, error: authError } = await getAuthenticatedUserId();
+    if (authError || !userId) {
+      return {
+        incoming: [],
+        outgoing: [],
+        accepted: [],
+        error: authError || new Error('Not authenticated'),
+      };
+    }
+
+    const { data, error } = await supabase
+      .from('friend_connections')
+      .select('*')
+      .or(`requester_id.eq.${userId},recipient_id.eq.${userId}`)
+      .order('updated_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching connection inbox:', error);
+      return {
+        incoming: [],
+        outgoing: [],
+        accepted: [],
+        error: new Error(error.message || 'Failed to load connection inbox'),
+      };
+    }
+
+    const rows = (data || []) as RawRecord[];
+    const profileIds = rows
+      .map((row) => (
+        toStringValue(row.requester_id) === userId
+          ? toStringValue(row.recipient_id)
+          : toStringValue(row.requester_id)
+      ))
+      .filter(Boolean);
+
+    const profileMap = await fetchProfilesByIds(profileIds);
+
+    const mapped = rows.map((row) => {
+      const requesterId = toStringValue(row.requester_id);
+      const recipientId = toStringValue(row.recipient_id);
+      const otherUserId = requesterId === userId ? recipientId : requesterId;
+
+      return {
+        id: toStringValue(row.id),
+        requesterId,
+        recipientId,
+        status: normalizeConnectionStatus(row.status),
+        requestedAt: toStringValue(row.requested_at, new Date().toISOString()),
+        respondedAt: toOptionalString(row.responded_at) ?? null,
+        otherProfile: profileMap.get(otherUserId),
+      } satisfies FriendConnection;
+    });
+
+    return {
+      incoming: mapped.filter((connection) => (
+        connection.status === 'pending' && connection.recipientId === userId
+      )),
+      outgoing: mapped.filter((connection) => (
+        connection.status === 'pending' && connection.requesterId === userId
+      )),
+      accepted: mapped.filter((connection) => connection.status === 'accepted'),
+      error: null,
+    };
+  } catch (err) {
+    console.error('Error in fetchConnectionInbox:', err);
+    return {
+      incoming: [],
+      outgoing: [],
+      accepted: [],
+      error: err instanceof Error ? err : new Error('Failed to load connection inbox'),
     };
   }
 }

@@ -17,6 +17,7 @@ export interface User {
   isVerified: boolean;
   isPremium: boolean;
   subscriptionTier?: SubscriptionTier;
+  proStatus?: ProStatus;
   createdAt: string;
   lastActive?: string;
 }
@@ -121,15 +122,16 @@ export interface BookingLocation {
 }
 
 // Subscription Types
-export type SubscriptionTier = 'free' | 'plus' | 'premium' | 'elite';
+export type SubscriptionTier = 'free' | 'pro';
+
+export type ProStatus = 'inactive' | 'active' | 'grace' | 'past_due' | 'canceled';
 
 export interface Subscription {
   id: string;
   tier: SubscriptionTier;
   price: number;
-  billingPeriod: 'monthly' | 'yearly';
+  billingPeriod: 'monthly';
   features: SubscriptionFeature[];
-  isPopular?: boolean;
 }
 
 export interface SubscriptionFeature {
@@ -381,12 +383,13 @@ export type RootStackParamList = {
   SocialFeed: undefined;
   Groups: undefined;
   Events: undefined;
+  FriendRequests: undefined;
 };
 
 export type MainTabParamList = {
   Home: undefined;
   Discover: undefined;
-  Verification: undefined;
+  Friends: undefined;
   Bookings: undefined;
   Messages: undefined;
   Profile: undefined;

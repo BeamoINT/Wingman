@@ -25,7 +25,7 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 /**
  * SocialFeedScreen - Timeline of posts from friends
- * Subscription-gated: Viewing requires Plus, posting requires Premium
+ * Subscription-gated: Pro required
  */
 const SocialFeedContent: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
@@ -283,7 +283,7 @@ const SocialFeedContent: React.FC = () => {
         >
           <Ionicons name="lock-closed" size={16} color={colors.primary.coral} />
           <Text style={styles.upgradePromptText}>
-            Upgrade to Premium to create posts
+            Upgrade to Pro to create posts
           </Text>
           <Ionicons name="chevron-forward" size={16} color={colors.text.tertiary} />
         </TouchableOpacity>

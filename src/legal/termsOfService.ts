@@ -203,7 +203,7 @@ Initiating a chargeback without first attempting to resolve the issue through ou
 
 7.5 Subscription Refunds
 
-Subscription fees are generally non-refundable. However, if you cancel within 48 hours of your initial subscription purchase, you may request a refund. Annual subscriptions are not eligible for partial refunds.
+Subscription fees are generally non-refundable. However, if you cancel within 48 hours of your initial subscription purchase, you may request a refund.
 
 7.6 Gift Cards
 
@@ -214,16 +214,14 @@ Gift cards are non-refundable and non-transferable for cash. Unused gift card ba
       title: '8. Subscription Services',
       content: `8.1 Subscription Tiers
 
-We offer the following subscription tiers:
+We offer the following subscription plans:
 
-- Free: Limited bookings and features;
-- Plus ($14.99/month): Enhanced booking limits and features;
-- Premium ($29.99/month): Unlimited bookings and priority features;
-- Elite ($99.99/month): VIP access, concierge service, and exclusive benefits.
+- Free: Core Wingman booking features;
+- Pro ($10.00/month): Full Friends access, including matching requests, friend chat, feed, groups, and events.
 
 8.2 Billing
 
-Subscriptions are billed on a recurring basis (monthly or annually) until cancelled. You authorize us to charge your payment method on file for all subscription fees.
+Pro subscriptions are billed monthly on a recurring basis until cancelled. You authorize us to charge your payment method on file for all subscription fees.
 
 8.3 Automatic Renewal
 
@@ -246,10 +244,9 @@ We offer various verification levels including:
 
 - Email verification;
 - Phone verification;
-- ID verification (government-issued identification);
-- Premium verification (enhanced identity checks).
+- ID verification (government-issued identification).
 
-Higher verification levels unlock additional features and increase trust visibility.
+All users must complete required verification before booking activity.
 
 9.2 Verification Process
 

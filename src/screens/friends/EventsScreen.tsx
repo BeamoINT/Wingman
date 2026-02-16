@@ -39,7 +39,7 @@ const categoryIcons: Record<string, keyof typeof Ionicons.glyphMap> = {
 
 /**
  * EventsScreen - Browse and create local events
- * Subscription-gated: Viewing requires Plus, creating requires Elite
+ * Subscription-gated: Pro required
  */
 const EventsContent: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
@@ -308,7 +308,7 @@ const EventsContent: React.FC = () => {
         </TouchableOpacity>
       </View>
 
-      {/* Create Event Banner (for non-Elite users) */}
+      {/* Create Event Banner (for non-Pro users) */}
       {!canCreateEvents && (
         <TouchableOpacity
           style={styles.upgradeBanner}
@@ -316,7 +316,7 @@ const EventsContent: React.FC = () => {
         >
           <Ionicons name="calendar" size={20} color={colors.primary.coral} />
           <Text style={styles.upgradeBannerText}>
-            Upgrade to Elite to create your own events
+            Upgrade to Pro to create your own events
           </Text>
           <Ionicons name="chevron-forward" size={16} color={colors.text.tertiary} />
         </TouchableOpacity>

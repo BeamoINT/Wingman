@@ -12,10 +12,10 @@ import { haptics } from '../utils/haptics';
 // Screens
 import { BookingsScreen } from '../screens/BookingsScreen';
 import { DiscoverScreen } from '../screens/DiscoverScreen';
+import { FriendsScreen } from '../screens/friends';
 import { HomeScreen } from '../screens/HomeScreen';
 import { MessagesScreen } from '../screens/MessagesScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
-import { VerificationTabScreen } from '../screens/verification/VerificationTabScreen';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
@@ -111,8 +111,8 @@ export const MainTabNavigator: React.FC = () => {
             case 'Discover':
               iconName = focused ? 'compass' : 'compass-outline';
               break;
-            case 'Verification':
-              iconName = focused ? 'shield-checkmark' : 'shield-checkmark-outline';
+            case 'Friends':
+              iconName = focused ? 'people' : 'people-outline';
               break;
             case 'Bookings':
               iconName = focused ? 'calendar' : 'calendar-outline';
@@ -142,7 +142,7 @@ export const MainTabNavigator: React.FC = () => {
     >
       <Tab.Screen name="Home" component={HomeScreen} />
       <Tab.Screen name="Discover" component={DiscoverScreen} />
-      <Tab.Screen name="Verification" component={VerificationTabScreen} />
+      <Tab.Screen name="Friends" component={FriendsScreen} />
       <Tab.Screen name="Bookings" component={BookingsScreen} />
       <Tab.Screen name="Messages" component={MessagesScreen} />
       <Tab.Screen name="Profile" component={ProfileScreen} />

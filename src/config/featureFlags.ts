@@ -7,6 +7,12 @@ export interface MessagingFeatureFlags {
   encryptedReportEnabled: boolean;
 }
 
+export interface FriendsFeatureFlags {
+  friendsProModelEnabled: boolean;
+  friendsRankedListEnabled: boolean;
+  friendsConnectionRequestsEnabled: boolean;
+}
+
 function parseBool(value: unknown, fallback: boolean): boolean {
   if (typeof value === 'boolean') {
     return value;
@@ -39,3 +45,8 @@ export const messagingFeatureFlags: MessagingFeatureFlags = {
   encryptedReportEnabled: resolveFlag('encrypted_report_enabled', true),
 };
 
+export const friendsFeatureFlags: FriendsFeatureFlags = {
+  friendsProModelEnabled: resolveFlag('friends_pro_model_enabled', true),
+  friendsRankedListEnabled: resolveFlag('friends_ranked_list_enabled', true),
+  friendsConnectionRequestsEnabled: resolveFlag('friends_connection_requests_enabled', true),
+};

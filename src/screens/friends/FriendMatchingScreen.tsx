@@ -1,15 +1,24 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-    ActivityIndicator, Animated, Dimensions, PanResponder, StyleSheet, Text, TouchableOpacity, View
+  ActivityIndicator,
+  FlatList,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar } from '../../components';
-import { RequirementsGate } from '../../components/RequirementsGate';
+import { useAuth } from '../../context/AuthContext';
 import { useRequirements } from '../../context/RequirementsContext';
-import { fetchMatchingProfiles, recordMatchSwipe } from '../../services/api/friendsApi';
+import {
+  fetchRankedFriendProfiles,
+  sendConnectionRequest,
+} from '../../services/api/friendsApi';
 import { useTheme } from '../../context/ThemeContext';
 import type { ThemeTokens } from '../../theme/tokens';
 import { useThemedStyles } from '../../theme/useThemedStyles';
@@ -19,379 +28,283 @@ import { haptics } from '../../utils/haptics';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.25;
+const PAGE_SIZE = 20;
 
-/**
- * FriendMatchingScreen - Swipe-based friend matching
- * Subscription-gated: Requires Plus tier or higher
- */
 const FriendMatchingContent: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
   const { tokens } = useTheme();
   const styles = useThemedStyles(createStyles);
   const { colors } = tokens;
-  const { friendsLimits, friendsUsage, recordFriendsMatch } = useRequirements();
+  const { user } = useAuth();
+  const { canUseFriendsFeature } = useRequirements();
 
   const [profiles, setProfiles] = useState<FriendProfile[]>([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [showMatch, setShowMatch] = useState(false);
+  const [offset, setOffset] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isSubmittingSwipe, setIsSubmittingSwipe] = useState(false);
+  const [busyUserId, setBusyUserId] = useState<string | null>(null);
 
-  const pan = useRef(new Animated.ValueXY()).current;
+  const isPro = user?.subscriptionTier === 'pro';
 
-  const loadProfiles = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
+  const loadProfiles = useCallback(async (reset = false) => {
+    const nextOffset = reset ? 0 : offset;
+
+    if (reset) {
+      setIsRefreshing(true);
+      setHasMore(true);
+    } else if (nextOffset === 0) {
+      setIsLoading(true);
+    } else {
+      setIsLoadingMore(true);
+    }
+
+    if (!reset) {
+      setError(null);
+    }
 
     try {
-      const { profiles: loadedProfiles, error: profilesError } = await fetchMatchingProfiles();
+      const { profiles: loadedProfiles, error: profilesError } = await fetchRankedFriendProfiles(PAGE_SIZE, nextOffset);
       if (profilesError) {
-        console.error('Error loading matching profiles:', profilesError);
-        setError('Unable to load people to match with right now.');
-        setProfiles([]);
-        setCurrentIndex(0);
+        console.error('Error loading ranked friend profiles:', profilesError);
+        setError(profilesError.message || 'Unable to load friend recommendations right now.');
+        if (reset) {
+          setProfiles([]);
+        }
         return;
       }
 
-      setProfiles(loadedProfiles);
-      setCurrentIndex(0);
+      setProfiles((prev) => {
+        if (reset) return loadedProfiles;
+        const existing = new Set(prev.map((profile) => profile.id));
+        const merged = [...prev];
+        loadedProfiles.forEach((profile) => {
+          if (!existing.has(profile.id)) {
+            merged.push(profile);
+          }
+        });
+        return merged;
+      });
+      setOffset(nextOffset + loadedProfiles.length);
+      setHasMore(loadedProfiles.length === PAGE_SIZE);
     } catch (loadError) {
       console.error('Error in loadProfiles:', loadError);
-      setError('Something went wrong while loading friend matching.');
-      setProfiles([]);
-      setCurrentIndex(0);
+      setError('Unable to load friend recommendations right now.');
+      if (reset) {
+        setProfiles([]);
+      }
     } finally {
       setIsLoading(false);
+      setIsRefreshing(false);
+      setIsLoadingMore(false);
     }
-  }, []);
+  }, [offset]);
 
   useEffect(() => {
-    loadProfiles();
-  }, [loadProfiles]);
-
-  const currentProfile = profiles[currentIndex];
-  const matchesRemaining = friendsLimits.matchesPerMonth === 999
-    ? 999
-    : Math.max(friendsLimits.matchesPerMonth - friendsUsage.matchesThisMonth, 0);
-  const hasMatchesLeft = matchesRemaining > 0 || friendsLimits.matchesPerMonth === 999;
-
-  const resetPosition = useCallback(() => {
-    Animated.spring(pan, {
-      toValue: { x: 0, y: 0 },
-      useNativeDriver: true,
-    }).start();
-  }, [pan]);
-
-  const nextCard = useCallback(() => {
-    pan.setValue({ x: 0, y: 0 });
-    setCurrentIndex((prev) => prev + 1);
-  }, [pan]);
-
-  const swipeLeft = useCallback(async () => {
-    if (!currentProfile || isSubmittingSwipe) {
-      resetPosition();
-      return;
-    }
-
-    setIsSubmittingSwipe(true);
-    await haptics.light();
-
-    void recordMatchSwipe(currentProfile.userId || currentProfile.id, 'pass')
-      .then(({ error: swipeError }) => {
-        if (swipeError) {
-          console.error('Error recording pass swipe:', swipeError);
-        }
-      });
-
-    Animated.timing(pan, {
-      toValue: { x: -SCREEN_WIDTH * 1.5, y: 0 },
-      duration: 300,
-      useNativeDriver: true,
-    }).start(() => {
-      nextCard();
-      setIsSubmittingSwipe(false);
-    });
-  }, [currentProfile, isSubmittingSwipe, nextCard, pan, resetPosition]);
-
-  const swipeRight = useCallback(async () => {
-    if (!currentProfile || isSubmittingSwipe) {
-      resetPosition();
-      return;
-    }
-
-    if (!hasMatchesLeft) {
-      resetPosition();
-      navigation.navigate('Subscription');
-      return;
-    }
-
-    setIsSubmittingSwipe(true);
-    await haptics.medium();
-    void recordFriendsMatch(currentProfile.userId || currentProfile.id)
-      .then(() => {
-        setShowMatch(true);
-        setTimeout(() => setShowMatch(false), 2000);
-      })
-      .catch((swipeError) => {
-        console.error('Error recording like swipe:', swipeError);
-      });
-
-    Animated.timing(pan, {
-      toValue: { x: SCREEN_WIDTH * 1.5, y: 0 },
-      duration: 300,
-      useNativeDriver: true,
-    }).start(() => {
-      nextCard();
-      setIsSubmittingSwipe(false);
-    });
-  }, [
-    currentProfile,
-    hasMatchesLeft,
-    isSubmittingSwipe,
-    navigation,
-    nextCard,
-    pan,
-    recordFriendsMatch,
-    resetPosition,
-  ]);
-
-  const panResponder = useMemo(() => PanResponder.create({
-    onStartShouldSetPanResponder: () => true,
-    onPanResponderMove: (_, gesture) => {
-      pan.setValue({ x: gesture.dx, y: gesture.dy });
-    },
-    onPanResponderRelease: (_, gesture) => {
-      if (gesture.dx > SWIPE_THRESHOLD) {
-        void swipeRight();
-      } else if (gesture.dx < -SWIPE_THRESHOLD) {
-        void swipeLeft();
-      } else {
-        resetPosition();
-      }
-    },
-  }), [pan, resetPosition, swipeLeft, swipeRight]);
+    loadProfiles(true);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleBackPress = async () => {
     await haptics.light();
     navigation.goBack();
   };
 
-  const cardStyle = {
-    transform: [
-      { translateX: pan.x },
-      { translateY: pan.y },
-      {
-        rotate: pan.x.interpolate({
-          inputRange: [-SCREEN_WIDTH / 2, 0, SCREEN_WIDTH / 2],
-          outputRange: ['-10deg', '0deg', '10deg'],
-        }),
-      },
-    ],
+  const handleUpgradePress = async () => {
+    await haptics.medium();
+    navigation.navigate('Subscription');
   };
 
-  const likeOpacity = pan.x.interpolate({
-    inputRange: [0, SWIPE_THRESHOLD],
-    outputRange: [0, 1],
-    extrapolate: 'clamp',
-  });
+  const handleSendRequest = async (profile: FriendProfile) => {
+    const access = canUseFriendsFeature('match');
+    if (!access.met) {
+      navigation.navigate('Subscription');
+      return;
+    }
 
-  const nopeOpacity = pan.x.interpolate({
-    inputRange: [-SWIPE_THRESHOLD, 0],
-    outputRange: [1, 0],
-    extrapolate: 'clamp',
-  });
+    setBusyUserId(profile.userId);
+    await haptics.light();
+    const { success, error: requestError } = await sendConnectionRequest(profile.userId);
 
-  if (isLoading) {
+    if (!success || requestError) {
+      setError(requestError?.message || 'Unable to send request right now.');
+      setBusyUserId(null);
+      return;
+    }
+
+    setProfiles((previousProfiles) => previousProfiles.filter((entry) => entry.userId !== profile.userId));
+    setBusyUserId(null);
+  };
+
+  const renderCommonality = (icon: keyof typeof Ionicons.glyphMap, label: string, values: string[]) => {
+    if (!values.length) return null;
     return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton} onPress={handleBackPress}>
-            <Ionicons name="chevron-back" size={24} color={colors.text.primary} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Friend Matching</Text>
-          <View style={styles.headerRight} />
+      <View style={styles.commonalityRow}>
+        <Ionicons name={icon} size={14} color={colors.primary.blue} />
+        <Text style={styles.commonalityText}>
+          {label}: {values.slice(0, 3).join(', ')}
+        </Text>
+      </View>
+    );
+  };
+
+  const renderProfile = ({ item }: { item: FriendProfile }) => {
+    const name = `${item.firstName} ${item.lastName}`.trim();
+    const city = [item.location.city, item.location.state].filter(Boolean).join(', ');
+    const score = Math.max(0, Math.min(item.compatibilityScore || 0, 100));
+    const isBusy = busyUserId === item.userId;
+
+    return (
+      <View style={styles.profileCard}>
+        <View style={styles.profileHeader}>
+          <Avatar
+            source={item.avatar}
+            name={name}
+            size="large"
+          />
+          <View style={styles.profileMeta}>
+            <View style={styles.nameRow}>
+              <Text style={styles.profileName}>{name}</Text>
+              {item.verificationLevel !== 'basic' ? (
+                <Ionicons name="checkmark-circle" size={18} color={colors.primary.blue} />
+              ) : null}
+            </View>
+            <Text style={styles.locationText}>{city || 'Location unavailable'}</Text>
+            <View style={styles.scorePill}>
+              <Ionicons name="sparkles-outline" size={14} color={colors.primary.blue} />
+              <Text style={styles.scoreText}>{score}% compatibility</Text>
+            </View>
+          </View>
         </View>
-        <View style={styles.emptyState}>
-          <ActivityIndicator size="large" color={colors.primary.blue} />
-          <Text style={styles.emptyTitle}>Loading profiles...</Text>
+
+        <Text style={styles.profileBio} numberOfLines={2}>
+          {item.bio || 'Looking for meaningful friendships on Wingman.'}
+        </Text>
+
+        <View style={styles.commonalities}>
+          {renderCommonality('heart-outline', 'Shared interests', item.commonalities?.interests || [])}
+          {renderCommonality('chatbubble-ellipses-outline', 'Shared languages', item.commonalities?.languages || [])}
+          {renderCommonality('flag-outline', 'Shared goals', item.commonalities?.goals || [])}
+        </View>
+
+        <View style={styles.actions}>
+          <TouchableOpacity
+            style={[styles.requestButton, !isPro && styles.requestButtonLocked]}
+            onPress={() => handleSendRequest(item)}
+            disabled={isBusy}
+          >
+            <Ionicons
+              name={isPro ? 'person-add' : 'lock-closed'}
+              size={16}
+              color={isPro ? colors.text.primary : colors.text.tertiary}
+            />
+            <Text style={[styles.requestButtonText, !isPro && styles.requestButtonTextLocked]}>
+              {isBusy
+                ? 'Sending...'
+                : isPro
+                  ? 'Send Request'
+                  : 'Pro Required'}
+            </Text>
+          </TouchableOpacity>
         </View>
       </View>
     );
-  }
+  };
 
-  if (error && profiles.length === 0) {
+  const listFooter = useMemo(() => {
+    if (!isLoadingMore) return null;
     return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton} onPress={handleBackPress}>
-            <Ionicons name="chevron-back" size={24} color={colors.text.primary} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Friend Matching</Text>
-          <View style={styles.headerRight} />
-        </View>
-        <View style={styles.emptyState}>
-          <Ionicons name="alert-circle-outline" size={56} color={colors.status.error} />
-          <Text style={styles.emptyTitle}>Unable to Load Matches</Text>
-          <Text style={styles.emptySubtitle}>{error}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={() => loadProfiles()}>
-            <Text style={styles.retryButtonText}>Try Again</Text>
-          </TouchableOpacity>
-        </View>
+      <View style={styles.footerLoading}>
+        <ActivityIndicator size="small" color={colors.primary.blue} />
       </View>
     );
-  }
-
-  if (!currentProfile) {
-    return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton} onPress={handleBackPress}>
-            <Ionicons name="chevron-back" size={24} color={colors.text.primary} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Friend Matching</Text>
-          <View style={styles.headerRight} />
-        </View>
-        <View style={styles.emptyState}>
-          <Ionicons name="people-outline" size={64} color={colors.text.tertiary} />
-          <Text style={styles.emptyTitle}>No More Profiles</Text>
-          <Text style={styles.emptySubtitle}>Check back later for new people to meet</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={() => loadProfiles()}>
-            <Text style={styles.retryButtonText}>Refresh</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
-  }
+  }, [isLoadingMore, colors.primary.blue, styles.footerLoading]);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={handleBackPress}>
           <Ionicons name="chevron-back" size={24} color={colors.text.primary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Friend Matching</Text>
-        <View style={styles.matchCounter}>
-          <Ionicons name="heart" size={16} color={colors.primary.coral} />
-          <Text style={styles.matchCountText}>
-            {friendsLimits.matchesPerMonth === 999 ? '∞' : matchesRemaining}
-          </Text>
-        </View>
+        <TouchableOpacity style={styles.headerRight} onPress={() => navigation.navigate('FriendRequests')}>
+          <Ionicons name="mail-outline" size={20} color={colors.primary.blue} />
+        </TouchableOpacity>
       </View>
 
-      {/* Card Stack */}
-      <View style={styles.cardContainer}>
-        <Animated.View
-          style={[styles.card, cardStyle]}
-          {...panResponder.panHandlers}
-        >
-          {/* Like/Nope Labels */}
-          <Animated.View style={[styles.labelContainer, styles.likeLabel, { opacity: likeOpacity }]}>
-            <Text style={styles.labelText}>LIKE</Text>
-          </Animated.View>
-          <Animated.View style={[styles.labelContainer, styles.nopeLabel, { opacity: nopeOpacity }]}>
-            <Text style={styles.labelText}>NOPE</Text>
-          </Animated.View>
+      {!isPro ? (
+        <TouchableOpacity style={styles.previewBanner} onPress={handleUpgradePress}>
+          <Ionicons name="lock-closed-outline" size={18} color={colors.primary.coral} />
+          <Text style={styles.previewBannerText}>
+            You are in preview mode. Upgrade to Pro to send friend requests.
+          </Text>
+          <Ionicons name="chevron-forward" size={16} color={colors.text.tertiary} />
+        </TouchableOpacity>
+      ) : null}
 
-          {/* Profile Content */}
-          <View style={styles.cardContent}>
-            <Avatar
-              source={currentProfile.avatar}
-              name={`${currentProfile.firstName} ${currentProfile.lastName}`}
-              size="large"
-              showOnlineStatus
-              isOnline={currentProfile.isOnline}
-            />
-
-            <View style={styles.profileInfo}>
-              <View style={styles.nameRow}>
-                <Text style={styles.profileName}>
-                  {currentProfile.firstName}, {currentProfile.age}
-                </Text>
-                {currentProfile.verificationLevel !== 'basic' && (
-                  <Ionicons name="checkmark-circle" size={20} color={colors.primary.blue} />
-                )}
+      <FlatList
+        data={profiles}
+        renderItem={renderProfile}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={(
+          <RefreshControl
+            tintColor={colors.primary.blue}
+            refreshing={isRefreshing}
+            onRefresh={() => {
+              setOffset(0);
+              loadProfiles(true);
+            }}
+          />
+        )}
+        onEndReachedThreshold={0.4}
+        onEndReached={() => {
+          if (!isLoading && !isRefreshing && !isLoadingMore && hasMore) {
+            loadProfiles(false);
+          }
+        }}
+        ListFooterComponent={listFooter}
+        ItemSeparatorComponent={() => <View style={styles.separator} />}
+        ListEmptyComponent={
+          isLoading
+            ? (
+              <View style={styles.emptyState}>
+                <ActivityIndicator size="large" color={colors.primary.blue} />
+                <Text style={styles.emptyTitle}>Finding great friend matches...</Text>
               </View>
-              <Text style={styles.profileLocation}>
-                {[currentProfile.location.city, currentProfile.location.state].filter(Boolean).join(', ')}
-              </Text>
-
-              {currentProfile.mutualFriendsCount > 0 && (
-                <View style={styles.mutualFriends}>
-                  <Ionicons name="people" size={14} color={colors.primary.blue} />
-                  <Text style={styles.mutualFriendsText}>
-                    {currentProfile.mutualFriendsCount} mutual friends
-                  </Text>
-                </View>
-              )}
-
-              <Text style={styles.profileBio} numberOfLines={3}>
-                {currentProfile.bio || 'Looking to make new friends on Wingman.'}
-              </Text>
-
-              {currentProfile.interests.length > 0 && (
-                <View style={styles.interests}>
-                  {currentProfile.interests.slice(0, 4).map((interest, index) => (
-                    <View key={index} style={styles.interestTag}>
-                      <Text style={styles.interestText}>{interest}</Text>
-                    </View>
-                  ))}
-                </View>
-              )}
-            </View>
-          </View>
-        </Animated.View>
-      </View>
-
-      {/* Action Buttons */}
-      <View style={styles.actions}>
-        <TouchableOpacity
-          style={[styles.actionButton, styles.nopeButton]}
-          onPress={() => void swipeLeft()}
-          disabled={isSubmittingSwipe}
-        >
-          <Ionicons name="close" size={32} color={colors.status.error} />
-        </TouchableOpacity>
-
-        <TouchableOpacity style={[styles.actionButton, styles.superLikeButton]} disabled>
-          <Ionicons name="star" size={28} color={colors.primary.coral} />
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.actionButton, styles.likeButton]}
-          onPress={() => void swipeRight()}
-          disabled={isSubmittingSwipe}
-        >
-          <Ionicons name="heart" size={32} color={colors.status.success} />
-        </TouchableOpacity>
-      </View>
-
-      {/* Match Overlay */}
-      {showMatch && (
-        <View style={styles.matchOverlay}>
-          <Text style={styles.matchText}>Like Sent</Text>
-          <Text style={styles.matchSubtext}>
-            You liked {currentProfile.firstName}
-          </Text>
-        </View>
-      )}
+            )
+            : (
+              <View style={styles.emptyState}>
+                <Ionicons
+                  name={error ? 'alert-circle-outline' : 'people-outline'}
+                  size={56}
+                  color={error ? colors.status.error : colors.text.tertiary}
+                />
+                <Text style={styles.emptyTitle}>
+                  {error ? 'Unable to load matches' : 'No new matches right now'}
+                </Text>
+                <Text style={styles.emptySubtitle}>
+                  {error || 'Check back soon for new friend recommendations.'}
+                </Text>
+                <TouchableOpacity style={styles.retryButton} onPress={() => {
+                  setOffset(0);
+                  loadProfiles(true);
+                }}>
+                  <Text style={styles.retryButtonText}>Refresh</Text>
+                </TouchableOpacity>
+              </View>
+            )
+        }
+      />
     </View>
   );
 };
 
 export const FriendMatchingScreen: React.FC = () => {
-  return (
-    <RequirementsGate
-      feature="friends_matching"
-      modalTitle="Upgrade to Match"
-    >
-      <FriendMatchingContent />
-    </RequirementsGate>
-  );
+  return <FriendMatchingContent />;
 };
 
 const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
@@ -419,67 +332,51 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
   },
   headerRight: {
     width: 40,
-  },
-  matchCounter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    backgroundColor: colors.background.card,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: spacing.radius.full,
-  },
-  matchCountText: {
-    ...typography.presets.body,
-    color: colors.text.primary,
-    fontWeight: '600',
-  },
-  cardContainer: {
-    flex: 1,
+    height: 40,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: spacing.screenPadding,
   },
-  card: {
-    width: SCREEN_WIDTH - spacing.screenPadding * 2,
-    backgroundColor: colors.background.card,
-    borderRadius: spacing.radius.xl,
-    padding: spacing.lg,
-    shadowColor: colors.shadow.heavy,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  labelContainer: {
-    position: 'absolute',
-    top: 20,
-    zIndex: 10,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: spacing.radius.md,
-    borderWidth: 3,
-  },
-  likeLabel: {
-    right: 20,
-    borderColor: colors.status.success,
-  },
-  nopeLabel: {
-    left: 20,
-    borderColor: colors.status.error,
-  },
-  labelText: {
-    ...typography.presets.h4,
-    fontWeight: '700',
-    color: colors.text.primary,
-  },
-  cardContent: {
-    alignItems: 'center',
-    gap: spacing.lg,
-  },
-  profileInfo: {
+  previewBanner: {
+    flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+    marginHorizontal: spacing.screenPadding,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+    backgroundColor: colors.background.card,
+    borderRadius: spacing.radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  previewBannerText: {
+    ...typography.presets.caption,
+    color: colors.text.secondary,
+    flex: 1,
+  },
+  listContent: {
+    paddingHorizontal: spacing.screenPadding,
+    paddingBottom: spacing.massive,
+  },
+  separator: {
+    height: spacing.md,
+  },
+  profileCard: {
+    borderRadius: spacing.radius.xl,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+    backgroundColor: colors.background.card,
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  profileHeader: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  profileMeta: {
+    flex: 1,
+    gap: spacing.xs,
+    justifyContent: 'center',
   },
   nameRow: {
     flexDirection: 'row',
@@ -487,84 +384,84 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     gap: spacing.xs,
   },
   profileName: {
-    ...typography.presets.h3,
+    ...typography.presets.h4,
     color: colors.text.primary,
   },
-  profileLocation: {
-    ...typography.presets.body,
+  locationText: {
+    ...typography.presets.bodySmall,
     color: colors.text.secondary,
   },
-  mutualFriends: {
+  scorePill: {
+    alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
     backgroundColor: colors.primary.blueSoft,
+    borderRadius: spacing.radius.full,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
-    borderRadius: spacing.radius.full,
   },
-  mutualFriendsText: {
+  scoreText: {
     ...typography.presets.caption,
     color: colors.primary.blue,
   },
   profileBio: {
     ...typography.presets.body,
     color: colors.text.secondary,
-    textAlign: 'center',
     lineHeight: 22,
   },
-  interests: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
+  commonalities: {
     gap: spacing.xs,
   },
-  interestTag: {
-    backgroundColor: colors.background.tertiary,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: spacing.radius.full,
+  commonalityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
   },
-  interestText: {
+  commonalityText: {
     ...typography.presets.caption,
-    color: colors.text.primary,
+    color: colors.text.secondary,
+    flex: 1,
   },
   actions: {
     flexDirection: 'row',
-    justifyContent: 'center',
+    justifyContent: 'flex-end',
+  },
+  requestButton: {
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.lg,
-    paddingVertical: spacing.xl,
+    gap: spacing.xs,
+    backgroundColor: colors.primary.blue,
+    borderRadius: spacing.radius.full,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
-  actionButton: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.background.card,
-    shadowColor: colors.shadow.heavy,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+  requestButtonLocked: {
+    backgroundColor: colors.surface.level1,
+    borderWidth: 1,
+    borderColor: colors.border.light,
   },
-  nopeButton: {},
-  superLikeButton: {
-    width: 52,
-    height: 52,
+  requestButtonText: {
+    ...typography.presets.button,
+    color: colors.text.primary,
   },
-  likeButton: {},
+  requestButtonTextLocked: {
+    color: colors.text.secondary,
+  },
+  footerLoading: {
+    paddingVertical: spacing.lg,
+  },
   emptyState: {
-    flex: 1,
+    minHeight: 360,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.md,
-    padding: spacing.xl,
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
   },
   emptyTitle: {
     ...typography.presets.h3,
     color: colors.text.primary,
+    textAlign: 'center',
   },
   emptySubtitle: {
     ...typography.presets.body,
@@ -580,21 +477,6 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
   },
   retryButtonText: {
     ...typography.presets.button,
-    color: colors.text.primary,
-  },
-  matchOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: colors.surface.overlay,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.md,
-  },
-  matchText: {
-    ...typography.presets.h1,
-    color: colors.primary.coral,
-  },
-  matchSubtext: {
-    ...typography.presets.body,
     color: colors.text.primary,
   },
 });

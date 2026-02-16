@@ -60,6 +60,7 @@ export const ProfileScreen: React.FC = () => {
   );
 
   const fullName = user ? `${user.firstName} ${user.lastName}`.trim() : 'User';
+  const isProSubscriber = user?.subscriptionTier === 'pro';
 
   const handleMenuPress = async (item: MenuItem) => {
     await haptics.light();
@@ -121,9 +122,9 @@ export const ProfileScreen: React.FC = () => {
       id: 'subscription',
       icon: 'star',
       label: 'Subscription',
-      subtitle: 'Free Plan',
-      badge: 'Upgrade',
-      badgeVariant: 'gold',
+      subtitle: isProSubscriber ? 'Pro Active' : 'Free',
+      badge: isProSubscriber ? undefined : 'Upgrade',
+      badgeVariant: isProSubscriber ? undefined : 'gold',
       onPress: () => navigation.navigate('Subscription'),
     },
     {

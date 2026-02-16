@@ -128,10 +128,8 @@ Disputes may result in:
       id: 'subscriptions',
       title: '5. Subscription Refunds',
       content: `5.1 SUBSCRIPTION TIERS
-We offer the following subscription tiers:
-- Plus: $14.99/month
-- Premium: $29.99/month
-- Elite: $99.99/month
+We offer one subscription tier:
+- Pro: $10.00/month
 
 5.2 INITIAL SUBSCRIPTION REFUND
 If you cancel within 48 hours of your FIRST subscription purchase, you may request a full refund. To request:
@@ -152,13 +150,8 @@ You may cancel your subscription at any time:
 - Your subscription remains active until the end of the current billing period
 - No partial refunds for unused time
 
-5.5 ANNUAL SUBSCRIPTIONS
-Annual subscriptions are non-refundable after the 48-hour initial period. Annual subscriptions may not be converted to monthly subscriptions mid-term.
-
-5.6 SUBSCRIPTION UPGRADES/DOWNGRADES
-- Upgrades: Prorated charge for the difference
-- Downgrades: Take effect at the next billing cycle
-- No refunds for the current billing period when downgrading`,
+5.5 PLAN CHANGES
+If we introduce additional plans in the future, any upgrade or downgrade terms will be disclosed at that time.`,
     },
     {
       id: 'gift-cards',

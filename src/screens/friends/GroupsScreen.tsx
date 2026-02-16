@@ -40,7 +40,7 @@ const categoryIcons: Record<string, keyof typeof Ionicons.glyphMap> = {
 
 /**
  * GroupsScreen - Browse and join interest-based groups
- * Subscription-gated: Requires Plus tier or higher
+ * Subscription-gated: Pro required
  */
 const GroupsContent: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();

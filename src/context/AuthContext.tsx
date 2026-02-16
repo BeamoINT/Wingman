@@ -8,6 +8,7 @@ import {
   heartbeatDeviceIdentity,
 } from '../services/crypto/deviceIdentity';
 import { getMessagingIdentity } from '../services/crypto/messagingEncryption';
+import { initRevenueCat } from '../services/subscription/revenueCat';
 import { supabase } from '../services/supabase';
 import type { SignupData, User } from '../types';
 import { defaultSignupData } from '../types';
@@ -87,6 +88,20 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
  */
 function transformSupabaseUser(supabaseUser: SupabaseUser, profile?: any): User {
   const metadata = supabaseUser.user_metadata || {};
+  const normalizedSubscriptionTier = profile?.subscription_tier === 'pro' ? 'pro' : 'free';
+  const normalizedProStatus = (() => {
+    const raw = String(profile?.pro_status || '').trim();
+    switch (raw) {
+      case 'active':
+      case 'grace':
+      case 'past_due':
+      case 'canceled':
+      case 'inactive':
+        return raw;
+      default:
+        return 'inactive';
+    }
+  })();
 
   return {
     id: supabaseUser.id,
@@ -104,8 +119,9 @@ function transformSupabaseUser(supabaseUser: SupabaseUser, profile?: any): User 
       country: profile.country || 'USA',
     } : undefined,
     isVerified: profile?.id_verified === true,
-    isPremium: profile?.subscription_tier !== 'free',
-    subscriptionTier: profile?.subscription_tier || 'free',
+    isPremium: normalizedSubscriptionTier === 'pro',
+    subscriptionTier: normalizedSubscriptionTier,
+    proStatus: normalizedProStatus,
     createdAt: supabaseUser.created_at || new Date().toISOString(),
     lastActive: new Date().toISOString(),
   };
@@ -167,6 +183,13 @@ async function primeSecureMessagingIdentity(userId: string): Promise<void> {
       return;
     }
     safeLog('Secure messaging identity setup failed', { error: String(error) });
+  }
+}
+
+async function primeSubscriptionIdentity(userId: string): Promise<void> {
+  const result = await initRevenueCat(userId);
+  if (!result.success && result.error && !result.error.toLowerCase().includes('unavailable')) {
+    safeLog('RevenueCat initialization skipped', { error: result.error });
   }
 }
 
@@ -237,6 +260,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setSession(currentSession);
           setSupabaseUser(currentSession.user);
           void primeSecureMessagingIdentity(currentSession.user.id);
+          void primeSubscriptionIdentity(currentSession.user.id);
 
           const storedUser = await getStoredUser();
           setUser(toFallbackAppUser(currentSession.user, storedUser));
@@ -310,6 +334,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setIsNewUser(false);
         setUser((prevUser) => toFallbackAppUser(newSession.user, prevUser));
         void primeSecureMessagingIdentity(newSession.user.id);
+        void primeSubscriptionIdentity(newSession.user.id);
 
         // Supabase auth callbacks should not await async work, or OTP flows can stall.
         void (async () => {

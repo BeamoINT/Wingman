@@ -62,7 +62,8 @@
           "cameraPermission": "Wingman needs camera access so you can capture encrypted images and videos.",
           "microphonePermission": "Wingman needs microphone access when you record encrypted video messages."
         }
-      ]
+      ],
+      "react-native-purchases"
     ]
   }
 }

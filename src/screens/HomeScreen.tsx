@@ -130,7 +130,7 @@ export const HomeScreen: React.FC = () => {
           </Text>
         </View>
 
-        {/* Premium Banner */}
+        {/* Pro Banner */}
         <TouchableOpacity onPress={handleSubscriptionPress} activeOpacity={0.9}>
           <LinearGradient
             colors={colors.gradients.premium}
@@ -141,9 +141,9 @@ export const HomeScreen: React.FC = () => {
             <View style={styles.premiumContent}>
               <Ionicons name="star" size={24} color={colors.primary.darkBlack} />
               <View style={styles.premiumText}>
-                <Text style={styles.premiumTitle}>Upgrade to Premium</Text>
+                <Text style={styles.premiumTitle}>Upgrade to Pro</Text>
                 <Text style={styles.premiumSubtitle}>
-                  Unlimited bookings & make real friends
+                  Friends matching, requests, groups, and events
                 </Text>
               </View>
             </View>
