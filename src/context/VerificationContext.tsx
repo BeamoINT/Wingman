@@ -12,11 +12,14 @@ import React, {
     createContext, useCallback, useContext, useEffect, useMemo, useState
 } from 'react';
 import {
-    getVerificationEvents, getVerificationStatus, subscribeToVerificationUpdates
+    getVerificationEvents,
+    getVerificationStatus,
+    logVerificationEvent,
+    subscribeToVerificationUpdates
 } from '../services/api/verificationApi';
 import type {
     OverallVerificationStatus, VerificationEvent,
-    VerificationLevel, VerificationState, VerificationStep
+    VerificationLevel, VerificationState, VerificationStatusResponse, VerificationStep
 } from '../types/verification';
 import { useAuth } from './AuthContext';
 
@@ -56,6 +59,49 @@ export const VerificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   // Data Loading
   // ===========================================
 
+  const ensureVerificationHistoryForStatus = useCallback(async (
+    userId: string,
+    status: VerificationStatusResponse,
+    existingEvents: VerificationEvent[]
+  ): Promise<VerificationEvent[]> => {
+    const successfulTypes = new Set(
+      existingEvents
+        .filter((event) => event.eventStatus === 'success')
+        .map((event) => event.eventType)
+    );
+
+    const missingEventTypes: Array<'email_verified' | 'phone_verified' | 'id_verified'> = [];
+    if (status.emailVerified && !successfulTypes.has('email_verified')) {
+      missingEventTypes.push('email_verified');
+    }
+    if (status.phoneVerified && !successfulTypes.has('phone_verified')) {
+      missingEventTypes.push('phone_verified');
+    }
+    if (status.idVerified && !successfulTypes.has('id_verified')) {
+      missingEventTypes.push('id_verified');
+    }
+
+    if (missingEventTypes.length === 0) {
+      return existingEvents;
+    }
+
+    const now = new Date().toISOString();
+    await Promise.all(
+      missingEventTypes.map((eventType) => logVerificationEvent(
+        userId,
+        eventType,
+        'success',
+        {
+          source: 'auto_sync',
+          synced_at: now,
+        }
+      ))
+    );
+
+    // Re-query after inserts so the UI shows canonical DB history rows.
+    return getVerificationEvents(userId);
+  }, []);
+
   const refreshStatus = useCallback(async () => {
     if (!user?.id) {
       setIsLoading(false);
@@ -71,24 +117,38 @@ export const VerificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         setPhoneVerified(status.phoneVerified);
         setIdVerified(status.idVerified);
         setVerificationLevel(status.verificationLevel);
+
+        const existingEvents = await getVerificationEvents(user.id);
+        const syncedEvents = await ensureVerificationHistoryForStatus(user.id, status, existingEvents);
+        setHistory(syncedEvents);
       }
     } catch (error) {
       console.error('Error refreshing verification status:', error);
     } finally {
       setIsLoading(false);
     }
-  }, [user?.id]);
+  }, [ensureVerificationHistoryForStatus, user?.id]);
 
   const loadHistory = useCallback(async () => {
     if (!user?.id) return;
 
     try {
-      const events = await getVerificationEvents(user.id);
+      const [events, status] = await Promise.all([
+        getVerificationEvents(user.id),
+        getVerificationStatus(user.id),
+      ]);
+
+      if (status) {
+        const syncedEvents = await ensureVerificationHistoryForStatus(user.id, status, events);
+        setHistory(syncedEvents);
+        return;
+      }
+
       setHistory(events);
     } catch (error) {
       console.error('Error loading verification history:', error);
     }
-  }, [user?.id]);
+  }, [ensureVerificationHistoryForStatus, user?.id]);
 
   // ===========================================
   // Computed Values

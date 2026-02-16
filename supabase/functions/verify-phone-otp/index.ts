@@ -168,6 +168,26 @@ serve(async (req) => {
           );
         }
       }
+
+      // Best-effort verification history logging.
+      // Do not fail phone verification if history table is unavailable.
+      const { error: verificationEventError } = await supabase
+        .from('verification_events')
+        .insert({
+          user_id: user.id,
+          event_type: 'phone_verified',
+          event_status: 'success',
+          event_data: {
+            source: 'verify-phone-otp',
+            verified_at: nowIso,
+          },
+        });
+
+      if (verificationEventError) {
+        if (!['42P01', 'PGRST205'].includes(String(verificationEventError.code || ''))) {
+          console.error('Failed to log verification event:', verificationEventError.message);
+        }
+      }
     }
 
     return new Response(

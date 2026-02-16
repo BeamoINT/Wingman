@@ -18,6 +18,16 @@ type QueryError = {
   message?: string | null;
 };
 
+type DerivedVerificationSnapshot = {
+  emailVerified: boolean;
+  phoneVerified: boolean;
+  idVerified: boolean;
+  emailVerifiedAt: string | null;
+  phoneVerifiedAt: string | null;
+  idVerifiedAt: string | null;
+  createdAt: string | null;
+};
+
 let verificationEventsTableMissing = false;
 
 function isMissingVerificationEventsTableError(error: unknown): boolean {
@@ -36,6 +46,200 @@ function isMissingVerificationEventsTableError(error: unknown): boolean {
   return false;
 }
 
+function sortEventsByCreatedAtDesc(events: VerificationEvent[]): VerificationEvent[] {
+  return [...events].sort((a, b) => (
+    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  ));
+}
+
+function createDefaultDerivedVerificationSnapshot(): DerivedVerificationSnapshot {
+  return {
+    emailVerified: false,
+    phoneVerified: false,
+    idVerified: false,
+    emailVerifiedAt: null,
+    phoneVerifiedAt: null,
+    idVerifiedAt: null,
+    createdAt: null,
+  };
+}
+
+function isMissingProfileColumnError(error: QueryError | null | undefined): boolean {
+  return String(error?.code || '') === '42703';
+}
+
+async function getAuthEmailConfirmedAt(userId: string): Promise<string | null> {
+  try {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (session?.user?.id === userId && typeof session.user.email_confirmed_at === 'string') {
+      return session.user.email_confirmed_at;
+    }
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (user?.id === userId && typeof user.email_confirmed_at === 'string') {
+      return user.email_confirmed_at;
+    }
+  } catch (error) {
+    console.error('Error loading auth email verification state:', error);
+  }
+
+  return null;
+}
+
+async function getProfileVerificationTimestamp(
+  userId: string,
+  column: 'email_verified_at' | 'phone_verified_at' | 'id_verified_at'
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select(column)
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (error) {
+    if (
+      isMissingProfileColumnError(error)
+      || error.code === 'PGRST116'
+      || error.code === '42P01'
+    ) {
+      return null;
+    }
+
+    console.error(`Error fetching profile ${column}:`, error);
+    return null;
+  }
+
+  const profile = (data || {}) as Record<string, unknown>;
+  return typeof profile[column] === 'string' ? profile[column] : null;
+}
+
+async function getProfileVerificationSnapshot(userId: string): Promise<DerivedVerificationSnapshot> {
+  const snapshot = createDefaultDerivedVerificationSnapshot();
+  const selectCandidates = [
+    'email_verified,phone_verified,id_verified,created_at',
+    'phone_verified,id_verified,created_at',
+    'email_verified,id_verified,created_at',
+    'email_verified,phone_verified,created_at',
+    'id_verified,created_at',
+    'created_at',
+  ];
+
+  for (const columns of selectCandidates) {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select(columns)
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (error) {
+      if (isMissingProfileColumnError(error)) {
+        continue;
+      }
+
+      if (error.code === 'PGRST116' || error.code === '42P01') {
+        return snapshot;
+      }
+
+      console.error('Error deriving verification history from profile:', error);
+      return snapshot;
+    }
+
+    const profile = (data || {}) as Record<string, unknown>;
+    snapshot.emailVerified = profile.email_verified === true;
+    snapshot.phoneVerified = profile.phone_verified === true;
+    snapshot.idVerified = profile.id_verified === true;
+    snapshot.createdAt = typeof profile.created_at === 'string' ? profile.created_at : null;
+    break;
+  }
+
+  const [emailVerifiedAt, phoneVerifiedAt, idVerifiedAt] = await Promise.all([
+    getProfileVerificationTimestamp(userId, 'email_verified_at'),
+    getProfileVerificationTimestamp(userId, 'phone_verified_at'),
+    getProfileVerificationTimestamp(userId, 'id_verified_at'),
+  ]);
+
+  snapshot.emailVerifiedAt = emailVerifiedAt;
+  snapshot.phoneVerifiedAt = phoneVerifiedAt;
+  snapshot.idVerifiedAt = idVerifiedAt;
+
+  return snapshot;
+}
+
+async function getDerivedVerificationEvents(userId: string): Promise<VerificationEvent[]> {
+  try {
+    const [authEmailConfirmedAt, profile] = await Promise.all([
+      getAuthEmailConfirmedAt(userId),
+      getProfileVerificationSnapshot(userId),
+    ]);
+
+    const fallbackTimestamp = (
+      profile.createdAt
+      || authEmailConfirmedAt
+      || new Date().toISOString()
+    );
+
+    const emailVerified = !!authEmailConfirmedAt || profile.emailVerified;
+    const phoneVerified = profile.phoneVerified;
+    const idVerified = profile.idVerified;
+
+    const events: VerificationEvent[] = [];
+
+    if (emailVerified) {
+      events.push({
+        id: `derived-email-${userId}`,
+        userId,
+        eventType: 'email_verified',
+        eventStatus: 'success',
+        eventData: { source: 'derived_profile_state' },
+        createdAt: (
+          profile.emailVerifiedAt
+          || authEmailConfirmedAt
+          || fallbackTimestamp
+        ),
+      });
+    }
+
+    if (phoneVerified) {
+      events.push({
+        id: `derived-phone-${userId}`,
+        userId,
+        eventType: 'phone_verified',
+        eventStatus: 'success',
+        eventData: { source: 'derived_profile_state' },
+        createdAt: (
+          profile.phoneVerifiedAt
+          || fallbackTimestamp
+        ),
+      });
+    }
+
+    if (idVerified) {
+      events.push({
+        id: `derived-id-${userId}`,
+        userId,
+        eventType: 'id_verified',
+        eventStatus: 'success',
+        eventData: { source: 'derived_profile_state' },
+        createdAt: (
+          profile.idVerifiedAt
+          || fallbackTimestamp
+        ),
+      });
+    }
+
+    return sortEventsByCreatedAtDesc(events);
+  } catch (error) {
+    console.error('Error deriving verification events:', error);
+    return [];
+  }
+}
+
 // ===========================================
 // Verification Events Operations
 // ===========================================
@@ -48,7 +252,7 @@ export async function getVerificationEvents(
   limit = 50
 ): Promise<VerificationEvent[]> {
   if (verificationEventsTableMissing) {
-    return [];
+    return getDerivedVerificationEvents(userId);
   }
 
   const { data, error } = await supabase
@@ -61,15 +265,21 @@ export async function getVerificationEvents(
   if (error) {
     if (isMissingVerificationEventsTableError(error)) {
       verificationEventsTableMissing = true;
-      return [];
+      return getDerivedVerificationEvents(userId);
     }
 
     console.error('Error fetching verification events:', error);
-    return [];
+    return getDerivedVerificationEvents(userId);
   }
 
   verificationEventsTableMissing = false;
-  return (data || []).map(transformVerificationEvent);
+  const transformed = (data || []).map(transformVerificationEvent);
+  if (transformed.length > 0) {
+    return transformed;
+  }
+
+  // If table exists but has no rows for this user yet, show a derived timeline.
+  return getDerivedVerificationEvents(userId);
 }
 
 /**
@@ -120,10 +330,7 @@ export async function logVerificationEvent(
  */
 export async function getVerificationStatus(userId: string): Promise<VerificationStatusResponse | null> {
   try {
-    const {
-      data: { user: authUser },
-    } = await supabase.auth.getUser();
-    const authEmailVerified = !!authUser?.email_confirmed_at;
+    const authEmailVerified = !!(await getAuthEmailConfirmedAt(userId));
 
     const selectCandidates = [
       'verification_level,email_verified,phone_verified,id_verified',
