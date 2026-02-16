@@ -13,6 +13,29 @@ import type {
 } from '../../types/verification';
 import { supabase } from '../supabase';
 
+type QueryError = {
+  code?: string | null;
+  message?: string | null;
+};
+
+let verificationEventsTableMissing = false;
+
+function isMissingVerificationEventsTableError(error: unknown): boolean {
+  const typedError = error as QueryError | null | undefined;
+  const code = String(typedError?.code || '');
+  const message = String(typedError?.message || '').toLowerCase();
+
+  if (code === '42P01') {
+    return true;
+  }
+
+  if (code === 'PGRST205') {
+    return message.includes('verification_events');
+  }
+
+  return false;
+}
+
 // ===========================================
 // Verification Events Operations
 // ===========================================
@@ -24,6 +47,10 @@ export async function getVerificationEvents(
   userId: string,
   limit = 50
 ): Promise<VerificationEvent[]> {
+  if (verificationEventsTableMissing) {
+    return [];
+  }
+
   const { data, error } = await supabase
     .from('verification_events')
     .select('*')
@@ -32,10 +59,16 @@ export async function getVerificationEvents(
     .limit(limit);
 
   if (error) {
+    if (isMissingVerificationEventsTableError(error)) {
+      verificationEventsTableMissing = true;
+      return [];
+    }
+
     console.error('Error fetching verification events:', error);
     return [];
   }
 
+  verificationEventsTableMissing = false;
   return (data || []).map(transformVerificationEvent);
 }
 
@@ -48,6 +81,10 @@ export async function logVerificationEvent(
   eventStatus: 'success' | 'failed' | 'pending',
   eventData?: Record<string, unknown>
 ): Promise<VerificationEvent | null> {
+  if (verificationEventsTableMissing) {
+    return null;
+  }
+
   const { data, error } = await supabase
     .from('verification_events')
     .insert({
@@ -60,10 +97,16 @@ export async function logVerificationEvent(
     .single();
 
   if (error) {
+    if (isMissingVerificationEventsTableError(error)) {
+      verificationEventsTableMissing = true;
+      return null;
+    }
+
     console.error('Error logging verification event:', error);
     return null;
   }
 
+  verificationEventsTableMissing = false;
   return transformVerificationEvent(data);
 }
 
