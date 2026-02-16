@@ -45,6 +45,25 @@ function resolveUserId(rawAppUserId: unknown): string | null {
   return null;
 }
 
+function resolveEventId(payload: Record<string, unknown>, event: Record<string, unknown>): string | null {
+  const candidates = [
+    event.id,
+    payload.id,
+    event.event_id,
+    payload.event_id,
+    event.transaction_id,
+    payload.transaction_id,
+  ];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && candidate.trim()) {
+      return candidate.trim();
+    }
+  }
+
+  return null;
+}
+
 function toIsoFromMs(value: unknown): string | null {
   const numeric = Number(value);
   if (!Number.isFinite(numeric) || numeric <= 0) {
@@ -105,13 +124,13 @@ serve(async (req) => {
 
   const providedToken = (
     req.headers.get('x-authorization')
-    || req.headers.get('X-Authorization')
     || req.headers.get('authorization')
-    || req.headers.get('Authorization')
     || ''
-  ).replace(/^Bearer\s+/i, '').trim();
+  );
+  const authMatch = providedToken.match(/^Bearer\s+(.+)$/i);
+  const authToken = authMatch?.[1]?.trim() || '';
 
-  if (webhookSecret && providedToken !== webhookSecret) {
+  if (webhookSecret && (!authToken || authToken !== webhookSecret)) {
     return jsonResponse({ error: 'Unauthorized' }, 401);
   }
 
@@ -122,6 +141,7 @@ serve(async (req) => {
 
   const event = normalizeEvent(payload);
   const eventType = String(event.type || payload.type || 'UNKNOWN');
+  const eventId = resolveEventId(payload, event);
   const appUserId = event.app_user_id ?? payload.app_user_id;
   const userId = resolveUserId(appUserId);
   const entitlementIds = Array.isArray(event.entitlement_ids)
@@ -134,11 +154,31 @@ serve(async (req) => {
 
   const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
 
+  if (eventId) {
+    const { data: existingEvent, error: existingEventError } = await supabaseAdmin
+      .from('subscription_events')
+      .select('id')
+      .eq('provider', 'revenuecat')
+      .contains('raw_payload', { event_id: eventId })
+      .limit(1);
+
+    if (existingEventError) {
+      console.error('Failed idempotency lookup for subscription event:', existingEventError.message);
+    }
+
+    if ((existingEvent || []).length > 0) {
+      return jsonResponse({ ok: true, deduped: true, eventId });
+    }
+  }
+
   const eventInsert = {
     user_id: userId,
     provider: 'revenuecat',
     event_type: eventType,
-    raw_payload: payload,
+    raw_payload: {
+      ...payload,
+      event_id: eventId,
+    },
     processed_at: new Date().toISOString(),
   };
 

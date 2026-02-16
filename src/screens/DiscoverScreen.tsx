@@ -6,7 +6,8 @@ import {
     ActivityIndicator, FlatList, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CompanionCard, EmptySearchResults, EmptyState } from '../components';
+import { CompanionCard, EmptySearchResults, EmptyState, InlineBanner } from '../components';
+import { useIsConnected } from '../context/NetworkContext';
 import type { CompanionData } from '../services/api/companions';
 import { fetchCompanions } from '../services/api/companions';
 import { colors } from '../theme/colors';
@@ -131,6 +132,7 @@ function sortCompanions(companions: Companion[], sortOption: SortOption): Compan
 export const DiscoverScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
+  const isConnected = useIsConnected();
 
   const [allCompanions, setAllCompanions] = useState<Companion[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -403,6 +405,13 @@ export const DiscoverScreen: React.FC = () => {
           <Ionicons name="shield-checkmark" size={14} color={colors.status.success} />
           <Text style={styles.trustNoteText}>All wingmen shown are ID and photo verified.</Text>
         </View>
+        {!isConnected ? (
+          <InlineBanner
+            title="You're offline"
+            message="Discover results may be outdated until your connection returns."
+            variant="warning"
+          />
+        ) : null}
       </View>
 
       <FlatList

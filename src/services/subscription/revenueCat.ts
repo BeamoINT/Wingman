@@ -1,5 +1,6 @@
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
+import { runtimeEnv } from '../../config/env';
 import { supabase } from '../supabase';
 
 export interface RevenueCatResult {
@@ -37,6 +38,19 @@ async function getPurchasesModule(): Promise<PurchasesModuleType | null> {
 }
 
 function getConfigValue(name: string): string {
+  if (name === 'rc_api_key_ios') {
+    return runtimeEnv.revenueCatApiKeyIos;
+  }
+  if (name === 'rc_api_key_android') {
+    return runtimeEnv.revenueCatApiKeyAndroid;
+  }
+  if (name === 'rc_entitlement_pro') {
+    return runtimeEnv.revenueCatEntitlementPro;
+  }
+  if (name === 'rc_package_pro_monthly') {
+    return runtimeEnv.revenueCatPackageProMonthly;
+  }
+
   const extra = (Constants.expoConfig?.extra || {}) as Record<string, unknown>;
   const fromExtra = extra[name];
   if (typeof fromExtra === 'string' && fromExtra.trim().length > 0) {

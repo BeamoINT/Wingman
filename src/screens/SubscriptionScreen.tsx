@@ -20,6 +20,7 @@ import {
 } from '../components';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import { trackEvent } from '../services/monitoring/events';
 import {
   getEntitlementStatus,
   initRevenueCat,
@@ -28,37 +29,23 @@ import {
 } from '../services/subscription/revenueCat';
 import type { ThemeTokens } from '../theme/tokens';
 import { useThemedStyles } from '../theme/useThemedStyles';
-import type { RootStackParamList, Subscription, SubscriptionTier } from '../types';
+import type { RootStackParamList, Subscription } from '../types';
 import { haptics } from '../utils/haptics';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
-const PLANS: Subscription[] = [
-  {
-    id: 'free',
-    tier: 'free',
-    price: 0,
-    billingPeriod: 'monthly',
-    features: [
-      { name: 'Unlimited Wingman bookings', description: '', included: true },
-      { name: 'Read-only friend profile preview', description: '', included: true },
-      { name: 'Friend requests and friend chat', description: '', included: false },
-      { name: 'Friends feed, groups, and events', description: '', included: false },
-    ],
-  },
-  {
-    id: 'pro',
-    tier: 'pro',
-    price: 10,
-    billingPeriod: 'monthly',
-    features: [
-      { name: 'Unlimited Wingman bookings', description: '', included: true },
-      { name: 'Send and receive friend requests', description: '', included: true },
-      { name: 'Friend messaging after acceptance', description: '', included: true },
-      { name: 'Access feed, groups, and events', description: '', included: true },
-    ],
-  },
-];
+const PRO_PLAN: Subscription = {
+  id: 'pro',
+  tier: 'pro',
+  price: 10,
+  billingPeriod: 'monthly',
+  features: [
+    { name: 'Unlimited Wingman bookings', description: '', included: true },
+    { name: 'Send and receive friend requests', description: '', included: true },
+    { name: 'Friend messaging after acceptance', description: '', included: true },
+    { name: 'Access feed, groups, and events', description: '', included: true },
+  ],
+};
 
 export const SubscriptionScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
@@ -68,7 +55,6 @@ export const SubscriptionScreen: React.FC = () => {
   const { colors, spacing } = tokens;
   const { user, refreshSession } = useAuth();
 
-  const [selectedTier, setSelectedTier] = useState<SubscriptionTier>(user?.subscriptionTier === 'pro' ? 'pro' : 'free');
   const [isPurchasing, setIsPurchasing] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -80,37 +66,34 @@ export const SubscriptionScreen: React.FC = () => {
     navigation.goBack();
   };
 
-  const handleSelectPlan = async (tier: SubscriptionTier) => {
-    await haptics.selection();
-    setSelectedTier(tier);
-  };
-
   const handleStartPro = async () => {
     if (!user?.id) {
       Alert.alert('Subscription', 'Please sign in to manage subscriptions.');
       return;
     }
 
-    if (selectedTier === 'free') {
-      await haptics.light();
-      navigation.goBack();
+    if (isPro) {
+      setStatusMessage('Pro is already active on this account.');
       return;
     }
 
     setIsPurchasing(true);
     setStatusMessage(null);
     await haptics.medium();
+    trackEvent('pro_purchase_started');
 
     try {
       const initResult = await initRevenueCat(user.id);
       if (!initResult.success) {
         setStatusMessage(initResult.error || 'Unable to initialize subscription purchase.');
+        trackEvent('pro_purchase_failed', { reason: initResult.error || 'init_failed' });
         return;
       }
 
       const purchaseResult = await purchaseProMonthly();
       if (!purchaseResult.success) {
         setStatusMessage(purchaseResult.error || 'Unable to complete Pro purchase right now.');
+        trackEvent('pro_purchase_failed', { reason: purchaseResult.error || 'purchase_failed' });
         return;
       }
 
@@ -118,10 +101,16 @@ export const SubscriptionScreen: React.FC = () => {
       if (status.isPro) {
         await refreshSession();
         setStatusMessage('Pro purchase successful. Your access will refresh shortly.');
+        trackEvent('pro_purchase_succeeded');
         Alert.alert('Subscription', 'Pro is now active. If this screen still shows Free, reopen the app tab in a moment.');
       } else {
         setStatusMessage('Purchase completed. Final entitlement sync is still in progress.');
+        trackEvent('pro_purchase_failed', { reason: 'sync_pending' });
       }
+    } catch (error) {
+      console.error('Pro purchase flow failed:', error);
+      setStatusMessage('Unable to complete your Pro purchase right now.');
+      trackEvent('pro_purchase_failed', { reason: 'exception' });
     } finally {
       setIsPurchasing(false);
     }
@@ -141,12 +130,14 @@ export const SubscriptionScreen: React.FC = () => {
       const initResult = await initRevenueCat(user.id);
       if (!initResult.success) {
         setStatusMessage(initResult.error || 'Unable to initialize purchase restore.');
+        trackEvent('pro_restore_failed', { reason: initResult.error || 'init_failed' });
         return;
       }
 
       const restoreResult = await restorePurchases();
       if (!restoreResult.success) {
         setStatusMessage(restoreResult.error || 'Unable to restore purchases right now.');
+        trackEvent('pro_restore_failed', { reason: restoreResult.error || 'restore_failed' });
         return;
       }
 
@@ -155,6 +146,9 @@ export const SubscriptionScreen: React.FC = () => {
       setStatusMessage(status.isPro
         ? 'Pro restored successfully.'
         : 'No active Pro subscription was found to restore.');
+      trackEvent(status.isPro ? 'pro_restore_succeeded' : 'pro_restore_failed', {
+        reason: status.isPro ? 'restored' : 'not_found',
+      });
     } finally {
       setIsRestoring(false);
     }
@@ -187,16 +181,13 @@ export const SubscriptionScreen: React.FC = () => {
         />
 
         <View style={styles.section}>
-          <SectionHeader title="Choose Plan" subtitle="Single Pro tier, monthly billing only" />
+          <SectionHeader title="Plan" subtitle="Single Pro tier, monthly billing only" />
           <View style={styles.planList}>
-            {PLANS.map((plan) => (
-              <SubscriptionCard
-                key={plan.id}
-                subscription={plan}
-                isSelected={selectedTier === plan.tier}
-                onSelect={() => handleSelectPlan(plan.tier)}
-              />
-            ))}
+            <SubscriptionCard
+              subscription={PRO_PLAN}
+              isSelected
+              onSelect={() => undefined}
+            />
           </View>
         </View>
 
@@ -218,14 +209,15 @@ export const SubscriptionScreen: React.FC = () => {
 
       <View style={[styles.bottomBar, { paddingBottom: insets.bottom + spacing.md }]}>
         <Button
-          title={selectedTier === 'pro'
-            ? (isPurchasing ? 'Starting Pro...' : 'Start Pro')
-            : 'Continue with Free'}
+          title={isPro
+            ? 'Pro Active'
+            : (isPurchasing ? 'Starting Pro...' : 'Start Pro')}
           onPress={handleStartPro}
-          variant={selectedTier === 'pro' ? 'primary' : 'secondary'}
+          variant="primary"
           size="large"
           fullWidth
           loading={isPurchasing}
+          disabled={isPro}
         />
       </View>
     </View>

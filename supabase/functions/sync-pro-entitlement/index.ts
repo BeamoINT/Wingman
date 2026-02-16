@@ -34,6 +34,34 @@ function resolvePlatform(store: unknown): 'ios' | 'android' | 'web' | null {
   return null;
 }
 
+function resolveProStatus(
+  entitlement: Record<string, unknown> | null,
+  expiresAtIso: string | null,
+): 'inactive' | 'active' | 'grace' | 'past_due' | 'canceled' {
+  if (!entitlement) {
+    return 'inactive';
+  }
+
+  const nowMs = Date.now();
+  const expiresMs = expiresAtIso ? Date.parse(expiresAtIso) : Number.NaN;
+  const isExpired = Number.isFinite(expiresMs) && expiresMs <= nowMs;
+  if (isExpired) {
+    return 'canceled';
+  }
+
+  const billingIssuesDetectedAt = parseIso(entitlement.billing_issues_detected_at);
+  if (billingIssuesDetectedAt) {
+    return 'past_due';
+  }
+
+  const unsubscribeDetectedAt = parseIso(entitlement.unsubscribe_detected_at);
+  if (unsubscribeDetectedAt) {
+    return 'grace';
+  }
+
+  return 'active';
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -114,10 +142,11 @@ serve(async (req) => {
   const hasActiveEntitlement = !!proEntitlement && (
     !Number.isFinite(expiresMs) || expiresMs > now
   );
+  const proStatus = resolveProStatus(proEntitlement, proExpiresAt);
 
   const updates: Record<string, unknown> = {
     subscription_tier: hasActiveEntitlement ? 'pro' : 'free',
-    pro_status: hasActiveEntitlement ? 'active' : 'inactive',
+    pro_status: hasActiveEntitlement ? proStatus : (proStatus === 'canceled' ? 'canceled' : 'inactive'),
     pro_platform: platform,
     pro_product_id: productId,
     pro_started_at: proStartedAt,
@@ -156,7 +185,7 @@ serve(async (req) => {
     ok: true,
     userId,
     subscriptionTier: hasActiveEntitlement ? 'pro' : 'free',
-    proStatus: hasActiveEntitlement ? 'active' : 'inactive',
+    proStatus: hasActiveEntitlement ? proStatus : (proStatus === 'canceled' ? 'canceled' : 'inactive'),
     proExpiresAt,
   });
 });

@@ -16,13 +16,14 @@ import { StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { configureReanimatedLogger, ReanimatedLogLevel } from 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { ErrorBoundary, LoadingScreen, OfflineBanner } from './src/components';
+import { ErrorBoundary, LoadingScreen } from './src/components';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { NetworkProvider } from './src/context/NetworkContext';
 import { RequirementsProvider } from './src/context/RequirementsContext';
 import { ThemeProvider, useTheme } from './src/context/ThemeContext';
 import { VerificationProvider } from './src/context/VerificationContext';
 import { RootNavigator } from './src/navigation';
+import { captureError, initializeSentry } from './src/services/monitoring/sentry';
 
 // Disable strict mode warnings for shared value reads during render
 configureReanimatedLogger({
@@ -48,7 +49,6 @@ function AppContent() {
   return (
     <>
       <StatusBar style={isDark ? 'light' : 'dark'} />
-      <OfflineBanner />
       <RootNavigator />
     </>
   );
@@ -63,11 +63,12 @@ function handleError(error: Error, errorInfo: React.ErrorInfo) {
     console.error('App Error:', error);
     console.error('Component Stack:', errorInfo.componentStack);
   }
-  // In production: send to crash reporting service
-  // crashlytics.recordError(error);
+  captureError(error);
 }
 
 export default function App() {
+  initializeSentry();
+
   const [fontsLoaded, fontError] = useFonts({
     Manrope_400Regular,
     Manrope_500Medium,

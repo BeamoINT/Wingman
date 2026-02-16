@@ -50,6 +50,7 @@ import {
   MediaCompressionError,
 } from '../media/compression';
 import { generateVideoThumbnailForMessaging } from '../media/thumbnails';
+import { trackEvent } from '../monitoring/events';
 import { supabase } from '../supabase';
 import type { ProfileData } from './profiles';
 
@@ -173,6 +174,15 @@ const ENCRYPTED_MESSAGE_PREVIEW = getEncryptedMessagePreview();
 const MESSAGE_KEY_CHANGED_PLACEHOLDER = 'Message unavailable: safety key changed.';
 const LEGACY_ENCRYPTION_VERSION = getMessageEncryptionVersion();
 let messagingV2SupportCache: boolean | null = null;
+let messagingSchemaCapabilityCache: MessagingSchemaCapability | null = null;
+
+export type MessagingSchemaCapability = {
+  hasConversationMembers: boolean;
+  hasParticipantIds: boolean;
+  hasDeviceIdentities: boolean;
+  hasMessageCiphertext: boolean;
+  supportsV2: boolean;
+};
 
 function toNumber(value: unknown, fallback = 0): number {
   const parsed = Number(value);
@@ -221,12 +231,8 @@ function parseParticipantIdsValue(value: unknown): string[] {
 }
 
 function extractConversationParticipantIds(row: RawRecord): string[] {
-  const explicit = [
-    getString(row.participant_1),
-    getString(row.participant_2),
-  ];
   const aggregated = parseParticipantIdsValue(row.participant_ids);
-  return uniqueIds([...explicit, ...aggregated]);
+  return uniqueIds(aggregated);
 }
 
 function normalizeMessageKind(value: unknown): MessageKind {
@@ -306,10 +312,8 @@ function normalizeProfile(rawProfile: unknown): ProfileData | undefined {
 function normalizeConversation(row: RawRecord): ConversationData {
   const now = new Date().toISOString();
   const participantIds = extractConversationParticipantIds(row);
-  const participant1 = getString(row.participant_1) || participantIds[0] || '';
-  const participant2 = getString(row.participant_2)
-    || participantIds.find((id) => id !== participant1)
-    || '';
+  const participant1 = participantIds[0] || '';
+  const participant2 = participantIds.find((id) => id !== participant1) || '';
 
   return {
     id: getString(row.id),
@@ -427,15 +431,37 @@ async function isMessagingV2Available(): Promise<boolean> {
     return messagingV2SupportCache;
   }
 
+  const capability = await getMessagingSchemaCapability();
+  messagingV2SupportCache = capability.supportsV2;
+  return messagingV2SupportCache;
+}
+
+async function getMessagingSchemaCapability(): Promise<MessagingSchemaCapability> {
+  if (messagingSchemaCapabilityCache) {
+    return messagingSchemaCapabilityCache;
+  }
+
   const checks = await Promise.all([
     supabase.from('conversation_members').select('conversation_id').limit(1),
+    supabase.from('conversations').select('participant_ids').limit(1),
     supabase.from('message_device_identities').select('device_id').limit(1),
     supabase.from('messages').select('ciphertext,ciphertext_nonce,message_kind').limit(1),
   ]);
 
-  const hasMissing = checks.some((result) => isMissingSchemaError(result.error));
-  messagingV2SupportCache = !hasMissing;
-  return messagingV2SupportCache;
+  const hasConversationMembers = !isMissingSchemaError(checks[0].error, 'conversation_members');
+  const hasParticipantIds = !isMissingSchemaError(checks[1].error, 'participant_ids');
+  const hasDeviceIdentities = !isMissingSchemaError(checks[2].error, 'message_device_identities');
+  const hasMessageCiphertext = !isMissingSchemaError(checks[3].error, 'ciphertext');
+
+  messagingSchemaCapabilityCache = {
+    hasConversationMembers,
+    hasParticipantIds,
+    hasDeviceIdentities,
+    hasMessageCiphertext,
+    supportsV2: hasConversationMembers && hasParticipantIds && hasDeviceIdentities && hasMessageCiphertext,
+  };
+
+  return messagingSchemaCapabilityCache;
 }
 
 async function fetchProfilesByIds(ids: string[]): Promise<Record<string, ProfileData>> {
@@ -501,68 +527,37 @@ async function fetchConversationRowsByIds(conversationIds: string[]): Promise<Ra
 }
 
 async function fetchLegacyDirectConversationRows(userId: string): Promise<RawRecord[]> {
-  const { data, error } = await supabase
+  const byParticipantIds = await supabase
     .from('conversations')
     .select('*')
-    .or(`participant_1.eq.${userId},participant_2.eq.${userId}`)
+    .contains('participant_ids', [userId])
     .order('last_message_at', { ascending: false, nullsFirst: false });
 
-  if (!error) {
-    return (data || []) as RawRecord[];
+  if (!byParticipantIds.error) {
+    return (byParticipantIds.data || []) as RawRecord[];
   }
 
-  const shouldTryParticipantIds = (
-    isMissingSchemaError(error, 'participant_1')
-    || isMissingSchemaError(error, 'participant_2')
-    || isMissingSchemaError(error, 'participant_ids')
-  );
-
-  if (shouldTryParticipantIds) {
-    const byParticipantIds = await supabase
+  if (isMissingSchemaError(byParticipantIds.error, 'last_message_at')) {
+    const fallbackByParticipantIds = await supabase
       .from('conversations')
       .select('*')
       .contains('participant_ids', [userId])
-      .order('last_message_at', { ascending: false, nullsFirst: false });
-
-    if (!byParticipantIds.error) {
-      return (byParticipantIds.data || []) as RawRecord[];
-    }
-
-    if (isMissingSchemaError(byParticipantIds.error, 'last_message_at')) {
-      const fallbackByParticipantIds = await supabase
-        .from('conversations')
-        .select('*')
-        .contains('participant_ids', [userId])
-        .order('created_at', { ascending: false, nullsFirst: false });
-
-      if (!fallbackByParticipantIds.error) {
-        return (fallbackByParticipantIds.data || []) as RawRecord[];
-      }
-
-      console.error('Error fetching direct conversations (participant_ids fallback):', fallbackByParticipantIds.error);
-      return [];
-    }
-
-    console.error('Error fetching direct conversations (participant_ids):', byParticipantIds.error);
-    return [];
-  }
-
-  if (isMissingSchemaError(error, 'last_message_at')) {
-    const fallback = await supabase
-      .from('conversations')
-      .select('*')
-      .or(`participant_1.eq.${userId},participant_2.eq.${userId}`)
       .order('created_at', { ascending: false, nullsFirst: false });
 
-    if (!fallback.error) {
-      return (fallback.data || []) as RawRecord[];
+    if (!fallbackByParticipantIds.error) {
+      return (fallbackByParticipantIds.data || []) as RawRecord[];
     }
 
-    console.error('Error fetching direct conversations (fallback):', fallback.error);
+    console.error('Error fetching direct conversations (participant_ids fallback):', fallbackByParticipantIds.error);
     return [];
   }
 
-  console.error('Error fetching direct conversations:', error);
+  if (isMissingSchemaError(byParticipantIds.error, 'participant_ids')) {
+    console.error('Messaging schema missing participant_ids. Apply latest Supabase migrations.');
+    return [];
+  }
+
+  console.error('Error fetching direct conversations:', byParticipantIds.error);
   return [];
 }
 
@@ -778,20 +773,6 @@ async function hydrateConversationRows(
 async function fetchLegacyConversationParticipantIds(
   conversationId: string,
 ): Promise<string[]> {
-  const primary = await supabase
-    .from('conversations')
-    .select('participant_1,participant_2')
-    .eq('id', conversationId)
-    .maybeSingle();
-
-  if (!primary.error && primary.data) {
-    return extractConversationParticipantIds(primary.data as RawRecord);
-  }
-
-  if (!isMissingSchemaError(primary.error, 'participant_1') && !isMissingSchemaError(primary.error, 'participant_2')) {
-    return [];
-  }
-
   const fallback = await supabase
     .from('conversations')
     .select('participant_ids')
@@ -1284,8 +1265,13 @@ async function ensureConversationMembersForDirect(
     return;
   }
 
+  const { userId } = await getCurrentUserId();
+  if (!userId) {
+    return;
+  }
+
   const rows = [participant1, participant2]
-    .filter(Boolean)
+    .filter((memberId) => Boolean(memberId) && memberId === userId)
     .map((userId) => ({
       conversation_id: conversationId,
       user_id: userId,
@@ -1573,7 +1559,8 @@ export async function fetchConversations(): Promise<{ conversations: Conversatio
       return { conversations: [], error: authError || new Error('Not authenticated') };
     }
 
-    if (await isMessagingV2Available()) {
+    const v2Enabled = await isMessagingV2Available();
+    if (v2Enabled) {
       const memberRowsResult = await supabase
         .from('conversation_members')
         .select('conversation_id,user_id,last_read_at,left_at')
@@ -1594,6 +1581,14 @@ export async function fetchConversations(): Promise<{ conversations: Conversatio
       if (!isMissingSchemaError(memberRowsResult.error, 'conversation_members')) {
         console.error('Error fetching v2 member rows:', memberRowsResult.error);
       }
+    }
+
+    const schemaCapability = await getMessagingSchemaCapability();
+    if (!schemaCapability.hasParticipantIds) {
+      return {
+        conversations: [],
+        error: new Error('Messaging is temporarily unavailable. Please update your app and backend migrations.'),
+      };
     }
 
     const rows = await fetchLegacyDirectConversationRows(userId);
@@ -1731,7 +1726,7 @@ export async function sendImageMessageV2(params: {
       },
     ];
 
-    return sendSecureMessageV2Internal({
+    const result = await sendSecureMessageV2Internal({
       conversationId: params.conversationId,
       messageKind: 'image',
       plaintext: buildMediaPayload({
@@ -1740,7 +1735,14 @@ export async function sendImageMessageV2(params: {
       }),
       attachmentRows,
     });
+    if (result.error) {
+      trackEvent('message_send_fail', { kind: 'image' });
+    } else {
+      trackEvent('message_send_success', { kind: 'image' });
+    }
+    return result;
   } catch (error) {
+    trackEvent('message_send_fail', { kind: 'image' });
     if (
       error instanceof MediaCompressionError
       || error instanceof MediaCryptoError
@@ -1838,7 +1840,7 @@ export async function sendVideoMessageV2(params: {
       },
     ];
 
-    return sendSecureMessageV2Internal({
+    const result = await sendSecureMessageV2Internal({
       conversationId: params.conversationId,
       messageKind: 'video',
       plaintext: buildMediaPayload({
@@ -1847,7 +1849,14 @@ export async function sendVideoMessageV2(params: {
       }),
       attachmentRows,
     });
+    if (result.error) {
+      trackEvent('message_send_fail', { kind: 'video' });
+    } else {
+      trackEvent('message_send_success', { kind: 'video' });
+    }
+    return result;
   } catch (error) {
+    trackEvent('message_send_fail', { kind: 'video' });
     if (
       error instanceof MediaCompressionError
       || error instanceof MediaCryptoError
@@ -1873,6 +1882,7 @@ export async function sendMessage(
   const trimmed = content.trim();
 
   if (!trimmed) {
+    trackEvent('message_send_fail', { kind: normalizedType });
     return { message: null, error: new Error('Message content cannot be empty') };
   }
 
@@ -1899,7 +1909,13 @@ export async function sendMessage(
   if (await isMessagingV2Available()) {
     if (normalizedType === 'text') {
       const result = await sendTextMessageV2(conversationId, trimmed);
-      return fallbackToLegacyIfNeeded(result);
+      const finalResult = await fallbackToLegacyIfNeeded(result);
+      if (finalResult.error) {
+        trackEvent('message_send_fail', { kind: 'text' });
+      } else {
+        trackEvent('message_send_success', { kind: 'text' });
+      }
+      return finalResult;
     }
 
     const result = await sendSecureMessageV2Internal({
@@ -1914,10 +1930,22 @@ export async function sendMessage(
       plaintext: trimmed,
       attachmentRows: [],
     });
-    return fallbackToLegacyIfNeeded(result);
+    const finalResult = await fallbackToLegacyIfNeeded(result);
+    if (finalResult.error) {
+      trackEvent('message_send_fail', { kind: normalizedType });
+    } else {
+      trackEvent('message_send_success', { kind: normalizedType });
+    }
+    return finalResult;
   }
 
-  return sendLegacyV1Message(conversationId, trimmed, normalizedType);
+  const legacyResult = await sendLegacyV1Message(conversationId, trimmed, normalizedType);
+  if (legacyResult.error) {
+    trackEvent('message_send_fail', { kind: normalizedType, mode: 'legacy' });
+  } else {
+    trackEvent('message_send_success', { kind: normalizedType, mode: 'legacy' });
+  }
+  return legacyResult;
 }
 
 function hasExactDirectPair(row: RawRecord, canonicalPair: string[]): boolean {
@@ -1930,18 +1958,6 @@ function hasExactDirectPair(row: RawRecord, canonicalPair: string[]): boolean {
 }
 
 async function findLegacyDirectConversationByPair(canonicalPair: string[]): Promise<RawRecord | null> {
-  const byPairColumns = await supabase
-    .from('conversations')
-    .select('*')
-    .or(`and(participant_1.eq.${canonicalPair[0]},participant_2.eq.${canonicalPair[1]}),and(participant_1.eq.${canonicalPair[1]},participant_2.eq.${canonicalPair[0]})`)
-    .order('created_at', { ascending: true })
-    .limit(1)
-    .maybeSingle();
-
-  if (!byPairColumns.error && byPairColumns.data) {
-    return byPairColumns.data as RawRecord;
-  }
-
   const byParticipantIds = await supabase
     .from('conversations')
     .select('*')
@@ -1987,12 +2003,26 @@ export async function getOrCreateConversation(
       return fetchConversationById(getString(existing.id));
     }
 
+    const createByRpc = await supabase
+      .rpc('get_or_create_direct_conversation_v2', { p_other_user_id: otherUserId });
+
+    if (!createByRpc.error && createByRpc.data) {
+      const rpcRow = Array.isArray(createByRpc.data)
+        ? (createByRpc.data[0] as RawRecord | undefined)
+        : (createByRpc.data as RawRecord);
+      const rpcConversationId = getString(rpcRow?.id);
+
+      if (rpcConversationId) {
+        await ensureConversationMembersForDirect(rpcConversationId, canonicalPair[0], canonicalPair[1]);
+        return fetchConversationById(rpcConversationId);
+      }
+    }
+
     const now = new Date().toISOString();
-    const createByPairColumns = await supabase
+    const createByParticipantIds = await supabase
       .from('conversations')
       .insert({
-        participant_1: canonicalPair[0],
-        participant_2: canonicalPair[1],
+        participant_ids: canonicalPair,
         kind: 'direct',
         created_by: userId,
         created_at: now,
@@ -2001,52 +2031,8 @@ export async function getOrCreateConversation(
       .select('*')
       .maybeSingle();
 
-    let createdRow = createByPairColumns.data as RawRecord | null;
-    let createError = createByPairColumns.error;
-
-    const shouldTryParticipantIdsInsert = (
-      createError
-      && (
-        isMissingSchemaError(createError, 'participant_1')
-        || isMissingSchemaError(createError, 'participant_2')
-      )
-    );
-
-    if (shouldTryParticipantIdsInsert) {
-      const createByParticipantIds = await supabase
-        .from('conversations')
-        .insert({
-          participant_ids: canonicalPair,
-          kind: 'direct',
-          created_by: userId,
-          created_at: now,
-          updated_at: now,
-        })
-        .select('*')
-        .maybeSingle();
-
-      if (!createByParticipantIds.error) {
-        createdRow = createByParticipantIds.data as RawRecord | null;
-        createError = null;
-      } else if (createByParticipantIds.error?.code !== '23505' && isMissingSchemaError(createByParticipantIds.error)) {
-        const minimalCreateByParticipantIds = await supabase
-          .from('conversations')
-          .insert({
-            participant_ids: canonicalPair,
-          })
-          .select('*')
-          .maybeSingle();
-
-        if (!minimalCreateByParticipantIds.error) {
-          createdRow = minimalCreateByParticipantIds.data as RawRecord | null;
-          createError = null;
-        } else {
-          createError = minimalCreateByParticipantIds.error;
-        }
-      } else {
-        createError = createByParticipantIds.error;
-      }
-    }
+    let createdRow = createByParticipantIds.data as RawRecord | null;
+    const createError = createByParticipantIds.error;
 
     if (createError && createError.code !== '23505') {
       console.error('Error creating direct conversation:', createError);

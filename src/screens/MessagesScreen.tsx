@@ -6,8 +6,9 @@ import {
     ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, TextInput, TouchableOpacity, View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Avatar, EmptyState } from '../components';
+import { Avatar, EmptyState, InlineBanner } from '../components';
 import { useAuth } from '../context/AuthContext';
+import { useIsConnected } from '../context/NetworkContext';
 import type { ConversationData } from '../services/api/messages';
 import { fetchConversations } from '../services/api/messages';
 import { colors } from '../theme/colors';
@@ -112,6 +113,7 @@ export const MessagesScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const isConnected = useIsConnected();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -312,6 +314,13 @@ export const MessagesScreen: React.FC = () => {
             {' '}Wingman cannot read message content.
           </Text>
         </View>
+        {!isConnected ? (
+          <InlineBanner
+            title="You're offline"
+            message="Recent messages may be stale and new sends are paused until you reconnect."
+            variant="warning"
+          />
+        ) : null}
       </View>
 
       <FlatList

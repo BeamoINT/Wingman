@@ -7,7 +7,8 @@ import {
   getOrCreateDeviceIdentity,
   heartbeatDeviceIdentity,
 } from '../services/crypto/deviceIdentity';
-import { getMessagingIdentity } from '../services/crypto/messagingEncryption';
+import { getMessagingIdentity, SecureMessagingError } from '../services/crypto/messagingEncryption';
+import { trackEvent } from '../services/monitoring/events';
 import { initRevenueCat } from '../services/subscription/revenueCat';
 import { supabase } from '../services/supabase';
 import type { SignupData, User } from '../types';
@@ -172,14 +173,25 @@ function toFallbackAppUser(sessionUser: SupabaseUser, existingUser?: User | null
   return transformSupabaseUser(sessionUser);
 }
 
+let messagingSchemaCapability: 'unknown' | 'available' | 'unavailable' = 'unknown';
+
 async function primeSecureMessagingIdentity(userId: string): Promise<void> {
+  if (messagingSchemaCapability === 'unavailable') {
+    return;
+  }
+
   try {
     await Promise.all([
       getMessagingIdentity(userId),
       getOrCreateDeviceIdentity(userId),
     ]);
+    messagingSchemaCapability = 'available';
   } catch (error) {
-    if (error instanceof DeviceIdentityError && error.code === 'schema_unavailable') {
+    if (
+      (error instanceof DeviceIdentityError && error.code === 'schema_unavailable')
+      || (error instanceof SecureMessagingError && error.code === 'schema_unavailable')
+    ) {
+      messagingSchemaCapability = 'unavailable';
       return;
     }
     safeLog('Secure messaging identity setup failed', { error: String(error) });
@@ -376,9 +388,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
+    if (messagingSchemaCapability === 'unavailable') {
+      return;
+    }
+
     const heartbeat = () => {
       void heartbeatDeviceIdentity(supabaseUser.id).catch((error) => {
-        if (error instanceof DeviceIdentityError && error.code === 'schema_unavailable') {
+        if (
+          (error instanceof DeviceIdentityError && error.code === 'schema_unavailable')
+          || (error instanceof SecureMessagingError && error.code === 'schema_unavailable')
+        ) {
+          messagingSchemaCapability = 'unavailable';
           return;
         }
         safeLog('Secure messaging device heartbeat failed', { error: String(error) });
@@ -645,6 +665,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (error) {
         console.error('Sign in error:', error);
+        trackEvent('auth_signin_fail', { source: 'password', reason: error.message || 'unknown' });
         return { success: false, error: error.message };
       }
 
@@ -663,12 +684,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setNeedsEmailVerification(!data.user.email_confirmed_at);
         setNeedsPhoneVerification(!profile?.phone_verified);
 
+        trackEvent('auth_signin_success', { source: 'password' });
         return { success: true };
       }
 
+      trackEvent('auth_signin_fail', { source: 'password', reason: 'invalid_credentials' });
       return { success: false, error: 'Invalid credentials' };
     } catch (error) {
       safeLog('Sign in failed', { error: String(error) });
+      trackEvent('auth_signin_fail', { source: 'password', reason: 'exception' });
       return { success: false, error: 'Failed to sign in. Please try again.' };
     } finally {
       setIsLoading(false);
@@ -692,6 +716,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (error) {
         console.error('Apple Sign In error:', error);
+        trackEvent('auth_signin_fail', { source: 'apple', reason: error.message || 'unknown' });
         return { success: false, error: error.message };
       }
 
@@ -734,12 +759,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setNeedsEmailVerification(!data.user.email_confirmed_at);
         setNeedsPhoneVerification(!profile?.phone_verified);
 
+        trackEvent('auth_signin_success', { source: 'apple' });
         return { success: true };
       }
 
+      trackEvent('auth_signin_fail', { source: 'apple', reason: 'authentication_failed' });
       return { success: false, error: 'Authentication failed' };
     } catch (error) {
       safeLog('Apple Sign In failed', { error: String(error) });
+      trackEvent('auth_signin_fail', { source: 'apple', reason: 'exception' });
       return { success: false, error: 'Failed to sign in with Apple. Please try again.' };
     } finally {
       setIsLoading(false);

@@ -12,6 +12,7 @@ import { RequirementsGate } from '../components/RequirementsGate';
 import { useRequirements } from '../context/RequirementsContext';
 import { useVerification } from '../context/VerificationContext';
 import { createBooking } from '../services/api/bookingsApi';
+import { trackEvent } from '../services/monitoring/events';
 import type { CompanionData } from '../services/api/companions';
 import { fetchCompanionById } from '../services/api/companions';
 import { colors } from '../theme/colors';
@@ -383,15 +384,18 @@ const BookingScreenContent: React.FC = () => {
 
       if (error || !booking?.id) {
         console.error('Error creating booking:', error);
+        trackEvent('booking_create_fail', { reason: error?.message || 'create_failed' });
         await haptics.error();
         Alert.alert('Booking Failed', error?.message || 'Unable to create booking. Please try again.');
         return;
       }
 
+      trackEvent('booking_create_success');
       await haptics.success();
       navigation.replace('BookingConfirmation', { bookingId: booking.id });
     } catch (error) {
       console.error('Unexpected booking creation error:', error);
+      trackEvent('booking_create_fail', { reason: 'exception' });
       await haptics.error();
       Alert.alert('Booking Failed', 'Unable to create booking. Please try again.');
     } finally {

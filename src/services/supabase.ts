@@ -6,15 +6,17 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
-import Constants from 'expo-constants';
+import { assertCoreEnvInDevelopment, runtimeEnv } from '../config/env';
 
-// Get Supabase credentials from environment
-const supabaseUrl = Constants.expoConfig?.extra?.supabaseUrl || process.env.EXPO_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = Constants.expoConfig?.extra?.supabaseAnonKey || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
+// Get Supabase credentials from validated runtime env
+const supabaseUrl = runtimeEnv.supabaseUrl;
+const supabaseAnonKey = runtimeEnv.supabaseAnonKey;
 
 if (!supabaseUrl || !supabaseAnonKey) {
   console.warn('Supabase credentials not configured. Please set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY');
 }
+
+assertCoreEnvInDevelopment();
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {

@@ -4,6 +4,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import { reportNavigationRoute } from '../services/monitoring/sentry';
 import type { RootStackParamList } from '../types';
 
 // Auth Screens
@@ -179,8 +180,21 @@ export const RootNavigator: React.FC = () => {
   const defaultAnimation = reduceMotionEnabled ? 'none' : 'slide_from_right';
   const modalAnimation = reduceMotionEnabled ? 'none' : 'slide_from_bottom';
 
+  const handleNavigationReady = () => {
+    setIsNavigationReady(true);
+    reportNavigationRoute(navigationRef.getCurrentRoute()?.name || 'unknown');
+  };
+
+  const handleNavigationStateChange = () => {
+    reportNavigationRoute(navigationRef.getCurrentRoute()?.name || 'unknown');
+  };
+
   return (
-    <NavigationContainer ref={navigationRef} onReady={() => setIsNavigationReady(true)}>
+    <NavigationContainer
+      ref={navigationRef}
+      onReady={handleNavigationReady}
+      onStateChange={handleNavigationStateChange}
+    >
       <Stack.Navigator
         initialRouteName="Welcome"
         screenOptions={{

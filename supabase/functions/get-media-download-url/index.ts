@@ -53,7 +53,7 @@ async function assertConversationMembership(
 
   const { data: conversation, error: conversationError } = await admin
     .from('conversations')
-    .select('participant_1,participant_2')
+    .select('participant_ids')
     .eq('id', conversationId)
     .maybeSingle();
 
@@ -61,10 +61,12 @@ async function assertConversationMembership(
     throw new Error('Conversation not found.');
   }
 
-  const participant1 = getString((conversation as Json).participant_1);
-  const participant2 = getString((conversation as Json).participant_2);
+  const participantIdsRaw = (conversation as Json).participant_ids;
+  const participantIds = Array.isArray(participantIdsRaw)
+    ? participantIdsRaw.map((value) => getString(value)).filter(Boolean)
+    : [];
 
-  if (participant1 !== userId && participant2 !== userId) {
+  if (!participantIds.includes(userId)) {
     throw new Error('Not authorized to access this media.');
   }
 }
@@ -163,4 +165,3 @@ serve(async (req) => {
     return jsonResponse({ error: message }, 400);
   }
 });
-

@@ -8,9 +8,10 @@ import {
     TouchableOpacity, View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Avatar, EmptyChat, EmptyState, RequirementsGate } from '../components';
+import { Avatar, EmptyChat, EmptyState, InlineBanner, RequirementsGate } from '../components';
 import { supportsNativeMediaCompression } from '../config/runtime';
 import { useAuth } from '../context/AuthContext';
+import { useIsConnected } from '../context/NetworkContext';
 import type { ConversationData, MessageData } from '../services/api/messages';
 import {
     fetchConversationById,
@@ -198,6 +199,7 @@ const ChatScreenContent: React.FC = () => {
   const route = useRoute<Props['route']>();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const isConnected = useIsConnected();
 
   const flatListRef = useRef<FlatList<Message>>(null);
 
@@ -681,6 +683,15 @@ const ChatScreenContent: React.FC = () => {
           {' '}Wingman cannot access message content.
         </Text>
       </View>
+      {!isConnected ? (
+        <View style={styles.offlineBannerWrap}>
+          <InlineBanner
+            title="You're offline"
+            message="Message sends and media decrypt will resume automatically when your connection returns."
+            variant="warning"
+          />
+        </View>
+      ) : null}
 
       <FlatList
         ref={flatListRef}
@@ -848,6 +859,10 @@ const styles = StyleSheet.create({
   safetyTipText: {
     ...typography.presets.caption,
     color: colors.primary.blue,
+  },
+  offlineBannerWrap: {
+    paddingHorizontal: spacing.screenPadding,
+    paddingTop: spacing.sm,
   },
   messagesList: {
     padding: spacing.screenPadding,

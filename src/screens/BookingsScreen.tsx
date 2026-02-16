@@ -9,7 +9,8 @@ import {
     Platform, RefreshControl, StyleSheet, Text, TouchableOpacity, View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Avatar, Badge, Card, EmptyState } from '../components';
+import { Avatar, Badge, Card, EmptyState, InlineBanner } from '../components';
+import { useIsConnected } from '../context/NetworkContext';
 import type { BookingData } from '../services/api/bookingsApi';
 import { cancelBooking, fetchUserBookings } from '../services/api/bookingsApi';
 import { getOrCreateConversation } from '../services/api/messages';
@@ -174,6 +175,7 @@ function buildMapUrl(query: string): string {
 export const BookingsScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
+  const isConnected = useIsConnected();
 
   const [activeTab, setActiveTab] = useState<TabType>('upcoming');
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -363,6 +365,13 @@ export const BookingsScreen: React.FC = () => {
           </Text>
         </TouchableOpacity>
       </View>
+      {!isConnected ? (
+        <InlineBanner
+          title="You're offline"
+          message="Booking updates and messaging actions will resume when you're back online."
+          variant="warning"
+        />
+      ) : null}
     </View>
   );
 
