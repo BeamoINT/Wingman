@@ -8,9 +8,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { colors } from '../../theme/colors';
-import { spacing } from '../../theme/spacing';
-import { typography } from '../../theme/typography';
+import { useTheme } from '../../context/ThemeContext';
+import { useThemedStyles } from '../../theme/useThemedStyles';
+import type { ThemeTokens } from '../../theme/tokens';
 import type { OverallVerificationStatus, VerificationLevel } from '../../types/verification';
 
 interface VerificationStatusCardProps {
@@ -20,37 +20,37 @@ interface VerificationStatusCardProps {
   totalSteps: number;
 }
 
-const STATUS_CONFIG: Record<OverallVerificationStatus, {
+const getStatusConfig = (tokens: ThemeTokens): Record<OverallVerificationStatus, {
   label: string;
   color: string;
   icon: keyof typeof Ionicons.glyphMap;
   gradient: readonly [string, string];
-}> = {
+}> => ({
   not_started: {
     label: 'Not Verified',
-    color: colors.text.tertiary,
+    color: tokens.colors.text.tertiary,
     icon: 'shield-outline',
-    gradient: [colors.background.card, colors.background.tertiary] as const,
+    gradient: [tokens.colors.background.card, tokens.colors.background.tertiary] as const,
   },
   in_progress: {
     label: 'Verification in Progress',
-    color: colors.status.warning,
+    color: tokens.colors.status.warning,
     icon: 'time-outline',
-    gradient: [colors.status.warningLight, colors.background.secondary] as const,
+    gradient: [tokens.colors.status.warningLight, tokens.colors.background.secondary] as const,
   },
   verified: {
     label: 'ID Verified',
-    color: colors.verification.verified,
+    color: tokens.colors.verification.verified,
     icon: 'checkmark-circle',
-    gradient: [colors.status.successLight, colors.background.secondary] as const,
+    gradient: [tokens.colors.status.successLight, tokens.colors.background.secondary] as const,
   },
   premium_verified: {
     label: 'Premium Verified',
-    color: colors.verification.premium,
+    color: tokens.colors.verification.premium,
     icon: 'star',
-    gradient: [colors.primary.goldSoft, colors.primary.goldSoft] as const,
+    gradient: [tokens.colors.primary.goldSoft, tokens.colors.primary.goldSoft] as const,
   },
-};
+});
 
 export const VerificationStatusCard: React.FC<VerificationStatusCardProps> = ({
   overallStatus,
@@ -58,7 +58,10 @@ export const VerificationStatusCard: React.FC<VerificationStatusCardProps> = ({
   completedSteps,
   totalSteps,
 }) => {
-  const config = STATUS_CONFIG[overallStatus];
+  const { tokens } = useTheme();
+  const styles = useThemedStyles(createStyles);
+  const statusConfig = getStatusConfig(tokens);
+  const config = statusConfig[overallStatus];
   const progressPercent = (completedSteps / totalSteps) * 100;
 
   return (
@@ -106,7 +109,7 @@ export const VerificationStatusCard: React.FC<VerificationStatusCardProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
   container: {
     borderRadius: spacing.radius.lg,
     overflow: 'hidden',
@@ -153,7 +156,7 @@ const styles = StyleSheet.create({
   },
   progressPercent: {
     ...typography.presets.bodySmall,
-    fontWeight: typography.weights.semibold,
+    fontFamily: typography.fontFamily.semibold,
   },
   progressBarContainer: {
     height: 6,

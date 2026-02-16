@@ -7,9 +7,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { colors } from '../../theme/colors';
-import { spacing } from '../../theme/spacing';
-import { typography } from '../../theme/typography';
+import { useTheme } from '../../context/ThemeContext';
+import type { ThemeTokens } from '../../theme/tokens';
+import { useThemedStyles } from '../../theme/useThemedStyles';
 import type { VerificationStep, VerificationStepStatus } from '../../types/verification';
 import { haptics } from '../../utils/haptics';
 
@@ -19,39 +19,42 @@ interface VerificationStepItemProps {
   isLast?: boolean;
 }
 
-const STATUS_CONFIG: Record<VerificationStepStatus, {
+const getStatusConfig = (tokens: ThemeTokens): Record<VerificationStepStatus, {
   icon: keyof typeof Ionicons.glyphMap;
   color: string;
   backgroundColor: string;
-}> = {
+}> => ({
   completed: {
     icon: 'checkmark-circle',
-    color: colors.status.success,
-    backgroundColor: colors.status.successLight,
+    color: tokens.colors.status.success,
+    backgroundColor: tokens.colors.status.successLight,
   },
   in_progress: {
     icon: 'time',
-    color: colors.status.warning,
-    backgroundColor: colors.status.warningLight,
+    color: tokens.colors.status.warning,
+    backgroundColor: tokens.colors.status.warningLight,
   },
   pending: {
     icon: 'ellipse-outline',
-    color: colors.text.tertiary,
-    backgroundColor: colors.background.tertiary,
+    color: tokens.colors.text.tertiary,
+    backgroundColor: tokens.colors.background.tertiary,
   },
   failed: {
     icon: 'close-circle',
-    color: colors.status.error,
-    backgroundColor: colors.status.errorLight,
+    color: tokens.colors.status.error,
+    backgroundColor: tokens.colors.status.errorLight,
   },
-};
+});
 
 export const VerificationStepItem: React.FC<VerificationStepItemProps> = ({
   step,
   onActionPress,
   isLast = false,
 }) => {
-  const statusConfig = STATUS_CONFIG[step.status];
+  const { tokens } = useTheme();
+  const styles = useThemedStyles(createStyles);
+  const statusConfig = getStatusConfig(tokens);
+  const config = statusConfig[step.status];
 
   const handleActionPress = async () => {
     await haptics.light();
@@ -60,38 +63,26 @@ export const VerificationStepItem: React.FC<VerificationStepItemProps> = ({
 
   return (
     <View style={[styles.container, !isLast && styles.withBorder]}>
-      {/* Status Icon */}
-      <View style={[styles.statusIcon, { backgroundColor: statusConfig.backgroundColor }]}>
+      <View style={[styles.statusIcon, { backgroundColor: config.backgroundColor }]}>
         {step.status === 'in_progress' ? (
-          <ActivityIndicator size="small" color={statusConfig.color} />
+          <ActivityIndicator size="small" color={config.color} />
         ) : (
-          <Ionicons
-            name={statusConfig.icon}
-            size={20}
-            color={statusConfig.color}
-          />
+          <Ionicons name={config.icon} size={20} color={config.color} />
         )}
       </View>
 
-      {/* Content */}
       <View style={styles.content}>
         <View style={styles.textContainer}>
-          <Text style={[
-            styles.title,
-            step.status === 'completed' && styles.titleCompleted,
-          ]}>
+          <Text style={[styles.title, step.status === 'completed' && styles.titleCompleted]}>
             {step.title}
           </Text>
           <Text style={styles.description}>{step.description}</Text>
-          {step.completedAt && step.status === 'completed' && (
-            <Text style={styles.completedDate}>
-              Completed {formatDate(step.completedAt)}
-            </Text>
-          )}
+          {step.completedAt && step.status === 'completed' ? (
+            <Text style={styles.completedDate}>Completed {formatDate(step.completedAt)}</Text>
+          ) : null}
         </View>
 
-        {/* Action Button */}
-        {step.actionLabel && step.status !== 'completed' && onActionPress && (
+        {step.actionLabel && step.status !== 'completed' && onActionPress ? (
           <TouchableOpacity
             style={[
               styles.actionButton,
@@ -100,32 +91,25 @@ export const VerificationStepItem: React.FC<VerificationStepItemProps> = ({
             onPress={handleActionPress}
             disabled={step.status === 'in_progress'}
           >
-            <Text style={[
-              styles.actionButtonText,
-              step.status === 'in_progress' && styles.actionButtonTextDisabled,
-            ]}>
+            <Text
+              style={[
+                styles.actionButtonText,
+                step.status === 'in_progress' && styles.actionButtonTextDisabled,
+              ]}
+            >
               {step.actionLabel}
             </Text>
-            {step.status !== 'in_progress' && (
-              <Ionicons
-                name="chevron-forward"
-                size={16}
-                color={colors.primary.blue}
-              />
-            )}
+            {step.status !== 'in_progress' ? (
+              <Ionicons name="chevron-forward" size={16} color={tokens.colors.primary.blue} />
+            ) : null}
           </TouchableOpacity>
-        )}
+        ) : null}
 
-        {/* Completed checkmark for mobile */}
-        {step.status === 'completed' && (
+        {step.status === 'completed' ? (
           <View style={styles.completedBadge}>
-            <Ionicons
-              name="checkmark"
-              size={16}
-              color={colors.status.success}
-            />
+            <Ionicons name="checkmark" size={16} color={tokens.colors.status.success} />
           </View>
-        )}
+        ) : null}
       </View>
     </View>
   );
@@ -143,7 +127,7 @@ function formatDate(dateString: string): string {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
   container: {
     flexDirection: 'row',
     paddingVertical: spacing.md,
@@ -175,7 +159,7 @@ const styles = StyleSheet.create({
   title: {
     ...typography.presets.body,
     color: colors.text.primary,
-    fontWeight: typography.weights.medium,
+    fontFamily: typography.fontFamily.medium,
     marginBottom: spacing.xxs,
   },
   titleCompleted: {

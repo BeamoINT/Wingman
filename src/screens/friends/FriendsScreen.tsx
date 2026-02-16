@@ -8,9 +8,9 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/AuthContext';
 import { useRequirements } from '../../context/RequirementsContext';
-import { colors } from '../../theme/colors';
-import { spacing } from '../../theme/spacing';
-import { typography } from '../../theme/typography';
+import { useTheme } from '../../context/ThemeContext';
+import type { ThemeTokens } from '../../theme/tokens';
+import { useThemedStyles } from '../../theme/useThemedStyles';
 import type { RootStackParamList } from '../../types';
 import { haptics } from '../../utils/haptics';
 
@@ -40,6 +40,9 @@ const TABS: TabInfo[] = [
 export const FriendsScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
+  const { tokens } = useTheme();
+  const styles = useThemedStyles(createStyles);
+  const { colors } = tokens;
   const { user } = useAuth();
   const { friendsLimits, friendsUsage } = useRequirements();
 
@@ -236,25 +239,35 @@ interface FeatureItemProps {
 }
 
 const FeatureItem: React.FC<FeatureItemProps> = ({ icon, title, description, locked }) => (
-  <View style={styles.featureItem}>
-    <View style={[styles.featureIcon, locked && styles.featureIconLocked]}>
-      <Ionicons
-        name={icon}
-        size={20}
-        color={locked ? colors.text.tertiary : colors.primary.blue}
-      />
-    </View>
-    <View style={styles.featureContent}>
-      <Text style={[styles.featureTitle, locked && styles.featureTitleLocked]}>{title}</Text>
-      <Text style={styles.featureDescription}>{description}</Text>
-    </View>
-    {locked && (
-      <Ionicons name="lock-closed" size={16} color={colors.text.tertiary} />
-    )}
-  </View>
+  <FeatureItemInner icon={icon} title={title} description={description} locked={locked} />
 );
 
-const styles = StyleSheet.create({
+const FeatureItemInner: React.FC<FeatureItemProps> = ({ icon, title, description, locked }) => {
+  const { tokens } = useTheme();
+  const styles = useThemedStyles(createStyles);
+  const { colors } = tokens;
+
+  return (
+    <View style={styles.featureItem}>
+      <View style={[styles.featureIcon, locked && styles.featureIconLocked]}>
+        <Ionicons
+          name={icon}
+          size={20}
+          color={locked ? colors.text.tertiary : colors.primary.blue}
+        />
+      </View>
+      <View style={styles.featureContent}>
+        <Text style={[styles.featureTitle, locked && styles.featureTitleLocked]}>{title}</Text>
+        <Text style={styles.featureDescription}>{description}</Text>
+      </View>
+      {locked && (
+        <Ionicons name="lock-closed" size={16} color={colors.text.tertiary} />
+      )}
+    </View>
+  );
+};
+
+const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background.primary,

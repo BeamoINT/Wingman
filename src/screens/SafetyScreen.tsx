@@ -3,13 +3,25 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useState } from 'react';
 import {
-    ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View
+  StyleSheet,
+  Switch,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Avatar, Button, Card, SafetyBanner } from '../components';
-import { colors } from '../theme/colors';
-import { spacing } from '../theme/spacing';
-import { typography } from '../theme/typography';
+import {
+  Avatar,
+  Button,
+  Card,
+  Header,
+  InlineBanner,
+  SafetyBanner,
+  ScreenScaffold,
+  SectionHeader,
+} from '../components';
+import { useTheme } from '../context/ThemeContext';
+import type { ThemeTokens } from '../theme/tokens';
+import { useThemedStyles } from '../theme/useThemedStyles';
 import type { RootStackParamList } from '../types';
 import { haptics } from '../utils/haptics';
 
@@ -20,9 +32,54 @@ const emergencyContacts = [
   { id: '2', name: 'Best Friend', phone: '+1 (555) 987-6543', isPrimary: false },
 ];
 
+interface SafetySettingRowProps {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  description: string;
+  value: boolean;
+  onChange: (value: boolean) => void;
+}
+
+const SafetySettingRow: React.FC<SafetySettingRowProps> = ({
+  icon,
+  title,
+  description,
+  value,
+  onChange,
+}) => {
+  const { tokens } = useTheme();
+  const styles = useThemedStyles(createStyles);
+  const { colors } = tokens;
+
+  return (
+    <View style={styles.settingRow}>
+      <View style={styles.settingIcon}>
+        <Ionicons name={icon} size={18} color={colors.accent.primary} />
+      </View>
+
+      <View style={styles.settingContent}>
+        <Text style={styles.settingTitle}>{title}</Text>
+        <Text style={styles.settingDescription}>{description}</Text>
+      </View>
+
+      <Switch
+        value={value}
+        onValueChange={onChange}
+        trackColor={{
+          false: colors.background.tertiary,
+          true: colors.accent.primary,
+        }}
+        thumbColor={colors.text.inverse}
+      />
+    </View>
+  );
+};
+
 export const SafetyScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
-  const insets = useSafeAreaInsets();
+  const { tokens } = useTheme();
+  const styles = useThemedStyles(createStyles);
+  const { colors } = tokens;
 
   const [shareLocation, setShareLocation] = useState(true);
   const [safetyCheckins, setSafetyCheckins] = useState(true);
@@ -35,398 +92,328 @@ export const SafetyScreen: React.FC = () => {
 
   const handleToggle = async (
     value: boolean,
-    setter: React.Dispatch<React.SetStateAction<boolean>>
+    setter: React.Dispatch<React.SetStateAction<boolean>>,
   ) => {
     await haptics.selection();
     setter(value);
   };
 
   return (
-    <View style={styles.container}>
-      <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
-        <TouchableOpacity style={styles.backButton} onPress={handleBackPress}>
-          <Ionicons name="chevron-back" size={24} color={colors.text.primary} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Safety Center</Text>
-        <View style={styles.placeholder} />
+    <ScreenScaffold scrollable contentContainerStyle={styles.contentContainer}>
+      <Header
+        title="Safety Center"
+        showBack
+        onBackPress={handleBackPress}
+        transparent
+      />
+
+      <InlineBanner
+        title="Every Wingman is ID and photo verified before bookings"
+        message="Safety checks are active before, during, and after every session."
+        variant="info"
+      />
+
+      <View style={styles.section}>
+        <SectionHeader
+          title="Emergency"
+          subtitle="Fast access if something feels wrong"
+        />
+        <SafetyBanner variant="emergency" onPress={() => haptics.heavy()} />
       </View>
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={{ paddingBottom: 100 }}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Emergency SOS */}
-        <View style={styles.section}>
-          <SafetyBanner variant="emergency" onPress={() => haptics.heavy()} />
-        </View>
+      <View style={styles.section}>
+        <SectionHeader
+          title="Safety Features"
+          subtitle="Control live protections for your bookings"
+        />
 
-        {/* Safety Features */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Safety Features</Text>
+        <Card variant="outlined" style={styles.settingsCard}>
+          <SafetySettingRow
+            icon="location"
+            title="Share Live Location"
+            description="Automatically share your location with emergency contacts during bookings."
+            value={shareLocation}
+            onChange={(value) => handleToggle(value, setShareLocation)}
+          />
+          <View style={styles.divider} />
+          <SafetySettingRow
+            icon="notifications"
+            title="Safety Check-ins"
+            description="Receive periodic check-in prompts while your booking is active."
+            value={safetyCheckins}
+            onChange={(value) => handleToggle(value, setSafetyCheckins)}
+          />
+          <View style={styles.divider} />
+          <SafetySettingRow
+            icon="alert-circle"
+            title="Emergency Button"
+            description="Show a one-tap emergency trigger during sessions."
+            value={emergencyButton}
+            onChange={(value) => handleToggle(value, setEmergencyButton)}
+          />
+        </Card>
+      </View>
 
-          <Card variant="outlined" style={styles.settingsCard}>
-            <View style={styles.settingRow}>
-              <View style={styles.settingIcon}>
-                <Ionicons name="location" size={20} color={colors.primary.blue} />
-              </View>
-              <View style={styles.settingContent}>
-                <Text style={styles.settingTitle}>Share Live Location</Text>
-                <Text style={styles.settingDescription}>
-                  Automatically share your location with emergency contacts during bookings
-                </Text>
-              </View>
-              <Switch
-                value={shareLocation}
-                onValueChange={(v) => handleToggle(v, setShareLocation)}
-                trackColor={{ false: colors.background.tertiary, true: colors.primary.blue }}
-                thumbColor={colors.text.primary}
-              />
-            </View>
+      <View style={styles.section}>
+        <SectionHeader
+          title="Emergency Contacts"
+          subtitle="Trusted people to notify quickly"
+          actionLabel="Add"
+          onPressAction={() => haptics.light()}
+        />
 
-            <View style={styles.divider} />
+        {emergencyContacts.map((contact) => (
+          <Card key={contact.id} variant="outlined" style={styles.contactCard}>
+            <View style={styles.contactRow}>
+              <Avatar name={contact.name} size="small" />
 
-            <View style={styles.settingRow}>
-              <View style={styles.settingIcon}>
-                <Ionicons name="notifications" size={20} color={colors.primary.blue} />
-              </View>
-              <View style={styles.settingContent}>
-                <Text style={styles.settingTitle}>Safety Check-ins</Text>
-                <Text style={styles.settingDescription}>
-                  Receive periodic check-in prompts during bookings
-                </Text>
-              </View>
-              <Switch
-                value={safetyCheckins}
-                onValueChange={(v) => handleToggle(v, setSafetyCheckins)}
-                trackColor={{ false: colors.background.tertiary, true: colors.primary.blue }}
-                thumbColor={colors.text.primary}
-              />
-            </View>
-
-            <View style={styles.divider} />
-
-            <View style={styles.settingRow}>
-              <View style={styles.settingIcon}>
-                <Ionicons name="alert-circle" size={20} color={colors.primary.blue} />
-              </View>
-              <View style={styles.settingContent}>
-                <Text style={styles.settingTitle}>Emergency Button</Text>
-                <Text style={styles.settingDescription}>
-                  Show quick access emergency button during bookings
-                </Text>
-              </View>
-              <Switch
-                value={emergencyButton}
-                onValueChange={(v) => handleToggle(v, setEmergencyButton)}
-                trackColor={{ false: colors.background.tertiary, true: colors.primary.blue }}
-                thumbColor={colors.text.primary}
-              />
-            </View>
-          </Card>
-        </View>
-
-        {/* Emergency Contacts */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Emergency Contacts</Text>
-            <TouchableOpacity onPress={() => haptics.light()}>
-              <Text style={styles.addText}>+ Add</Text>
-            </TouchableOpacity>
-          </View>
-
-          {emergencyContacts.map((contact) => (
-            <Card key={contact.id} variant="outlined" style={styles.contactCard}>
-              <View style={styles.contactRow}>
-                <Avatar name={contact.name} size="small" />
-                <View style={styles.contactInfo}>
-                  <View style={styles.contactHeader}>
-                    <Text style={styles.contactName}>{contact.name}</Text>
-                    {contact.isPrimary && (
-                      <View style={styles.primaryBadge}>
-                        <Text style={styles.primaryText}>Primary</Text>
-                      </View>
-                    )}
-                  </View>
-                  <Text style={styles.contactPhone}>{contact.phone}</Text>
+              <View style={styles.contactInfo}>
+                <View style={styles.contactHeader}>
+                  <Text style={styles.contactName}>{contact.name}</Text>
+                  {contact.isPrimary ? (
+                    <View style={styles.primaryBadge}>
+                      <Text style={styles.primaryText}>Primary</Text>
+                    </View>
+                  ) : null}
                 </View>
-                <TouchableOpacity onPress={() => haptics.light()}>
-                  <Ionicons name="ellipsis-horizontal" size={20} color={colors.text.tertiary} />
-                </TouchableOpacity>
+                <Text style={styles.contactPhone}>{contact.phone}</Text>
               </View>
-            </Card>
+
+              <TouchableOpacity onPress={() => haptics.light()}>
+                <Ionicons name="ellipsis-horizontal" size={20} color={colors.text.tertiary} />
+              </TouchableOpacity>
+            </View>
+          </Card>
+        ))}
+      </View>
+
+      <View style={styles.section}>
+        <SectionHeader
+          title="How Safety Works"
+          subtitle="Protection through the full booking lifecycle"
+        />
+
+        <Card variant="gradient" style={styles.timelineCard}>
+          {[
+            {
+              title: 'Before Your Booking',
+              description:
+                'Your emergency contacts can receive booking context and readiness alerts.',
+            },
+            {
+              title: 'During Your Booking',
+              description:
+                'Location sharing and check-ins help detect interruptions quickly.',
+            },
+            {
+              title: 'If Something Goes Wrong',
+              description:
+                'Use emergency actions to alert contacts and Wingman support immediately.',
+            },
+          ].map((item, index) => (
+            <View key={item.title} style={styles.timelineRow}>
+              <View style={styles.timelineIndex}>
+                <Text style={styles.timelineIndexText}>{index + 1}</Text>
+              </View>
+              <View style={styles.timelineContent}>
+                <Text style={styles.timelineTitle}>{item.title}</Text>
+                <Text style={styles.timelineDescription}>{item.description}</Text>
+              </View>
+            </View>
           ))}
+        </Card>
+      </View>
+
+      <Card variant="outlined" style={styles.supportCard}>
+        <View style={styles.supportIcon}>
+          <Ionicons name="headset" size={24} color={colors.accent.primary} />
         </View>
+        <Text style={styles.supportTitle}>24/7 Safety Support</Text>
+        <Text style={styles.supportDescription}>
+          Our trust and safety team is available around the clock to assist you.
+        </Text>
+        <Button
+          title="Contact Support"
+          onPress={() => haptics.light()}
+          variant="outline"
+          size="medium"
+          style={styles.supportButton}
+        />
+      </Card>
 
-        {/* How It Works */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>How Safety Works</Text>
-
-          <Card variant="gradient" style={styles.howItWorksCard}>
-            <View style={styles.step}>
-              <View style={styles.stepNumber}>
-                <Text style={styles.stepNumberText}>1</Text>
-              </View>
-              <View style={styles.stepContent}>
-                <Text style={styles.stepTitle}>Before Your Booking</Text>
-                <Text style={styles.stepDescription}>
-                  Share your plans with emergency contacts. They'll receive your booking details.
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.step}>
-              <View style={styles.stepNumber}>
-                <Text style={styles.stepNumberText}>2</Text>
-              </View>
-              <View style={styles.stepContent}>
-                <Text style={styles.stepTitle}>During Your Booking</Text>
-                <Text style={styles.stepDescription}>
-                  Your live location is shared. You'll receive check-in prompts every 30 minutes.
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.step}>
-              <View style={styles.stepNumber}>
-                <Text style={styles.stepNumberText}>3</Text>
-              </View>
-              <View style={styles.stepContent}>
-                <Text style={styles.stepTitle}>If Something Goes Wrong</Text>
-                <Text style={styles.stepDescription}>
-                  Tap the emergency button to alert contacts and our support team instantly.
-                </Text>
-              </View>
-            </View>
-          </Card>
-        </View>
-
-        {/* Trust & Safety Team */}
-        <View style={styles.section}>
-          <Card variant="outlined" style={styles.supportCard}>
-            <View style={styles.supportIcon}>
-              <Ionicons name="headset" size={28} color={colors.primary.blue} />
-            </View>
-            <Text style={styles.supportTitle}>24/7 Safety Support</Text>
-            <Text style={styles.supportDescription}>
-              Our trust and safety team is available around the clock to assist you.
-            </Text>
-            <Button
-              title="Contact Support"
-              onPress={() => haptics.light()}
-              variant="outline"
-              size="medium"
-              style={styles.supportButton}
-            />
-          </Card>
-        </View>
-
-        {/* Report */}
-        <TouchableOpacity style={styles.reportButton} onPress={() => haptics.light()}>
-          <Ionicons name="flag-outline" size={20} color={colors.status.error} />
-          <Text style={styles.reportText}>Report a Safety Concern</Text>
-        </TouchableOpacity>
-      </ScrollView>
-    </View>
+      <TouchableOpacity style={styles.reportButton} onPress={() => haptics.light()}>
+        <Ionicons name="flag-outline" size={18} color={colors.status.error} />
+        <Text style={styles.reportText}>Report a Safety Concern</Text>
+      </TouchableOpacity>
+    </ScreenScaffold>
   );
 };
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background.primary,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.screenPadding,
-    paddingBottom: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border.light,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    ...typography.presets.h4,
-    color: colors.text.primary,
-  },
-  placeholder: {
-    width: 40,
-  },
-  scrollView: {
-    flex: 1,
+const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
+  contentContainer: {
+    gap: spacing.lg,
+    paddingTop: spacing.xs,
   },
   section: {
-    padding: spacing.screenPadding,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.md,
-  },
-  sectionTitle: {
-    ...typography.presets.h4,
-    color: colors.text.primary,
-    marginBottom: spacing.md,
-  },
-  addText: {
-    ...typography.presets.button,
-    color: colors.primary.blue,
+    gap: spacing.sm,
   },
   settingsCard: {
-    padding: 0,
-    overflow: 'hidden',
+    paddingVertical: spacing.sm,
+    gap: spacing.xs,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: colors.border.subtle,
+    marginHorizontal: spacing.md,
   },
   settingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: spacing.lg,
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
   },
   settingIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: 36,
+    height: 36,
+    borderRadius: spacing.radius.md,
     backgroundColor: colors.primary.blueSoft,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: spacing.md,
   },
   settingContent: {
     flex: 1,
-    marginRight: spacing.md,
+    gap: spacing.xs,
   },
   settingTitle: {
     ...typography.presets.body,
     color: colors.text.primary,
-    fontWeight: typography.weights.medium,
+    fontWeight: typography.weights.semibold,
   },
   settingDescription: {
     ...typography.presets.caption,
-    color: colors.text.tertiary,
-    marginTop: 4,
+    color: colors.text.secondary,
     lineHeight: 18,
   },
-  divider: {
-    height: 1,
-    backgroundColor: colors.border.light,
-    marginLeft: spacing.lg + 40 + spacing.md,
-  },
   contactCard: {
+    paddingVertical: spacing.sm,
     marginBottom: spacing.sm,
   },
   contactRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
   },
   contactInfo: {
     flex: 1,
-    marginLeft: spacing.md,
+    gap: spacing.xs,
   },
   contactHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    gap: spacing.xs,
   },
   contactName: {
     ...typography.presets.body,
     color: colors.text.primary,
-    fontWeight: typography.weights.medium,
-  },
-  primaryBadge: {
-    backgroundColor: colors.primary.blueGlow,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    borderRadius: spacing.radius.sm,
-  },
-  primaryText: {
-    ...typography.presets.caption,
-    color: colors.primary.blue,
-    fontSize: 10,
+    fontWeight: typography.weights.semibold,
   },
   contactPhone: {
     ...typography.presets.caption,
-    color: colors.text.tertiary,
-    marginTop: 2,
+    color: colors.text.secondary,
   },
-  howItWorksCard: {
-    gap: spacing.lg,
+  primaryBadge: {
+    backgroundColor: colors.status.successLight,
+    borderRadius: spacing.radius.round,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
   },
-  step: {
+  primaryText: {
+    ...typography.presets.caption,
+    color: colors.status.success,
+  },
+  timelineCard: {
+    gap: spacing.md,
+  },
+  timelineRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
+    gap: spacing.sm,
   },
-  stepNumber: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: colors.primary.blue,
+  timelineIndex: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: spacing.md,
+    backgroundColor: colors.accent.primary,
+    marginTop: 2,
   },
-  stepNumberText: {
-    ...typography.presets.bodySmall,
-    color: colors.text.primary,
+  timelineIndexText: {
+    ...typography.presets.caption,
+    color: colors.text.inverse,
     fontWeight: typography.weights.bold,
   },
-  stepContent: {
+  timelineContent: {
     flex: 1,
+    gap: spacing.xs,
   },
-  stepTitle: {
+  timelineTitle: {
     ...typography.presets.body,
     color: colors.text.primary,
-    fontWeight: typography.weights.medium,
-    marginBottom: 4,
+    fontWeight: typography.weights.semibold,
   },
-  stepDescription: {
+  timelineDescription: {
     ...typography.presets.caption,
-    color: colors.text.tertiary,
+    color: colors.text.secondary,
     lineHeight: 18,
   },
   supportCard: {
     alignItems: 'center',
-    padding: spacing.xl,
+    gap: spacing.sm,
+    paddingVertical: spacing.xl,
   },
   supportIcon: {
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: colors.primary.blueSoft,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing.md,
+    backgroundColor: colors.primary.blueSoft,
   },
   supportTitle: {
     ...typography.presets.h4,
     color: colors.text.primary,
-    marginBottom: spacing.xs,
+    textAlign: 'center',
   },
   supportDescription: {
     ...typography.presets.bodySmall,
-    color: colors.text.tertiary,
+    color: colors.text.secondary,
     textAlign: 'center',
-    marginBottom: spacing.lg,
+    lineHeight: 20,
+    maxWidth: 420,
   },
   supportButton: {
-    minWidth: 160,
+    marginTop: spacing.xs,
+    minWidth: 200,
   },
   reportButton: {
+    marginTop: spacing.sm,
+    marginBottom: spacing.lg,
+    alignSelf: 'center',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    paddingVertical: spacing.lg,
-    marginHorizontal: spacing.screenPadding,
-    marginBottom: spacing.xl,
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: spacing.radius.round,
+    borderWidth: 1,
+    borderColor: colors.status.error,
+    backgroundColor: colors.status.errorLight,
   },
   reportText: {
-    ...typography.presets.button,
+    ...typography.presets.buttonSmall,
     color: colors.status.error,
   },
 });

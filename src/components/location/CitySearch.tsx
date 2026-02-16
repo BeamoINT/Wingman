@@ -6,15 +6,20 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-    ActivityIndicator, FlatList, Keyboard, StyleSheet, Text,
-    TextInput,
-    TouchableOpacity, View
+  ActivityIndicator,
+  FlatList,
+  Keyboard,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTheme } from '../../context/ThemeContext';
 import { usePlacesAutocomplete } from '../../hooks/usePlacesAutocomplete';
-import { colors } from '../../theme/colors';
-import { spacing } from '../../theme/spacing';
-import { typography } from '../../theme/typography';
+import type { ThemeTokens } from '../../theme/tokens';
+import { useThemedStyles } from '../../theme/useThemedStyles';
 import type { CitySearchProps, PlacePrediction } from '../../types/location';
 import { haptics } from '../../utils/haptics';
 import { BottomSheet } from '../BottomSheet';
@@ -26,6 +31,8 @@ export const CitySearch: React.FC<CitySearchProps> = ({
   onClose,
 }) => {
   const insets = useSafeAreaInsets();
+  const { tokens } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const [searchQuery, setSearchQuery] = useState('');
 
   const {
@@ -38,12 +45,10 @@ export const CitySearch: React.FC<CitySearchProps> = ({
     clearPredictions,
   } = usePlacesAutocomplete({ countryCode });
 
-  // Search when query changes
   useEffect(() => {
     search(searchQuery);
   }, [searchQuery, search]);
 
-  // Clear state when closing
   useEffect(() => {
     if (!visible) {
       setSearchQuery('');
@@ -62,7 +67,7 @@ export const CitySearch: React.FC<CitySearchProps> = ({
         onClose();
       }
     },
-    [selectPlace, onSelect, onClose]
+    [selectPlace, onSelect, onClose],
   );
 
   const handleClose = useCallback(() => {
@@ -83,7 +88,7 @@ export const CitySearch: React.FC<CitySearchProps> = ({
         <Ionicons
           name="location"
           size={20}
-          color={colors.primary.blue}
+          color={tokens.colors.primary.blue}
           style={styles.locationIcon}
         />
         <View style={styles.predictionInfo}>
@@ -92,24 +97,21 @@ export const CitySearch: React.FC<CitySearchProps> = ({
             {item.secondaryText}
           </Text>
         </View>
-        {isLoadingDetails && (
-          <ActivityIndicator size="small" color={colors.primary.blue} />
-        )}
+        {isLoadingDetails ? (
+          <ActivityIndicator size="small" color={tokens.colors.primary.blue} />
+        ) : null}
       </TouchableOpacity>
     ),
-    [handleSelect, isLoadingDetails]
+    [handleSelect, isLoadingDetails, styles, tokens.colors.primary.blue],
   );
 
-  const keyExtractor = useCallback(
-    (item: PlacePrediction) => item.placeId,
-    []
-  );
+  const keyExtractor = useCallback((item: PlacePrediction) => item.placeId, []);
 
   const renderEmptyState = () => {
     if (isSearching) {
       return (
         <View style={styles.emptyContainer}>
-          <ActivityIndicator size="large" color={colors.primary.blue} />
+          <ActivityIndicator size="large" color={tokens.colors.primary.blue} />
           <Text style={styles.emptyText}>Searching...</Text>
         </View>
       );
@@ -118,7 +120,7 @@ export const CitySearch: React.FC<CitySearchProps> = ({
     if (error) {
       return (
         <View style={styles.emptyContainer}>
-          <Ionicons name="alert-circle" size={48} color={colors.status.error} />
+          <Ionicons name="alert-circle" size={48} color={tokens.colors.status.error} />
           <Text style={styles.emptyText}>{error}</Text>
         </View>
       );
@@ -127,7 +129,7 @@ export const CitySearch: React.FC<CitySearchProps> = ({
     if (searchQuery.trim().length >= 2 && predictions.length === 0) {
       return (
         <View style={styles.emptyContainer}>
-          <Ionicons name="location" size={48} color={colors.text.tertiary} />
+          <Ionicons name="location" size={48} color={tokens.colors.text.tertiary} />
           <Text style={styles.emptyText}>No cities found</Text>
           <Text style={styles.emptyHint}>Try a different search term</Text>
         </View>
@@ -136,11 +138,9 @@ export const CitySearch: React.FC<CitySearchProps> = ({
 
     return (
       <View style={styles.emptyContainer}>
-        <Ionicons name="search" size={48} color={colors.text.tertiary} />
+        <Ionicons name="search" size={48} color={tokens.colors.text.tertiary} />
         <Text style={styles.emptyText}>Search for a city</Text>
-        <Text style={styles.emptyHint}>
-          Start typing to search for cities
-        </Text>
+        <Text style={styles.emptyHint}>Start typing to search for cities</Text>
       </View>
     );
   };
@@ -153,21 +153,19 @@ export const CitySearch: React.FC<CitySearchProps> = ({
       initialSnapIndex={0}
     >
       <View style={styles.container}>
-        {/* Header */}
         <View style={styles.header}>
           <Text style={styles.title}>Search City</Text>
           <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
-            <Ionicons name="close" size={24} color={colors.text.secondary} />
+            <Ionicons name="close" size={24} color={tokens.colors.text.secondary} />
           </TouchableOpacity>
         </View>
 
-        {/* Search Input */}
         <View style={styles.searchContainer}>
-          <Ionicons name="search" size={20} color={colors.text.tertiary} />
+          <Ionicons name="search" size={20} color={tokens.colors.text.tertiary} />
           <TextInput
             style={styles.searchInput}
             placeholder="Enter city name..."
-            placeholderTextColor={colors.text.tertiary}
+            placeholderTextColor={tokens.colors.text.tertiary}
             value={searchQuery}
             onChangeText={setSearchQuery}
             autoCapitalize="words"
@@ -175,43 +173,37 @@ export const CitySearch: React.FC<CitySearchProps> = ({
             returnKeyType="search"
             autoFocus
           />
-          {searchQuery.length > 0 && (
+          {searchQuery.length > 0 ? (
             <TouchableOpacity onPress={() => setSearchQuery('')}>
               <Ionicons
                 name="close-circle"
                 size={20}
-                color={colors.text.tertiary}
+                color={tokens.colors.text.tertiary}
               />
             </TouchableOpacity>
-          )}
+          ) : null}
         </View>
 
-        {/* Loading Details Overlay */}
-        {isLoadingDetails && (
+        {isLoadingDetails ? (
           <View style={styles.loadingOverlay}>
-            <ActivityIndicator size="large" color={colors.primary.blue} />
+            <ActivityIndicator size="large" color={tokens.colors.primary.blue} />
             <Text style={styles.loadingText}>Getting city details...</Text>
           </View>
-        )}
+        ) : null}
 
-        {/* Predictions List */}
         {predictions.length > 0 ? (
           <FlatList
             data={predictions}
             keyExtractor={keyExtractor}
             renderItem={renderItem}
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={[
-              styles.listContent,
-              { paddingBottom: insets.bottom + spacing.xl },
-            ]}
+            contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + tokens.spacing.xl }]}
             keyboardShouldPersistTaps="handled"
           />
         ) : (
           renderEmptyState()
         )}
 
-        {/* Powered by Google */}
         <View style={styles.attribution}>
           <Text style={styles.attributionText}>Powered by Google</Text>
         </View>
@@ -220,7 +212,7 @@ export const CitySearch: React.FC<CitySearchProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
   container: {
     flex: 1,
   },

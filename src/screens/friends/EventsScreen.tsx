@@ -9,13 +9,14 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar } from '../../components';
+import { PillTabs } from '../../components';
 import { RequirementsGate } from '../../components/RequirementsGate';
 import { useAuth } from '../../context/AuthContext';
+import { useTheme } from '../../context/ThemeContext';
 import { useRequirements } from '../../context/RequirementsContext';
 import { fetchFriendEvents, setEventRsvp } from '../../services/api/friendsApi';
-import { colors } from '../../theme/colors';
-import { spacing } from '../../theme/spacing';
-import { typography } from '../../theme/typography';
+import type { ThemeTokens } from '../../theme/tokens';
+import { useThemedStyles } from '../../theme/useThemedStyles';
 import type { RootStackParamList } from '../../types';
 import type { FriendEvent } from '../../types/friends';
 import { haptics } from '../../utils/haptics';
@@ -42,6 +43,9 @@ const categoryIcons: Record<string, keyof typeof Ionicons.glyphMap> = {
 const EventsContent: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
+  const { tokens } = useTheme();
+  const styles = useThemedStyles(createStyles);
+  const { colors } = tokens;
   const { user } = useAuth();
   const { friendsLimits, canUseFriendsFeature } = useRequirements();
 
@@ -296,24 +300,15 @@ const EventsContent: React.FC = () => {
         </TouchableOpacity>
       )}
 
-      {/* Tabs */}
       <View style={styles.tabs}>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'upcoming' && styles.tabActive]}
-          onPress={() => setActiveTab('upcoming')}
-        >
-          <Text style={[styles.tabText, activeTab === 'upcoming' && styles.tabTextActive]}>
-            Upcoming
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'my-events' && styles.tabActive]}
-          onPress={() => setActiveTab('my-events')}
-        >
-          <Text style={[styles.tabText, activeTab === 'my-events' && styles.tabTextActive]}>
-            My Events ({myEvents.length})
-          </Text>
-        </TouchableOpacity>
+        <PillTabs
+          items={[
+            { id: 'upcoming', label: 'Upcoming' },
+            { id: 'my-events', label: 'My Events', count: myEvents.length },
+          ]}
+          activeId={activeTab}
+          onChange={(value) => setActiveTab(value as 'upcoming' | 'my-events')}
+        />
       </View>
 
       {/* Events List */}
@@ -369,7 +364,7 @@ export const EventsScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background.primary,
@@ -415,28 +410,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   tabs: {
-    flexDirection: 'row',
     paddingHorizontal: spacing.screenPadding,
-    marginBottom: spacing.md,
-    gap: spacing.sm,
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: spacing.sm,
-    alignItems: 'center',
-    borderRadius: spacing.radius.full,
-    backgroundColor: colors.background.card,
-  },
-  tabActive: {
-    backgroundColor: colors.primary.blue,
-  },
-  tabText: {
-    ...typography.presets.body,
-    color: colors.text.tertiary,
-  },
-  tabTextActive: {
-    color: colors.text.primary,
-    fontWeight: '600',
+    marginBottom: spacing.xs,
   },
   listContent: {
     padding: spacing.screenPadding,

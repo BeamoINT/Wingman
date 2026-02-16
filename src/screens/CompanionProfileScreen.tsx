@@ -9,12 +9,12 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Badge, Button, Card, Rating, SafetyBanner } from '../components';
 import { useFeatureGate } from '../components/RequirementsGate';
+import { useTheme } from '../context/ThemeContext';
 import type { CompanionData } from '../services/api/companions';
 import { fetchCompanionById, fetchCompanionReviews } from '../services/api/companions';
 import { getOrCreateConversation } from '../services/api/messages';
-import { colors } from '../theme/colors';
-import { spacing } from '../theme/spacing';
-import { typography } from '../theme/typography';
+import type { ThemeTokens } from '../theme/tokens';
+import { useThemedStyles } from '../theme/useThemedStyles';
 import type { Companion, LegalDocumentType, RootStackParamList, VerificationLevel } from '../types';
 import { haptics } from '../utils/haptics';
 
@@ -118,6 +118,9 @@ export const CompanionProfileScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute<Props['route']>();
   const insets = useSafeAreaInsets();
+  const { tokens } = useTheme();
+  const styles = useThemedStyles(createStyles);
+  const { colors, spacing } = tokens;
   const [isFavorite, setIsFavorite] = useState(false);
   const [companion, setCompanion] = useState<Companion | null>(null);
   const [reviews, setReviews] = useState<CompanionReview[]>([]);
@@ -519,7 +522,7 @@ export const CompanionProfileScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background.primary,

@@ -6,16 +6,20 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useCallback, useState } from 'react';
 import {
-    StyleSheet, Text,
-    TouchableOpacity, View
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
+import { useTheme } from '../../context/ThemeContext';
 import { getCountryByCode } from '../../data/countries';
 import { useLocation } from '../../hooks/useLocation';
-import { colors } from '../../theme/colors';
-import { spacing } from '../../theme/spacing';
-import { typography } from '../../theme/typography';
+import type { ThemeTokens } from '../../theme/tokens';
+import { useThemedStyles } from '../../theme/useThemedStyles';
 import type {
-    Country, LocationPickerProps, PlaceDetails
+  Country,
+  LocationPickerProps,
+  PlaceDetails,
 } from '../../types/location';
 import { haptics } from '../../utils/haptics';
 import { CitySearch } from './CitySearch';
@@ -28,50 +32,40 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({
   error,
   disabled = false,
 }) => {
+  const { tokens } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const [showCountryPicker, setShowCountryPicker] = useState(false);
   const [showCitySearch, setShowCitySearch] = useState(false);
 
   const { isDetecting, detectLocation } = useLocation();
 
-  // Get the selected country data
   const selectedCountry = value.countryCode
     ? getCountryByCode(value.countryCode)
     : null;
 
-  /**
-   * Handle auto-detect location
-   */
   const handleDetectLocation = useCallback(async () => {
     await haptics.medium();
 
     const location = await detectLocation();
-
     if (location) {
       onChange(location);
     }
   }, [detectLocation, onChange]);
 
-  /**
-   * Handle country selection
-   */
   const handleCountrySelect = useCallback(
     (country: Country) => {
       onChange({
         ...value,
         country: country.name,
         countryCode: country.code,
-        // Clear city when country changes
         city: '',
         state: undefined,
         coordinates: undefined,
       });
     },
-    [value, onChange]
+    [value, onChange],
   );
 
-  /**
-   * Handle city selection
-   */
   const handleCitySelect = useCallback(
     (details: PlaceDetails) => {
       onChange({
@@ -82,21 +76,15 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({
         coordinates: details.coordinates,
       });
     },
-    [onChange]
+    [onChange],
   );
 
-  /**
-   * Open country picker
-   */
   const openCountryPicker = useCallback(async () => {
     if (disabled) return;
     await haptics.light();
     setShowCountryPicker(true);
   }, [disabled]);
 
-  /**
-   * Open city search
-   */
   const openCitySearch = useCallback(async () => {
     if (disabled) return;
     await haptics.light();
@@ -105,21 +93,18 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({
 
   return (
     <View style={styles.container}>
-      {/* Auto-detect Button */}
       <LocationDetectButton
         onPress={handleDetectLocation}
         isLoading={isDetecting}
         disabled={disabled}
       />
 
-      {/* Divider */}
       <View style={styles.dividerContainer}>
         <View style={styles.dividerLine} />
         <Text style={styles.dividerText}>or enter manually</Text>
         <View style={styles.dividerLine} />
       </View>
 
-      {/* Country Selector */}
       <TouchableOpacity
         style={[
           styles.selectorButton,
@@ -138,23 +123,14 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({
             </>
           ) : (
             <>
-              <Ionicons
-                name="globe-outline"
-                size={20}
-                color={colors.text.tertiary}
-              />
+              <Ionicons name="globe-outline" size={20} color={tokens.colors.text.tertiary} />
               <Text style={styles.selectorPlaceholder}>Select country</Text>
             </>
           )}
         </View>
-        <Ionicons
-          name="chevron-forward"
-          size={20}
-          color={colors.text.tertiary}
-        />
+        <Ionicons name="chevron-forward" size={20} color={tokens.colors.text.tertiary} />
       </TouchableOpacity>
 
-      {/* City Selector */}
       <TouchableOpacity
         style={[
           styles.selectorButton,
@@ -168,54 +144,35 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({
         <View style={styles.selectorContent}>
           {value.city ? (
             <>
-              <Ionicons
-                name="location"
-                size={20}
-                color={colors.primary.blue}
-              />
+              <Ionicons name="location" size={20} color={tokens.colors.primary.blue} />
               <Text style={styles.selectorValue}>{value.city}</Text>
             </>
           ) : (
             <>
-              <Ionicons
-                name="location-outline"
-                size={20}
-                color={colors.text.tertiary}
-              />
+              <Ionicons name="location-outline" size={20} color={tokens.colors.text.tertiary} />
               <Text style={styles.selectorPlaceholder}>Search for city</Text>
             </>
           )}
         </View>
-        <Ionicons
-          name="chevron-forward"
-          size={20}
-          color={colors.text.tertiary}
-        />
+        <Ionicons name="chevron-forward" size={20} color={tokens.colors.text.tertiary} />
       </TouchableOpacity>
 
-      {/* State/Region Display (read-only) */}
-      {value.state && (
+      {value.state ? (
         <View style={styles.stateDisplay}>
-          <Ionicons
-            name="map-outline"
-            size={18}
-            color={colors.text.tertiary}
-          />
+          <Ionicons name="map-outline" size={18} color={tokens.colors.text.tertiary} />
           <Text style={styles.stateText}>
             {value.state}, {value.country}
           </Text>
         </View>
-      )}
+      ) : null}
 
-      {/* Error Message */}
-      {error && (
+      {error ? (
         <View style={styles.errorContainer}>
-          <Ionicons name="alert-circle" size={14} color={colors.status.error} />
+          <Ionicons name="alert-circle" size={14} color={tokens.colors.status.error} />
           <Text style={styles.errorText}>{error}</Text>
         </View>
-      )}
+      ) : null}
 
-      {/* Country Picker Modal */}
       <CountryPicker
         visible={showCountryPicker}
         selectedCode={value.countryCode}
@@ -223,7 +180,6 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({
         onClose={() => setShowCountryPicker(false)}
       />
 
-      {/* City Search Modal */}
       <CitySearch
         visible={showCitySearch}
         countryCode={value.countryCode}
@@ -234,7 +190,7 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
   container: {
     marginBottom: spacing.md,
   },
@@ -258,12 +214,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: colors.background.tertiary,
-    borderRadius: spacing.radius.md,
+    borderRadius: spacing.radius.lg,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    marginBottom: spacing.sm,
     borderWidth: 1,
     borderColor: colors.border.light,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.inputPadding,
-    marginBottom: spacing.md,
   },
   selectorDisabled: {
     opacity: 0.5,
@@ -274,34 +230,28 @@ const styles = StyleSheet.create({
   selectorContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
     flex: 1,
+    gap: spacing.sm,
   },
   flag: {
-    fontSize: 24,
+    fontSize: 22,
   },
   selectorValue: {
     ...typography.presets.body,
     color: colors.text.primary,
-    flex: 1,
   },
   selectorPlaceholder: {
     ...typography.presets.body,
     color: colors.text.tertiary,
-    flex: 1,
   },
   stateDisplay: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.inputPadding,
-    backgroundColor: colors.primary.blueSoft,
-    borderRadius: spacing.radius.md,
-    marginBottom: spacing.md,
+    gap: spacing.xs,
+    marginTop: spacing.xs,
   },
   stateText: {
-    ...typography.presets.bodySmall,
+    ...typography.presets.caption,
     color: colors.text.secondary,
   },
   errorContainer: {

@@ -10,14 +10,19 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useState } from 'react';
 import {
-    ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View
+  ActivityIndicator,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTheme } from '../../context/ThemeContext';
 import { getLegalDocument, LEGAL_DOCUMENT_META } from '../../legal';
 import type { LegalDocumentType, LegalSection } from '../../legal/types';
-import { colors } from '../../theme/colors';
-import { spacing } from '../../theme/spacing';
-import { typography } from '../../theme/typography';
+import type { ThemeTokens } from '../../theme/tokens';
+import { useThemedStyles } from '../../theme/useThemedStyles';
 import type { RootStackParamList } from '../../types';
 import { haptics } from '../../utils/haptics';
 
@@ -38,7 +43,7 @@ function applyWingmanBranding(text: string): string {
       const token = `__EMAIL_${protectedEmails.length}__`;
       protectedEmails.push(email);
       return token;
-    }
+    },
   );
 
   const branded = withProtectedEmails
@@ -63,9 +68,11 @@ export const LegalDocumentScreen: React.FC<LegalDocumentScreenProps> = ({
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute<LegalDocumentRouteProp>();
   const insets = useSafeAreaInsets();
+  const { tokens } = useTheme();
+  const styles = useThemedStyles(createStyles);
+  const { colors, spacing } = tokens;
   const [isLoading, setIsLoading] = useState(false);
 
-  // Get document type from props or route params
   const documentType = propDocumentType || route.params?.documentType;
 
   if (!documentType) {
@@ -96,22 +103,19 @@ export const LegalDocumentScreen: React.FC<LegalDocumentScreenProps> = ({
     }
   };
 
-  const renderSection = (section: LegalSection, level: number = 0) => {
-    return (
-      <View key={section.id} style={[styles.section, level > 0 && styles.subsection]}>
-        <Text style={[styles.sectionTitle, level > 0 && styles.subsectionTitle]}>
-          {applyWingmanBranding(section.title)}
-        </Text>
-        <Text style={styles.sectionContent}>{applyWingmanBranding(section.content)}</Text>
-        {section.subsections?.map((subsection) => renderSection(subsection, level + 1))}
-      </View>
-    );
-  };
+  const renderSection = (section: LegalSection, level: number = 0) => (
+    <View key={section.id} style={[styles.section, level > 0 && styles.subsection]}>
+      <Text style={[styles.sectionTitle, level > 0 && styles.subsectionTitle]}>
+        {applyWingmanBranding(section.title)}
+      </Text>
+      <Text style={styles.sectionContent}>{applyWingmanBranding(section.content)}</Text>
+      {section.subsections?.map((subsection) => renderSection(subsection, level + 1))}
+    </View>
+  );
 
   return (
     <View style={styles.container}>
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
+      <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}> 
         <TouchableOpacity style={styles.backButton} onPress={handleBackPress}>
           <Ionicons name="chevron-back" size={24} color={colors.text.primary} />
         </TouchableOpacity>
@@ -125,20 +129,12 @@ export const LegalDocumentScreen: React.FC<LegalDocumentScreenProps> = ({
 
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={[
-          styles.scrollContent,
-          showAcceptButton && { paddingBottom: 100 },
-        ]}
-        showsVerticalScrollIndicator={true}
+        contentContainerStyle={[styles.scrollContent, showAcceptButton && { paddingBottom: 100 }]}
+        showsVerticalScrollIndicator
       >
-        {/* Document Header */}
         <View style={styles.documentHeader}>
           <View style={styles.iconContainer}>
-            <Ionicons
-              name={meta.icon as any}
-              size={32}
-              color={colors.primary.blue}
-            />
+            <Ionicons name={meta.icon as any} size={32} color={colors.primary.blue} />
           </View>
           <Text style={styles.documentTitle}>{applyWingmanBranding(document.title)}</Text>
           <Text style={styles.documentMeta}>
@@ -146,12 +142,10 @@ export const LegalDocumentScreen: React.FC<LegalDocumentScreenProps> = ({
           </Text>
         </View>
 
-        {/* Document Content */}
         <View style={styles.content}>
           {document.sections.map((section) => renderSection(section))}
         </View>
 
-        {/* Footer */}
         <View style={styles.footer}>
           <Text style={styles.footerText}>
             If you have questions about this document, please contact us at{' '}
@@ -160,14 +154,8 @@ export const LegalDocumentScreen: React.FC<LegalDocumentScreenProps> = ({
         </View>
       </ScrollView>
 
-      {/* Accept Button */}
-      {showAcceptButton && (
-        <View
-          style={[
-            styles.acceptContainer,
-            { paddingBottom: insets.bottom + spacing.md },
-          ]}
-        >
+      {showAcceptButton ? (
+        <View style={[styles.acceptContainer, { paddingBottom: insets.bottom + spacing.md }]}> 
           <TouchableOpacity
             style={[styles.acceptButton, isLoading && styles.acceptButtonDisabled]}
             onPress={handleAccept}
@@ -177,22 +165,18 @@ export const LegalDocumentScreen: React.FC<LegalDocumentScreenProps> = ({
               <ActivityIndicator color={colors.text.inverse} />
             ) : (
               <>
-                <Ionicons
-                  name="checkmark-circle"
-                  size={20}
-                  color={colors.text.inverse}
-                />
+                <Ionicons name="checkmark-circle" size={20} color={colors.text.inverse} />
                 <Text style={styles.acceptButtonText}>I Accept</Text>
               </>
             )}
           </TouchableOpacity>
         </View>
-      )}
+      ) : null}
     </View>
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background.primary,

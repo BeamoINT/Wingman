@@ -10,9 +10,9 @@ import { Avatar } from '../../components';
 import { RequirementsGate } from '../../components/RequirementsGate';
 import { useRequirements } from '../../context/RequirementsContext';
 import { fetchMatchingProfiles, recordMatchSwipe } from '../../services/api/friendsApi';
-import { colors } from '../../theme/colors';
-import { spacing } from '../../theme/spacing';
-import { typography } from '../../theme/typography';
+import { useTheme } from '../../context/ThemeContext';
+import type { ThemeTokens } from '../../theme/tokens';
+import { useThemedStyles } from '../../theme/useThemedStyles';
 import type { RootStackParamList } from '../../types';
 import type { FriendProfile } from '../../types/friends';
 import { haptics } from '../../utils/haptics';
@@ -29,6 +29,9 @@ const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.25;
 const FriendMatchingContent: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
+  const { tokens } = useTheme();
+  const styles = useThemedStyles(createStyles);
+  const { colors } = tokens;
   const { friendsLimits, friendsUsage, recordFriendsMatch } = useRequirements();
 
   const [profiles, setProfiles] = useState<FriendProfile[]>([]);
@@ -391,7 +394,7 @@ export const FriendMatchingScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background.primary,

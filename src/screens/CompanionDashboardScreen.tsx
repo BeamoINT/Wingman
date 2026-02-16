@@ -4,23 +4,36 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-    ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View
+  ActivityIndicator,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Avatar, Badge, Card } from '../components';
+import {
+  Avatar,
+  Badge,
+  Button,
+  Card,
+  Header,
+  InlineBanner,
+  PillTabs,
+  ScreenScaffold,
+  SectionHeader,
+} from '../components';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import type { BookingData } from '../services/api/bookingsApi';
 import {
-    cancelBooking,
-    fetchCompanionBookings,
-    fetchCompanionEarnings,
-    updateBookingStatus
+  cancelBooking,
+  fetchCompanionBookings,
+  fetchCompanionEarnings,
+  updateBookingStatus,
 } from '../services/api/bookingsApi';
 import { getOrCreateConversation } from '../services/api/messages';
 import { supabase } from '../services/supabase';
-import { colors } from '../theme/colors';
-import { spacing } from '../theme/spacing';
-import { typography } from '../theme/typography';
+import type { ThemeTokens } from '../theme/tokens';
+import { useThemedStyles } from '../theme/useThemedStyles';
 import type { RootStackParamList } from '../types';
 import { haptics } from '../utils/haptics';
 
@@ -83,8 +96,11 @@ function formatTimeLabel(time: string): string {
 
 export const CompanionDashboardScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
-  const insets = useSafeAreaInsets();
+  const { tokens } = useTheme();
+  const styles = useThemedStyles(createStyles);
+  const { colors } = tokens;
   const { user } = useAuth();
+
   const [timeRange, setTimeRange] = useState<TimeRange>('month');
   const [bookings, setBookings] = useState<BookingData[]>([]);
   const [earnings, setEarnings] = useState<{ week: number; month: number; year: number; total: number }>({
@@ -114,7 +130,10 @@ export const CompanionDashboardScreen: React.FC = () => {
     setError(null);
 
     try {
-      const [{ bookings: companionBookings, error: bookingsError }, { earnings: earningsData, error: earningsError }] = await Promise.all([
+      const [
+        { bookings: companionBookings, error: bookingsError },
+        { earnings: earningsData, error: earningsError },
+      ] = await Promise.all([
         fetchCompanionBookings(),
         fetchCompanionEarnings(),
       ]);
@@ -200,7 +219,7 @@ export const CompanionDashboardScreen: React.FC = () => {
 
     const completedHours = completedInRange.reduce(
       (sum, booking) => sum + Math.max(0, Math.round(toNumber(booking.duration_hours, 0))),
-      0
+      0,
     );
 
     return {
@@ -295,440 +314,344 @@ export const CompanionDashboardScreen: React.FC = () => {
   }, [navigation]);
 
   return (
-    <View style={styles.container}>
-      <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
-        <TouchableOpacity style={styles.backButton} onPress={handleBackPress}>
-          <Ionicons name="chevron-back" size={24} color={colors.text.primary} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Wingman Dashboard</Text>
-        <TouchableOpacity onPress={() => loadDashboardData(true)}>
-          <Ionicons
-            name={isRefreshing ? 'sync' : 'refresh'}
-            size={24}
-            color={colors.text.primary}
-          />
+    <ScreenScaffold scrollable contentContainerStyle={styles.contentContainer}>
+      <Header
+        title="Wingman Dashboard"
+        showBack
+        onBackPress={handleBackPress}
+        rightIcon={isRefreshing ? 'sync' : 'refresh'}
+        onRightPress={() => loadDashboardData(true)}
+        transparent
+      />
+
+      <InlineBanner
+        title="All users are ID and photo verified before bookings"
+        message="Stay responsive to keep your rating and repeat bookings strong."
+        variant="info"
+      />
+
+      {error ? (
+        <InlineBanner
+          title="Dashboard issue"
+          message={error}
+          variant="error"
+        />
+      ) : null}
+
+      <View style={styles.section}>
+        <SectionHeader
+          title="Availability"
+          subtitle="Control whether you can receive new requests"
+        />
+
+        <TouchableOpacity activeOpacity={0.9} onPress={toggleOnlineStatus}>
+          <Card variant="gradient" style={styles.availabilityCard}>
+            <View style={styles.availabilityLeft}>
+              <View style={[styles.statusDot, isOnline && styles.statusDotOnline]} />
+              <View style={styles.availabilityTextWrap}>
+                <Text style={styles.availabilityTitle}>
+                  {isOnline ? "You're Online" : "You're Offline"}
+                </Text>
+                <Text style={styles.availabilitySubtitle}>
+                  {isOnline ? 'Receiving booking requests' : 'Tap to go online and receive requests'}
+                </Text>
+              </View>
+            </View>
+
+            <View style={[styles.switchRail, isOnline && styles.switchRailActive]}>
+              <View style={[styles.switchThumb, isOnline && styles.switchThumbActive]} />
+            </View>
+          </Card>
         </TouchableOpacity>
       </View>
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={{ paddingBottom: 100 }}
-        showsVerticalScrollIndicator={false}
-      >
-        {error && (
-          <View style={styles.section}>
-            <Card variant="outlined" style={styles.errorCard}>
-              <Ionicons name="alert-circle-outline" size={20} color={colors.status.error} />
-              <Text style={styles.errorText}>{error}</Text>
-            </Card>
-          </View>
-        )}
+      <View style={styles.section}>
+        <SectionHeader
+          title="Earnings"
+          subtitle="Revenue and productivity overview"
+        />
 
-        {/* Status Toggle */}
-        <View style={styles.section}>
-          <Card
-            variant="gradient"
-            style={styles.statusCard}
-            onPress={toggleOnlineStatus}
-          >
-            <View style={styles.statusContent}>
-              <View style={[styles.statusDot, isOnline && styles.statusDotOnline]} />
-              <View style={styles.statusInfo}>
-                <Text style={styles.statusLabel}>
-                  {isOnline ? 'You\'re Online' : 'You\'re Offline'}
-                </Text>
-                <Text style={styles.statusDescription}>
-                  {isOnline
-                    ? 'Receiving booking requests'
-                    : 'Tap to go online and receive requests'}
-                </Text>
-              </View>
-              <View style={[styles.statusToggle, isOnline && styles.statusToggleActive]}>
-                <View style={[styles.toggleKnob, isOnline && styles.toggleKnobActive]} />
-              </View>
+        <PillTabs
+          items={[
+            { id: 'week', label: 'Week' },
+            { id: 'month', label: 'Month' },
+            { id: 'year', label: 'Year' },
+          ]}
+          activeId={timeRange}
+          onChange={(value) => {
+            void haptics.selection();
+            setTimeRange(value as TimeRange);
+          }}
+        />
+
+        <LinearGradient
+          colors={colors.gradients.premium}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.earningsCard}
+        >
+          <Text style={styles.earningsLabel}>Total Earnings</Text>
+          <Text style={styles.earningsAmount}>${currentData.total.toLocaleString()}</Text>
+
+          <View style={styles.earningsStats}>
+            <View style={styles.metricItem}>
+              <Text style={styles.metricValue}>{currentData.bookings}</Text>
+              <Text style={styles.metricLabel}>Bookings</Text>
             </View>
+            <View style={styles.metricDivider} />
+            <View style={styles.metricItem}>
+              <Text style={styles.metricValue}>{currentData.hours}</Text>
+              <Text style={styles.metricLabel}>Hours</Text>
+            </View>
+            <View style={styles.metricDivider} />
+            <View style={styles.metricItem}>
+              <Text style={styles.metricValue}>
+                ${currentData.hours > 0 ? Math.round(currentData.total / currentData.hours) : 0}
+              </Text>
+              <Text style={styles.metricLabel}>Avg/Hour</Text>
+            </View>
+          </View>
+        </LinearGradient>
+
+        <Button
+          title="Withdraw Earnings"
+          onPress={() => haptics.medium()}
+          variant="secondary"
+          icon="wallet-outline"
+          iconPosition="left"
+          fullWidth
+        />
+      </View>
+
+      <View style={styles.section}>
+        <SectionHeader
+          title="Performance"
+          subtitle="Live view of quality and responsiveness"
+        />
+
+        <View style={styles.statsGrid}>
+          <Card style={styles.statCard}>
+            <Ionicons name="star" size={18} color={colors.primary.gold} />
+            <Text style={styles.statValue}>{stats.rating > 0 ? stats.rating.toFixed(1) : '--'}</Text>
+            <Text style={styles.statLabel}>Rating</Text>
+          </Card>
+
+          <Card style={styles.statCard}>
+            <Ionicons name="flash" size={18} color={colors.accent.primary} />
+            <Text style={styles.statValue}>
+              {stats.responseTime.includes('hour')
+                ? stats.responseTime.replace('Usually responds within ', '')
+                : stats.responseTime}
+            </Text>
+            <Text style={styles.statLabel}>Avg Response</Text>
+          </Card>
+
+          <Card style={styles.statCard}>
+            <Ionicons name="checkmark-circle" size={18} color={colors.status.success} />
+            <Text style={styles.statValue}>{stats.completionRate}%</Text>
+            <Text style={styles.statLabel}>Completion</Text>
+          </Card>
+
+          <Card style={styles.statCard}>
+            <Ionicons name="repeat" size={18} color={colors.verification.trusted} />
+            <Text style={styles.statValue}>{stats.repeatClientRate}%</Text>
+            <Text style={styles.statLabel}>Repeat Clients</Text>
           </Card>
         </View>
+      </View>
 
-        {/* Earnings Overview */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Earnings</Text>
-            <View style={styles.timeRangeSelector}>
-              {(['week', 'month', 'year'] as TimeRange[]).map((range) => (
-                <TouchableOpacity
-                  key={range}
-                  style={[
-                    styles.timeRangeButton,
-                    timeRange === range && styles.timeRangeButtonActive,
-                  ]}
-                  onPress={() => {
-                    haptics.selection();
-                    setTimeRange(range);
-                  }}
-                >
-                  <Text style={[
-                    styles.timeRangeText,
-                    timeRange === range && styles.timeRangeTextActive,
-                  ]}>
-                    {range.charAt(0).toUpperCase() + range.slice(1)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+      <View style={styles.section}>
+        <SectionHeader
+          title="Upcoming Bookings"
+          subtitle="Requests that need your response"
+        />
+
+        {isLoading ? (
+          <Card variant="outlined" style={styles.centerCard}>
+            <ActivityIndicator size="small" color={colors.accent.primary} />
+            <Text style={styles.centerCardText}>Loading bookings...</Text>
+          </Card>
+        ) : null}
+
+        {!isLoading && visibleBookings.length === 0 ? (
+          <Card variant="outlined" style={styles.centerCard}>
+            <Ionicons name="calendar-outline" size={20} color={colors.text.tertiary} />
+            <Text style={styles.centerCardText}>No upcoming bookings yet.</Text>
+          </Card>
+        ) : null}
+
+        {visibleBookings.map((booking) => (
+          <Card key={booking.id} variant="outlined" style={styles.bookingCard}>
+            <View style={styles.bookingHeader}>
+              <Avatar source={booking.user.avatar} name={booking.user.name} size="small" />
+              <View style={styles.bookingInfo}>
+                <Text style={styles.bookingName}>{booking.user.name}</Text>
+                <Text style={styles.bookingActivity}>{booking.activity}</Text>
+              </View>
+              <Badge
+                label={booking.status === 'pending' ? 'Pending' : 'Confirmed'}
+                variant={booking.status === 'pending' ? 'warning' : 'success'}
+                size="small"
+              />
             </View>
-          </View>
 
-          <LinearGradient
-            colors={colors.gradients.premium}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.earningsCard}
-          >
-            <Text style={styles.earningsLabel}>Total Earnings</Text>
-            <Text style={styles.earningsAmount}>${currentData.total.toLocaleString()}</Text>
-
-            <View style={styles.earningsStats}>
-              <View style={styles.earningStat}>
-                <Text style={styles.earningStatValue}>{currentData.bookings}</Text>
-                <Text style={styles.earningStatLabel}>Bookings</Text>
+            <View style={styles.bookingMetaRow}>
+              <View style={styles.metaPill}>
+                <Ionicons name="calendar-outline" size={12} color={colors.text.tertiary} />
+                <Text style={styles.metaPillText}>{booking.date}</Text>
               </View>
-              <View style={styles.earningsStatDivider} />
-              <View style={styles.earningStat}>
-                <Text style={styles.earningStatValue}>{currentData.hours}</Text>
-                <Text style={styles.earningStatLabel}>Hours</Text>
+              <View style={styles.metaPill}>
+                <Ionicons name="time-outline" size={12} color={colors.text.tertiary} />
+                <Text style={styles.metaPillText}>{booking.time}</Text>
               </View>
-              <View style={styles.earningsStatDivider} />
-              <View style={styles.earningStat}>
-                <Text style={styles.earningStatValue}>
-                  ${currentData.hours > 0 ? Math.round(currentData.total / currentData.hours) : 0}
-                </Text>
-                <Text style={styles.earningStatLabel}>Avg/Hour</Text>
+              <View style={styles.metaPill}>
+                <Ionicons name="hourglass-outline" size={12} color={colors.text.tertiary} />
+                <Text style={styles.metaPillText}>{booking.duration}h</Text>
               </View>
             </View>
-          </LinearGradient>
 
-          <TouchableOpacity style={styles.withdrawButton} onPress={() => haptics.medium()}>
-            <Ionicons name="wallet-outline" size={20} color={colors.primary.blue} />
-            <Text style={styles.withdrawText}>Withdraw Earnings</Text>
-            <Ionicons name="chevron-forward" size={18} color={colors.text.tertiary} />
-          </TouchableOpacity>
-        </View>
+            <View style={styles.bookingFooter}>
+              <Text style={styles.bookingAmount}>${booking.amount}</Text>
 
-        {/* Quick Stats */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Performance</Text>
-          <View style={styles.statsGrid}>
-            <Card style={styles.statCard}>
-              <View style={[styles.statIcon, { backgroundColor: colors.primary.goldSoft }]}>
-                <Ionicons name="star" size={20} color={colors.primary.gold} />
-              </View>
-              <Text style={styles.statValue}>{stats.rating > 0 ? stats.rating.toFixed(1) : '--'}</Text>
-              <Text style={styles.statLabel}>Rating</Text>
-            </Card>
-            <Card style={styles.statCard}>
-              <View style={[styles.statIcon, { backgroundColor: colors.primary.blueSoft }]}>
-                <Ionicons name="flash" size={20} color={colors.primary.blue} />
-              </View>
-              <Text style={styles.statValue}>
-                {stats.responseTime.includes('hour')
-                  ? stats.responseTime.replace('Usually responds within ', '')
-                  : stats.responseTime}
-              </Text>
-              <Text style={styles.statLabel}>Avg Response</Text>
-            </Card>
-            <Card style={styles.statCard}>
-              <View style={[styles.statIcon, { backgroundColor: colors.status.successLight }]}>
-                <Ionicons name="checkmark-circle" size={20} color={colors.status.success} />
-              </View>
-              <Text style={styles.statValue}>{stats.completionRate}%</Text>
-              <Text style={styles.statLabel}>Completion</Text>
-            </Card>
-            <Card style={styles.statCard}>
-              <View style={[styles.statIcon, { backgroundColor: colors.verification.trustedLight }]}>
-                <Ionicons name="repeat" size={20} color={colors.verification.trusted} />
-              </View>
-              <Text style={styles.statValue}>{stats.repeatClientRate}%</Text>
-              <Text style={styles.statLabel}>Repeat Clients</Text>
-            </Card>
-          </View>
-        </View>
-
-        {/* Upcoming Bookings */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Upcoming Bookings</Text>
-            <TouchableOpacity onPress={() => haptics.light()}>
-              <Text style={styles.seeAllText}>See all</Text>
-            </TouchableOpacity>
-          </View>
-
-          {visibleBookings.length === 0 && !isLoading && (
-            <Card variant="outlined" style={styles.emptyBookingsCard}>
-              <Ionicons name="calendar-outline" size={20} color={colors.text.tertiary} />
-              <Text style={styles.emptyBookingsText}>No upcoming bookings yet.</Text>
-            </Card>
-          )}
-
-          {isLoading && (
-            <Card variant="outlined" style={styles.emptyBookingsCard}>
-              <ActivityIndicator size="small" color={colors.primary.blue} />
-              <Text style={styles.emptyBookingsText}>Loading bookings...</Text>
-            </Card>
-          )}
-
-          {visibleBookings.map((booking) => (
-            <Card key={booking.id} variant="outlined" style={styles.bookingCard}>
-              <View style={styles.bookingHeader}>
-                <Avatar source={booking.user.avatar} name={booking.user.name} size="small" />
-                <View style={styles.bookingInfo}>
-                  <Text style={styles.bookingName}>{booking.user.name}</Text>
-                  <Text style={styles.bookingActivity}>{booking.activity}</Text>
+              {booking.status === 'pending' ? (
+                <View style={styles.bookingActions}>
+                  <Button
+                    title="Decline"
+                    size="small"
+                    variant="outline"
+                    onPress={() => handleDeclineBooking(booking.id)}
+                  />
+                  <Button
+                    title="Accept"
+                    size="small"
+                    variant="primary"
+                    onPress={() => handleAcceptBooking(booking.id)}
+                  />
                 </View>
-                <Badge
-                  label={booking.status === 'pending' ? 'Pending' : 'Confirmed'}
-                  variant={booking.status === 'pending' ? 'warning' : 'success'}
+              ) : (
+                <Button
+                  title="Message"
                   size="small"
+                  variant="ghost"
+                  icon="chatbubble-outline"
+                  iconPosition="left"
+                  onPress={() => handleMessageClient(booking.clientId)}
                 />
-              </View>
-
-              <View style={styles.bookingDetails}>
-                <View style={styles.bookingDetail}>
-                  <Ionicons name="calendar-outline" size={14} color={colors.text.tertiary} />
-                  <Text style={styles.bookingDetailText}>{booking.date}</Text>
-                </View>
-                <View style={styles.bookingDetail}>
-                  <Ionicons name="time-outline" size={14} color={colors.text.tertiary} />
-                  <Text style={styles.bookingDetailText}>{booking.time}</Text>
-                </View>
-                <View style={styles.bookingDetail}>
-                  <Ionicons name="hourglass-outline" size={14} color={colors.text.tertiary} />
-                  <Text style={styles.bookingDetailText}>{booking.duration}h</Text>
-                </View>
-              </View>
-
-              <View style={styles.bookingFooter}>
-                <Text style={styles.bookingAmount}>${booking.amount}</Text>
-                {booking.status === 'pending' ? (
-                  <View style={styles.bookingActions}>
-                    <TouchableOpacity
-                      style={styles.declineButton}
-                      onPress={() => handleDeclineBooking(booking.id)}
-                    >
-                      <Text style={styles.declineText}>Decline</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.acceptButton}
-                      onPress={() => handleAcceptBooking(booking.id)}
-                    >
-                      <Text style={styles.acceptText}>Accept</Text>
-                    </TouchableOpacity>
-                  </View>
-                ) : (
-                  <TouchableOpacity
-                    style={styles.messageButton}
-                    onPress={() => handleMessageClient(booking.clientId)}
-                  >
-                    <Ionicons name="chatbubble-outline" size={16} color={colors.primary.blue} />
-                    <Text style={styles.messageText}>Message</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            </Card>
-          ))}
-        </View>
-
-        {/* Tips */}
-        <View style={styles.section}>
-          <Card variant="gradient" style={styles.tipsCard}>
-            <Ionicons name="bulb-outline" size={24} color={colors.primary.gold} />
-            <View style={styles.tipsContent}>
-              <Text style={styles.tipsTitle}>Boost Your Earnings</Text>
-              <Text style={styles.tipsText}>
-                Complete your video introduction to get 40% more booking requests!
-              </Text>
+              )}
             </View>
-            <Ionicons name="chevron-forward" size={20} color={colors.text.tertiary} />
           </Card>
+        ))}
+      </View>
+
+      <Card variant="accent" style={styles.tipCard}>
+        <Ionicons name="bulb-outline" size={20} color={colors.primary.gold} />
+        <View style={styles.tipTextWrap}>
+          <Text style={styles.tipTitle}>Boost Your Earnings</Text>
+          <Text style={styles.tipBody}>
+            Complete your video introduction to get more booking requests.
+          </Text>
         </View>
-      </ScrollView>
-    </View>
+      </Card>
+    </ScreenScaffold>
   );
 };
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background.primary,
+const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
+  contentContainer: {
+    gap: spacing.lg,
+    paddingBottom: spacing.xxxl,
   },
-  header: {
+  section: {
+    gap: spacing.sm,
+  },
+  availabilityCard: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.screenPadding,
-    paddingBottom: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border.light,
   },
-  backButton: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    ...typography.presets.h4,
-    color: colors.text.primary,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  section: {
-    padding: spacing.screenPadding,
-  },
-  errorCard: {
+  availabilityLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    borderColor: colors.status.error,
-  },
-  errorText: {
-    ...typography.presets.caption,
-    color: colors.status.error,
     flex: 1,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.md,
-  },
-  sectionTitle: {
-    ...typography.presets.h4,
-    color: colors.text.primary,
-  },
-  seeAllText: {
-    ...typography.presets.bodySmall,
-    color: colors.primary.blue,
-  },
-  statusCard: {
-    padding: spacing.lg,
-  },
-  statusContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
   },
   statusDot: {
     width: 12,
     height: 12,
     borderRadius: 6,
     backgroundColor: colors.text.tertiary,
-    marginRight: spacing.md,
   },
   statusDotOnline: {
     backgroundColor: colors.status.success,
   },
-  statusInfo: {
+  availabilityTextWrap: {
+    gap: spacing.xs,
     flex: 1,
   },
-  statusLabel: {
+  availabilityTitle: {
     ...typography.presets.h4,
     color: colors.text.primary,
   },
-  statusDescription: {
+  availabilitySubtitle: {
     ...typography.presets.caption,
-    color: colors.text.tertiary,
-    marginTop: 2,
+    color: colors.text.secondary,
   },
-  statusToggle: {
+  switchRail: {
     width: 50,
     height: 30,
     borderRadius: 15,
     backgroundColor: colors.background.tertiary,
     padding: 3,
   },
-  statusToggleActive: {
+  switchRailActive: {
     backgroundColor: colors.status.success,
   },
-  toggleKnob: {
+  switchThumb: {
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: colors.text.primary,
+    backgroundColor: colors.text.inverse,
   },
-  toggleKnobActive: {
+  switchThumbActive: {
     marginLeft: 20,
-  },
-  timeRangeSelector: {
-    flexDirection: 'row',
-    backgroundColor: colors.background.tertiary,
-    borderRadius: spacing.radius.md,
-    padding: 2,
-  },
-  timeRangeButton: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: spacing.radius.sm,
-  },
-  timeRangeButtonActive: {
-    backgroundColor: colors.background.card,
-  },
-  timeRangeText: {
-    ...typography.presets.caption,
-    color: colors.text.tertiary,
-  },
-  timeRangeTextActive: {
-    color: colors.text.primary,
   },
   earningsCard: {
     padding: spacing.xl,
     borderRadius: spacing.radius.xl,
+    gap: spacing.xs,
     marginBottom: spacing.md,
   },
   earningsLabel: {
     ...typography.presets.bodySmall,
     color: colors.primary.darkBlack,
-    opacity: 0.8,
   },
   earningsAmount: {
     ...typography.presets.hero,
     color: colors.primary.darkBlack,
-    marginVertical: spacing.sm,
   },
   earningsStats: {
+    marginTop: spacing.sm,
     flexDirection: 'row',
-    marginTop: spacing.md,
-  },
-  earningStat: {
-    flex: 1,
     alignItems: 'center',
   },
-  earningStatValue: {
-    ...typography.presets.h3,
-    color: colors.primary.darkBlack,
+  metricItem: {
+    flex: 1,
+    alignItems: 'center',
+    gap: spacing.xs,
   },
-  earningStatLabel: {
+  metricDivider: {
+    width: 1,
+    height: 26,
+    backgroundColor: colors.border.medium,
+  },
+  metricValue: {
+    ...typography.presets.h4,
+    color: colors.primary.darkBlack,
+    fontWeight: typography.weights.bold,
+  },
+  metricLabel: {
     ...typography.presets.caption,
     color: colors.primary.darkBlack,
-    opacity: 0.8,
-    marginTop: 2,
-  },
-  earningsStatDivider: {
-    width: 1,
-    backgroundColor: colors.interactive.pressed,
-  },
-  withdrawButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.background.card,
-    padding: spacing.md,
-    borderRadius: spacing.radius.lg,
-    gap: spacing.sm,
-  },
-  withdrawText: {
-    ...typography.presets.button,
-    color: colors.primary.blue,
-    flex: 1,
   },
   statsGrid: {
     flexDirection: 'row',
@@ -738,68 +661,66 @@ const styles = StyleSheet.create({
   statCard: {
     width: '48%',
     alignItems: 'center',
-    padding: spacing.lg,
-  },
-  statIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.sm,
+    gap: spacing.xs,
+    paddingVertical: spacing.lg,
   },
   statValue: {
-    ...typography.presets.h2,
+    ...typography.presets.h3,
     color: colors.text.primary,
   },
   statLabel: {
     ...typography.presets.caption,
     color: colors.text.tertiary,
-    marginTop: 2,
   },
-  bookingCard: {
-    marginBottom: spacing.md,
-  },
-  emptyBookingsCard: {
-    flexDirection: 'row',
+  centerCard: {
+    minHeight: 84,
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
-    marginBottom: spacing.md,
   },
-  emptyBookingsText: {
+  centerCardText: {
     ...typography.presets.caption,
     color: colors.text.secondary,
+  },
+  bookingCard: {
+    marginBottom: spacing.sm,
+    gap: spacing.md,
   },
   bookingHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: spacing.md,
+    gap: spacing.sm,
   },
   bookingInfo: {
     flex: 1,
-    marginLeft: spacing.sm,
+    gap: spacing.xs,
   },
   bookingName: {
     ...typography.presets.body,
     color: colors.text.primary,
-    fontWeight: typography.weights.medium,
+    fontWeight: typography.weights.semibold,
   },
   bookingActivity: {
     ...typography.presets.caption,
     color: colors.text.tertiary,
   },
-  bookingDetails: {
+  bookingMetaRow: {
     flexDirection: 'row',
-    gap: spacing.lg,
-    marginBottom: spacing.md,
+    flexWrap: 'wrap',
+    gap: spacing.xs,
   },
-  bookingDetail: {
+  metaPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+    borderRadius: spacing.radius.round,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    backgroundColor: colors.surface.level1,
   },
-  bookingDetailText: {
+  metaPillText: {
     ...typography.presets.caption,
     color: colors.text.secondary,
   },
@@ -807,63 +728,35 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: spacing.md,
     borderTopWidth: 1,
-    borderTopColor: colors.border.light,
+    borderTopColor: colors.border.subtle,
+    paddingTop: spacing.md,
   },
   bookingAmount: {
     ...typography.presets.h4,
-    color: colors.primary.blue,
+    color: colors.accent.primary,
   },
   bookingActions: {
     flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  declineButton: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    backgroundColor: colors.status.errorLight,
-    borderRadius: spacing.radius.md,
-  },
-  declineText: {
-    ...typography.presets.buttonSmall,
-    color: colors.status.error,
-  },
-  acceptButton: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    backgroundColor: colors.status.success,
-    borderRadius: spacing.radius.md,
-  },
-  acceptText: {
-    ...typography.presets.buttonSmall,
-    color: colors.text.primary,
-  },
-  messageButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
     gap: spacing.xs,
   },
-  messageText: {
-    ...typography.presets.buttonSmall,
-    color: colors.primary.blue,
-  },
-  tipsCard: {
+  tipCard: {
+    marginBottom: spacing.lg,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
+    gap: spacing.sm,
   },
-  tipsContent: {
+  tipTextWrap: {
     flex: 1,
+    gap: spacing.xs,
   },
-  tipsTitle: {
+  tipTitle: {
     ...typography.presets.body,
     color: colors.text.primary,
-    fontWeight: typography.weights.medium,
+    fontWeight: typography.weights.semibold,
   },
-  tipsText: {
+  tipBody: {
     ...typography.presets.caption,
-    color: colors.text.tertiary,
-    marginTop: 2,
+    color: colors.text.secondary,
   },
 });

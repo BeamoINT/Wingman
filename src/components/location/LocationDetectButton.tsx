@@ -7,11 +7,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import React from 'react';
 import {
-    ActivityIndicator, StyleSheet, Text, TouchableOpacity
+  ActivityIndicator,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
 } from 'react-native';
-import { colors } from '../../theme/colors';
-import { spacing } from '../../theme/spacing';
-import { typography } from '../../theme/typography';
+import { useTheme } from '../../context/ThemeContext';
+import type { ThemeTokens } from '../../theme/tokens';
+import { useThemedStyles } from '../../theme/useThemedStyles';
 
 interface LocationDetectButtonProps {
   onPress: () => void;
@@ -24,6 +27,9 @@ export const LocationDetectButton: React.FC<LocationDetectButtonProps> = ({
   isLoading = false,
   disabled = false,
 }) => {
+  const { tokens } = useTheme();
+  const styles = useThemedStyles(createStyles);
+
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -32,18 +38,15 @@ export const LocationDetectButton: React.FC<LocationDetectButtonProps> = ({
       style={styles.container}
     >
       <LinearGradient
-        colors={[colors.primary.blue, colors.primary.blueDark]}
+        colors={[tokens.colors.primary.blue, tokens.colors.primary.blueDark]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 0 }}
-        style={[
-          styles.gradient,
-          (disabled || isLoading) && styles.disabled,
-        ]}
+        style={[styles.gradient, (disabled || isLoading) && styles.disabled]}
       >
         {isLoading ? (
-          <ActivityIndicator size="small" color={colors.text.primary} />
+          <ActivityIndicator size="small" color={tokens.colors.text.primary} />
         ) : (
-          <Ionicons name="locate" size={20} color={colors.text.primary} />
+          <Ionicons name="locate" size={20} color={tokens.colors.text.primary} />
         )}
         <Text style={styles.text}>
           {isLoading ? 'Detecting location...' : 'Use my current location'}
@@ -53,7 +56,7 @@ export const LocationDetectButton: React.FC<LocationDetectButtonProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = ({ spacing, typography, colors }: ThemeTokens) => StyleSheet.create({
   container: {
     marginBottom: spacing.lg,
   },

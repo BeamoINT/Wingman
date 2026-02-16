@@ -8,76 +8,80 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-    ActivityIndicator,
-    RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View
+  ActivityIndicator,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Badge, Button, Card } from '../../components';
+import { Badge, Button, Card, Header, InlineBanner, ScreenScaffold, SectionHeader } from '../../components';
+import { useTheme } from '../../context/ThemeContext';
 import { getCompanionApplication } from '../../services/api/companionApplicationApi';
-import { colors } from '../../theme/colors';
-import { spacing } from '../../theme/spacing';
-import { typography } from '../../theme/typography';
+import type { ThemeTokens } from '../../theme/tokens';
+import { useThemedStyles } from '../../theme/useThemedStyles';
 import type { CompanionApplication, CompanionApplicationStatus, RootStackParamList } from '../../types';
 import { haptics } from '../../utils/haptics';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
-const STATUS_CONFIG: Record<CompanionApplicationStatus, {
+interface StatusConfig {
   icon: keyof typeof Ionicons.glyphMap;
   color: string;
   title: string;
   description: string;
   badgeVariant: 'info' | 'success' | 'warning' | 'error';
-}> = {
+}
+
+const buildStatusConfig = (tokens: ThemeTokens): Record<CompanionApplicationStatus, StatusConfig> => ({
   draft: {
     icon: 'document-outline',
-    color: colors.text.tertiary,
+    color: tokens.colors.text.tertiary,
     title: 'Application In Progress',
     description: 'You have an unfinished application. Continue where you left off.',
     badgeVariant: 'warning',
   },
   pending_review: {
     icon: 'time-outline',
-    color: colors.primary.blue,
+    color: tokens.colors.accent.primary,
     title: 'Application Submitted',
     description: 'Your application is in the review queue. Our team typically reviews applications within 1-3 business days.',
     badgeVariant: 'info',
   },
   under_review: {
     icon: 'search-outline',
-    color: colors.status.warning,
+    color: tokens.colors.status.warning,
     title: 'Under Review',
     description: 'A team member is currently reviewing your application. You will be notified once a decision has been made.',
     badgeVariant: 'warning',
   },
   approved: {
     icon: 'checkmark-circle',
-    color: colors.status.success,
+    color: tokens.colors.status.success,
     title: 'Application Approved',
     description: 'Congratulations! Your Wingman application has been approved. You can now access your Wingman Dashboard.',
     badgeVariant: 'success',
   },
   rejected: {
     icon: 'close-circle',
-    color: colors.status.error,
+    color: tokens.colors.status.error,
     title: 'Application Not Approved',
     description: 'Unfortunately, your application was not approved at this time.',
     badgeVariant: 'error',
   },
   suspended: {
     icon: 'ban',
-    color: colors.status.error,
+    color: tokens.colors.status.error,
     title: 'Account Suspended',
     description: 'Your Wingman account has been suspended. Please contact support for more information.',
     badgeVariant: 'error',
   },
-};
+});
 
 export const CompanionApplicationStatusScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
-  const insets = useSafeAreaInsets();
+  const { tokens } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const [application, setApplication] = useState<CompanionApplication | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -102,276 +106,255 @@ export const CompanionApplicationStatusScreen: React.FC = () => {
   };
 
   const status = application?.status || 'pending_review';
-  const config = STATUS_CONFIG[status];
+  const config = useMemo(() => buildStatusConfig(tokens)[status], [status, tokens]);
 
   if (isLoading) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
+      <ScreenScaffold>
+        <Header
+          title="Application Status"
+          showBack
+          onBackPress={handleBack}
+          rightIcon={isRefreshing ? 'sync' : 'refresh'}
+          onRightPress={() => loadApplication(true)}
+          transparent
+        />
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary.blue} />
+          <ActivityIndicator size="large" color={tokens.colors.accent.primary} />
         </View>
-      </View>
+      </ScreenScaffold>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
-        <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-          <Ionicons name="chevron-back" size={24} color={colors.text.primary} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Application Status</Text>
-        <View style={styles.backButton} />
-      </View>
+    <ScreenScaffold scrollable contentContainerStyle={styles.contentContainer}>
+      <Header
+        title="Application Status"
+        showBack
+        onBackPress={handleBack}
+        rightIcon={isRefreshing ? 'sync' : 'refresh'}
+        onRightPress={() => loadApplication(true)}
+        transparent
+      />
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={() => loadApplication(true)}
-            tintColor={colors.primary.blue}
-          />
-        }
-      >
-        {/* Status Icon */}
+      <InlineBanner
+        title="All wingmen are ID and photo verified"
+        message="Applications are reviewed to maintain trusted in-person experiences."
+        variant="info"
+      />
+
+      <Card variant="default" style={styles.statusPanel}>
         <View style={styles.statusIconContainer}>
           <View style={[styles.statusIconBg, { backgroundColor: `${config.color}20` }]}>
-            <Ionicons name={config.icon} size={48} color={config.color} />
+            <Ionicons name={config.icon} size={42} color={config.color} />
           </View>
         </View>
 
-        {/* Status Info */}
         <Text style={styles.statusTitle}>{config.title}</Text>
+
         <View style={styles.badgeContainer}>
           <Badge
-            label={status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+            label={status.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())}
             variant={config.badgeVariant}
             size="small"
           />
         </View>
+
         <Text style={styles.statusDescription}>{config.description}</Text>
 
-        {/* Rejection reason */}
-        {status === 'rejected' && application?.rejectionReason && (
+        {status === 'rejected' && application?.rejectionReason ? (
           <Card variant="outlined" style={styles.rejectionCard}>
             <View style={styles.rejectionHeader}>
-              <Ionicons name="information-circle" size={18} color={colors.status.error} />
+              <Ionicons name="information-circle" size={18} color={tokens.colors.status.error} />
               <Text style={styles.rejectionLabel}>Reason</Text>
             </View>
             <Text style={styles.rejectionText}>{application.rejectionReason}</Text>
           </Card>
-        )}
+        ) : null}
+      </Card>
 
-        {/* Timeline */}
-        {(status === 'pending_review' || status === 'under_review') && (
+      {(status === 'pending_review' || status === 'under_review') ? (
+        <View style={styles.section}>
+          <SectionHeader
+            title="Review Timeline"
+            subtitle="Progress of your submission"
+          />
           <Card variant="gradient" style={styles.timelineCard}>
-            <Text style={styles.timelineTitle}>What Happens Next</Text>
             {[
               { label: 'Application Submitted', done: true, icon: 'checkmark-circle' as const },
-              { label: 'Document Verification', done: status === 'under_review', icon: status === 'under_review' ? 'time' as const : 'ellipse-outline' as const },
+              {
+                label: 'Document Verification',
+                done: status === 'under_review',
+                icon: status === 'under_review' ? 'time' as const : 'ellipse-outline' as const,
+              },
               { label: 'Identity Matching', done: false, icon: 'ellipse-outline' as const },
               { label: 'Profile Approval', done: false, icon: 'ellipse-outline' as const },
-            ].map((step, i) => (
-              <View key={i} style={styles.timelineStep}>
+            ].map((step) => (
+              <View key={step.label} style={styles.timelineStep}>
                 <Ionicons
                   name={step.icon}
-                  size={20}
-                  color={step.done ? colors.status.success : colors.text.tertiary}
+                  size={18}
+                  color={step.done ? tokens.colors.status.success : tokens.colors.text.tertiary}
                 />
-                <Text style={[
-                  styles.timelineStepText,
-                  step.done && styles.timelineStepDone,
-                ]}>
+                <Text style={[styles.timelineStepText, step.done && styles.timelineStepDone]}>
                   {step.label}
                 </Text>
               </View>
             ))}
           </Card>
-        )}
-
-        {/* Submitted date */}
-        {application?.submittedAt && (
-          <Text style={styles.submittedDate}>
-            Submitted {new Date(application.submittedAt).toLocaleDateString('en-US', {
-              month: 'long', day: 'numeric', year: 'numeric',
-            })}
-          </Text>
-        )}
-
-        {/* Actions */}
-        <View style={styles.actions}>
-          {status === 'approved' && (
-            <Button
-              title="Go to Dashboard"
-              onPress={async () => {
-                await haptics.medium();
-                navigation.navigate('CompanionDashboard');
-              }}
-              variant="primary"
-              fullWidth
-              icon="grid"
-              iconPosition="left"
-            />
-          )}
-
-          {status === 'draft' && (
-            <Button
-              title="Continue Application"
-              onPress={async () => {
-                await haptics.medium();
-                navigation.navigate('CompanionOnboarding');
-              }}
-              variant="primary"
-              fullWidth
-              icon="arrow-forward"
-              iconPosition="right"
-            />
-          )}
-
-          {status === 'rejected' && (
-            <Button
-              title="Reapply"
-              onPress={async () => {
-                await haptics.medium();
-                navigation.navigate('CompanionOnboarding');
-              }}
-              variant="primary"
-              fullWidth
-              icon="refresh"
-              iconPosition="left"
-            />
-          )}
-
-          <Button
-            title="Back to Profile"
-            onPress={async () => {
-              await haptics.light();
-              navigation.navigate('Main');
-            }}
-            variant="ghost"
-            fullWidth
-          />
         </View>
-      </ScrollView>
-    </View>
+      ) : null}
+
+      {application?.submittedAt ? (
+        <Text style={styles.submittedDate}>
+          Submitted {new Date(application.submittedAt).toLocaleDateString('en-US', {
+            month: 'long', day: 'numeric', year: 'numeric',
+          })}
+        </Text>
+      ) : null}
+
+      <View style={styles.actions}>
+        {status === 'approved' ? (
+          <Button
+            title="Go to Dashboard"
+            onPress={async () => {
+              await haptics.medium();
+              navigation.navigate('CompanionDashboard');
+            }}
+            variant="primary"
+            fullWidth
+            icon="grid"
+            iconPosition="left"
+          />
+        ) : null}
+
+        {status === 'draft' ? (
+          <Button
+            title="Continue Application"
+            onPress={async () => {
+              await haptics.medium();
+              navigation.navigate('CompanionOnboarding');
+            }}
+            variant="primary"
+            fullWidth
+            icon="arrow-forward"
+            iconPosition="right"
+          />
+        ) : null}
+
+        {status === 'rejected' ? (
+          <Button
+            title="Reapply"
+            onPress={async () => {
+              await haptics.medium();
+              navigation.navigate('CompanionOnboarding');
+            }}
+            variant="primary"
+            fullWidth
+            icon="refresh"
+            iconPosition="left"
+          />
+        ) : null}
+
+        <Button
+          title="Back to Profile"
+          onPress={async () => {
+            await haptics.light();
+            navigation.navigate('Main');
+          }}
+          variant="ghost"
+          fullWidth
+        />
+      </View>
+    </ScreenScaffold>
   );
 };
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background.primary,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.screenPadding,
-    paddingBottom: spacing.md,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    ...typography.presets.h4,
-    color: colors.text.primary,
-  },
-  loadingContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  scrollView: {
-    flex: 1,
-  },
-  content: {
-    paddingHorizontal: spacing.screenPadding,
-    paddingBottom: 100,
-  },
-  statusIconContainer: {
-    alignItems: 'center',
-    marginTop: spacing.xl,
-    marginBottom: spacing.xl,
-  },
-  statusIconBg: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  statusTitle: {
-    ...typography.presets.h2,
-    color: colors.text.primary,
-    textAlign: 'center',
-    marginBottom: spacing.sm,
-  },
-  badgeContainer: {
-    alignItems: 'center',
-    marginBottom: spacing.lg,
-  },
-  statusDescription: {
-    ...typography.presets.body,
-    color: colors.text.secondary,
-    textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: spacing.xl,
-  },
-  rejectionCard: {
-    padding: spacing.lg,
-    marginBottom: spacing.xl,
-  },
-  rejectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginBottom: spacing.sm,
-  },
-  rejectionLabel: {
-    ...typography.presets.body,
-    color: colors.status.error,
-    fontWeight: typography.weights.semibold as any,
-  },
-  rejectionText: {
-    ...typography.presets.bodySmall,
-    color: colors.text.secondary,
-    lineHeight: 20,
-  },
-  timelineCard: {
-    padding: spacing.xl,
-    marginBottom: spacing.xl,
-  },
-  timelineTitle: {
-    ...typography.presets.h4,
-    color: colors.text.primary,
-    marginBottom: spacing.lg,
-  },
-  timelineStep: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  timelineStepText: {
-    ...typography.presets.body,
-    color: colors.text.tertiary,
-  },
-  timelineStepDone: {
-    color: colors.text.primary,
-  },
-  submittedDate: {
-    ...typography.presets.caption,
-    color: colors.text.tertiary,
-    textAlign: 'center',
-    marginBottom: spacing.xl,
-  },
-  actions: {
-    gap: spacing.md,
-  },
-});
+const createStyles = (tokens: ThemeTokens) => {
+  const { colors, spacing, typography } = tokens;
+
+  return StyleSheet.create({
+      contentContainer: {
+        gap: spacing.lg,
+        paddingBottom: spacing.xxxl,
+      },
+      loadingContainer: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+      },
+      statusPanel: {
+        alignItems: 'center',
+        gap: spacing.sm,
+      },
+      statusIconContainer: {
+        marginTop: spacing.sm,
+      },
+      statusIconBg: {
+        width: 90,
+        height: 90,
+        borderRadius: 45,
+        alignItems: 'center',
+        justifyContent: 'center',
+      },
+      statusTitle: {
+        ...typography.presets.h2,
+        color: colors.text.primary,
+        textAlign: 'center',
+      },
+      badgeContainer: {
+        marginBottom: spacing.xs,
+      },
+      statusDescription: {
+        ...typography.presets.body,
+        color: colors.text.secondary,
+        textAlign: 'center',
+        lineHeight: 22,
+      },
+      rejectionCard: {
+        marginTop: spacing.md,
+        alignSelf: 'stretch',
+      },
+      rejectionHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacing.xs,
+        marginBottom: spacing.xs,
+      },
+      rejectionLabel: {
+        ...typography.presets.bodyMedium,
+        color: colors.status.error,
+      },
+      rejectionText: {
+        ...typography.presets.bodySmall,
+        color: colors.text.secondary,
+      },
+      section: {
+        gap: spacing.sm,
+      },
+      timelineCard: {
+        gap: spacing.sm,
+      },
+      timelineStep: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacing.sm,
+      },
+      timelineStepText: {
+        ...typography.presets.body,
+        color: colors.text.tertiary,
+      },
+      timelineStepDone: {
+        color: colors.text.primary,
+        fontWeight: typography.weights.semibold,
+      },
+      submittedDate: {
+        ...typography.presets.caption,
+        color: colors.text.tertiary,
+        textAlign: 'center',
+      },
+      actions: {
+        gap: spacing.sm,
+      },
+    });
+};

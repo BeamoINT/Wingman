@@ -7,12 +7,13 @@ import {
     Image, StyleSheet, Text, TouchableOpacity, View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { PillTabs } from '../../components';
 import { RequirementsGate } from '../../components/RequirementsGate';
+import { useTheme } from '../../context/ThemeContext';
 import { useRequirements } from '../../context/RequirementsContext';
 import { fetchFriendGroups, joinFriendGroup, leaveFriendGroup } from '../../services/api/friendsApi';
-import { colors } from '../../theme/colors';
-import { spacing } from '../../theme/spacing';
-import { typography } from '../../theme/typography';
+import type { ThemeTokens } from '../../theme/tokens';
+import { useThemedStyles } from '../../theme/useThemedStyles';
 import type { RootStackParamList } from '../../types';
 import type { Group } from '../../types/friends';
 import { haptics } from '../../utils/haptics';
@@ -43,6 +44,9 @@ const categoryIcons: Record<string, keyof typeof Ionicons.glyphMap> = {
 const GroupsContent: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
+  const { tokens } = useTheme();
+  const styles = useThemedStyles(createStyles);
+  const { colors } = tokens;
   const {
     friendsLimits,
     friendsUsage,
@@ -221,24 +225,15 @@ const GroupsContent: React.FC = () => {
         </View>
       </View>
 
-      {/* Tabs */}
       <View style={styles.tabs}>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'discover' && styles.tabActive]}
-          onPress={() => setActiveTab('discover')}
-        >
-          <Text style={[styles.tabText, activeTab === 'discover' && styles.tabTextActive]}>
-            Discover
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'my-groups' && styles.tabActive]}
-          onPress={() => setActiveTab('my-groups')}
-        >
-          <Text style={[styles.tabText, activeTab === 'my-groups' && styles.tabTextActive]}>
-            My Groups ({myGroups.length})
-          </Text>
-        </TouchableOpacity>
+        <PillTabs
+          items={[
+            { id: 'discover', label: 'Discover' },
+            { id: 'my-groups', label: 'My Groups', count: myGroups.length },
+          ]}
+          activeId={activeTab}
+          onChange={(value) => setActiveTab(value as 'discover' | 'my-groups')}
+        />
       </View>
 
       {/* Groups List */}
@@ -298,7 +293,7 @@ export const GroupsScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background.primary,
@@ -336,28 +331,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   tabs: {
-    flexDirection: 'row',
     paddingHorizontal: spacing.screenPadding,
-    marginBottom: spacing.md,
-    gap: spacing.sm,
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: spacing.sm,
-    alignItems: 'center',
-    borderRadius: spacing.radius.full,
-    backgroundColor: colors.background.card,
-  },
-  tabActive: {
-    backgroundColor: colors.primary.blue,
-  },
-  tabText: {
-    ...typography.presets.body,
-    color: colors.text.tertiary,
-  },
-  tabTextActive: {
-    color: colors.text.primary,
-    fontWeight: '600',
+    marginBottom: spacing.xs,
   },
   listContent: {
     padding: spacing.screenPadding,

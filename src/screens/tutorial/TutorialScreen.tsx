@@ -4,14 +4,19 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useRef, useState } from 'react';
 import {
-    Dimensions, FlatList, StyleSheet, Text, TouchableOpacity, View
+  Dimensions,
+  FlatList,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button } from '../../components';
 import { useAuth } from '../../context/AuthContext';
-import { colors } from '../../theme/colors';
-import { spacing } from '../../theme/spacing';
-import { typography } from '../../theme/typography';
+import { useTheme } from '../../context/ThemeContext';
+import type { ThemeTokens } from '../../theme/tokens';
+import { useThemedStyles } from '../../theme/useThemedStyles';
 import type { RootStackParamList } from '../../types';
 import { haptics } from '../../utils/haptics';
 
@@ -28,72 +33,75 @@ interface TutorialSlide {
   features: string[];
 }
 
-const SLIDES: TutorialSlide[] = [
-  {
-    id: '1',
-    icon: 'compass',
-    iconColor: colors.primary.blue,
-    title: 'Find Wingmen',
-    subtitle: 'Discover verified wingmen for any activity',
-    features: [
-      'Browse by interests and activities',
-      'Filter by location and availability',
-      'Read reviews from other users',
-      'View detailed profiles and ratings',
-    ],
-  },
-  {
-    id: '2',
-    icon: 'shield-checkmark',
-    iconColor: colors.status.success,
-    title: 'Book with Confidence',
-    subtitle: 'Every wingman is ID verified for your safety',
-    features: [
-      'Identity verification for all wingmen',
-      'Secure in-app messaging',
-      'Transparent pricing with no surprises',
-      'Safety features and emergency SOS',
-    ],
-  },
-  {
-    id: '3',
-    icon: 'heart',
-    iconColor: colors.status.error,
-    title: 'Stay Safe',
-    subtitle: 'Your safety is our top priority',
-    features: [
-      'Share your location with trusted contacts',
-      'Check-in reminders during bookings',
-      'Emergency assistance button',
-      '24/7 support team available',
-    ],
-  },
-  {
-    id: '4',
-    icon: 'sparkles',
-    iconColor: colors.primary.gold,
-    title: "You're Ready!",
-    subtitle: 'Start exploring and find your perfect wingman',
-    features: [
-      'Complete your profile for better matches',
-      'Set your preferences and interests',
-      'Browse featured wingmen',
-      'Book your first experience today!',
-    ],
-  },
-];
-
 export const TutorialScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
   const { completeTutorial } = useAuth();
+  const { tokens } = useTheme();
+  const styles = useThemedStyles(createStyles);
+  const { colors, spacing } = tokens;
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const flatListRef = useRef<FlatList>(null);
 
+  const slides: TutorialSlide[] = [
+    {
+      id: '1',
+      icon: 'compass',
+      iconColor: colors.primary.blue,
+      title: 'Find Wingmen',
+      subtitle: 'Discover verified wingmen for any activity',
+      features: [
+        'Browse by interests and activities',
+        'Filter by location and availability',
+        'Read reviews from other users',
+        'View detailed profiles and ratings',
+      ],
+    },
+    {
+      id: '2',
+      icon: 'shield-checkmark',
+      iconColor: colors.status.success,
+      title: 'Book with Confidence',
+      subtitle: 'Every wingman is ID verified for your safety',
+      features: [
+        'Identity verification for all wingmen',
+        'Secure in-app messaging',
+        'Transparent pricing with no surprises',
+        'Safety features and emergency SOS',
+      ],
+    },
+    {
+      id: '3',
+      icon: 'heart',
+      iconColor: colors.status.error,
+      title: 'Stay Safe',
+      subtitle: 'Your safety is our top priority',
+      features: [
+        'Share your location with trusted contacts',
+        'Check-in reminders during bookings',
+        'Emergency assistance button',
+        '24/7 support team available',
+      ],
+    },
+    {
+      id: '4',
+      icon: 'sparkles',
+      iconColor: colors.primary.gold,
+      title: "You're Ready!",
+      subtitle: 'Start exploring and find your perfect wingman',
+      features: [
+        'Complete your profile for better matches',
+        'Set your preferences and interests',
+        'Browse featured wingmen',
+        'Book your first experience today!',
+      ],
+    },
+  ];
+
   const handleNext = async () => {
     await haptics.light();
-    if (currentIndex < SLIDES.length - 1) {
+    if (currentIndex < slides.length - 1) {
       flatListRef.current?.scrollToIndex({
         index: currentIndex + 1,
         animated: true,
@@ -153,7 +161,7 @@ export const TutorialScreen: React.FC = () => {
 
   const renderPagination = () => (
     <View style={styles.pagination}>
-      {SLIDES.map((_, index) => (
+      {slides.map((_, index) => (
         <View
           key={index}
           style={[
@@ -170,8 +178,8 @@ export const TutorialScreen: React.FC = () => {
       colors={[colors.background.primary, colors.background.secondary]}
       style={styles.container}
     >
-      <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}>
-        {currentIndex < SLIDES.length - 1 ? (
+      <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}> 
+        {currentIndex < slides.length - 1 ? (
           <TouchableOpacity onPress={handleSkip} style={styles.skipButton}>
             <Text style={styles.skipText}>Skip</Text>
           </TouchableOpacity>
@@ -182,7 +190,7 @@ export const TutorialScreen: React.FC = () => {
 
       <FlatList
         ref={flatListRef}
-        data={SLIDES}
+        data={slides}
         renderItem={renderSlide}
         keyExtractor={(item) => item.id}
         horizontal
@@ -195,21 +203,21 @@ export const TutorialScreen: React.FC = () => {
 
       {renderPagination()}
 
-      <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.xl }]}>
+      <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.xl }]}> 
         <Button
-          title={currentIndex === SLIDES.length - 1 ? "Let's Go!" : 'Next'}
+          title={currentIndex === slides.length - 1 ? "Let's Go!" : 'Next'}
           onPress={handleNext}
-          variant={currentIndex === SLIDES.length - 1 ? 'gold' : 'primary'}
+          variant={currentIndex === slides.length - 1 ? 'gold' : 'primary'}
           size="large"
           fullWidth
-          icon={currentIndex === SLIDES.length - 1 ? 'arrow-forward' : undefined}
+          icon={currentIndex === slides.length - 1 ? 'arrow-forward' : undefined}
         />
       </View>
     </LinearGradient>
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
   container: {
     flex: 1,
   },

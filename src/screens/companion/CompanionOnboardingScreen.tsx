@@ -16,26 +16,31 @@ import type { RouteProp } from '@react-navigation/native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as ImagePicker from 'expo-image-picker';
-import { LinearGradient } from 'expo-linear-gradient';
 import React, { useEffect, useState } from 'react';
 import {
     ActivityIndicator, Alert,
-    Image,
     KeyboardAvoidingView,
-    Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View
+    Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Button, Card, ProgressBar, SelectableChip } from '../../components';
+import { Button, ProgressBar } from '../../components';
 import { useAuth } from '../../context/AuthContext';
 import { useRequirements } from '../../context/RequirementsContext';
+import { useTheme } from '../../context/ThemeContext';
 import { useVerification } from '../../context/VerificationContext';
+import { AgreementStep } from './onboarding/AgreementStep';
+import { IdStep } from './onboarding/IdStep';
+import { PrerequisitesStep } from './onboarding/PrerequisitesStep';
+import { ProfileStep } from './onboarding/ProfileStep';
+import { ReviewStep } from './onboarding/ReviewStep';
+import { SelfieStep } from './onboarding/SelfieStep';
+import { WelcomeStep } from './onboarding/WelcomeStep';
 import {
     createCompanionApplication, getCompanionApplication, submitCompanionApplication, updateCompanionApplication, uploadGalleryPhoto, uploadIdDocument,
     uploadSelfie
 } from '../../services/api/companionApplicationApi';
-import { colors } from '../../theme/colors';
-import { spacing } from '../../theme/spacing';
-import { typography } from '../../theme/typography';
+import type { ThemeTokens } from '../../theme/tokens';
+import { useThemedStyles } from '../../theme/useThemedStyles';
 import type {
     CompanionOnboardingData, CompanionSpecialty, IdDocumentType, RootStackParamList
 } from '../../types';
@@ -81,6 +86,9 @@ export const CompanionOnboardingScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute<ScreenRouteProp>();
   const insets = useSafeAreaInsets();
+  const { tokens } = useTheme();
+  const styles = useThemedStyles(createStyles);
+  const { colors, spacing } = tokens;
   const { user } = useAuth();
   const { phoneVerified } = useVerification();
   const { checkCompanionRequirements, acceptCompanionAgreement } = useRequirements();
@@ -340,57 +348,31 @@ export const CompanionOnboardingScreen: React.FC = () => {
 
   const renderWelcomeStep = () => (
     <View style={styles.stepContainer}>
-      <LinearGradient
-        colors={colors.gradients.premium}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.welcomeBanner}
-      >
-        <Ionicons name="people" size={40} color={colors.primary.darkBlack} />
-        <Text style={styles.welcomeTitle}>Become a Wingman</Text>
-        <Text style={styles.welcomeSubtitle}>
-          Earn money by being a great friend. Set your own hours, choose your activities, and get paid for spending time with others.
-        </Text>
-      </LinearGradient>
-
-      <View style={styles.infoSection}>
-        <Text style={styles.sectionTitle}>How It Works</Text>
-        {[
-          { icon: 'shield-checkmark' as const, title: 'Verify Your Identity', desc: 'Upload your ID and take a selfie for safety' },
-          { icon: 'person' as const, title: 'Set Up Your Profile', desc: 'Choose specialties, set your rate, and tell clients about yourself' },
-          { icon: 'document-text' as const, title: 'Accept Agreement', desc: 'Review and accept the Wingman Service Agreement' },
-          { icon: 'checkmark-circle' as const, title: 'Get Approved', desc: 'Our team reviews applications within 1-3 business days' },
-        ].map((item, i) => (
-          <View key={i} style={styles.howItWorksItem}>
-            <View style={styles.howItWorksIcon}>
-              <Ionicons name={item.icon} size={20} color={colors.primary.blue} />
-            </View>
-            <View style={styles.howItWorksContent}>
-              <Text style={styles.howItWorksTitle}>{item.title}</Text>
-              <Text style={styles.howItWorksDesc}>{item.desc}</Text>
-            </View>
-          </View>
-        ))}
-      </View>
-
-      <Card variant="outlined" style={styles.earningsCard}>
-        <Ionicons name="cash-outline" size={24} color={colors.primary.blue} />
-        <View style={{ flex: 1, marginLeft: spacing.md }}>
-          <Text style={styles.earningsTitle}>Earning Potential</Text>
-          <Text style={styles.earningsDesc}>
-            Wingmen earn $15-200/hour depending on specialty and experience. You keep 90% of every booking.
-          </Text>
-        </View>
-      </Card>
+      <WelcomeStep />
     </View>
   );
 
   const renderRequirementsStep = () => {
     const reqs = checkCompanionRequirements();
     const prerequisites = [
-      { label: 'Email Verified', met: reqs.emailVerified.met, icon: 'mail' as const, nav: 'Verification' as const },
-      { label: 'Phone Verified', met: phoneVerified, icon: 'call' as const, nav: 'Verification' as const },
-      { label: 'Profile Complete', met: reqs.profileComplete.met, icon: 'person' as const, nav: 'EditProfile' as const },
+      {
+        label: 'Email Verified',
+        met: reqs.emailVerified.met,
+        icon: 'mail' as const,
+        onComplete: () => navigation.navigate('Verification'),
+      },
+      {
+        label: 'Phone Verified',
+        met: phoneVerified,
+        icon: 'call' as const,
+        onComplete: () => navigation.navigate('Verification'),
+      },
+      {
+        label: 'Profile Complete',
+        met: reqs.profileComplete.met,
+        icon: 'person' as const,
+        onComplete: () => navigation.navigate('EditProfile'),
+      },
     ];
 
     const upcomingSteps = [
@@ -400,395 +382,82 @@ export const CompanionOnboardingScreen: React.FC = () => {
       { label: 'Accept Wingman Agreement', icon: 'document-text' as const },
     ];
 
-    const allPrereqsMet = prerequisites.every(r => r.met);
-
     return (
       <View style={styles.stepContainer}>
-        <Text style={styles.stepTitle}>Prerequisites</Text>
-        <Text style={styles.stepDescription}>
-          Complete these before starting your Wingman application.
-        </Text>
-
-        {allPrereqsMet && (
-          <View style={styles.allMetBanner}>
-            <Ionicons name="checkmark-circle" size={20} color={colors.status.success} />
-            <Text style={styles.allMetText}>All prerequisites met</Text>
-          </View>
-        )}
-
-        {prerequisites.map((req, i) => (
-          <View key={i} style={styles.requirementRow}>
-            <View style={[styles.requirementIcon, { backgroundColor: req.met ? colors.status.successLight : colors.background.tertiary }]}>
-              <Ionicons name={req.icon} size={18} color={req.met ? colors.status.success : colors.text.tertiary} />
-            </View>
-            <Text style={[styles.requirementLabel, req.met && styles.requirementLabelMet]}>{req.label}</Text>
-            {req.met ? (
-              <Ionicons name="checkmark-circle" size={20} color={colors.status.success} />
-            ) : (
-              <TouchableOpacity
-                onPress={() => navigation.navigate(req.nav as any)}
-                style={styles.requirementAction}
-              >
-                <Text style={styles.requirementActionText}>Complete</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        ))}
-
-        <Text style={[styles.stepTitle, { marginTop: spacing.xl, fontSize: 16 }]}>
-          What You'll Complete
-        </Text>
-        <Text style={[styles.stepDescription, { marginBottom: spacing.md }]}>
-          The following steps are part of this application process.
-        </Text>
-
-        {upcomingSteps.map((step, i) => (
-          <View key={i} style={styles.requirementRow}>
-            <View style={[styles.requirementIcon, { backgroundColor: colors.background.tertiary }]}>
-              <Ionicons name={step.icon} size={18} color={colors.text.secondary} />
-            </View>
-            <Text style={styles.requirementLabel}>{step.label}</Text>
-            <Ionicons name="arrow-forward" size={16} color={colors.text.tertiary} />
-          </View>
-        ))}
+        <PrerequisitesStep prerequisites={prerequisites} upcomingSteps={upcomingSteps} />
       </View>
     );
   };
 
   const renderIdVerificationStep = () => (
     <View style={styles.stepContainer}>
-      <Text style={styles.stepTitle}>ID Verification</Text>
-      <Text style={styles.stepDescription}>
-        Upload a clear photo of your government-issued ID. This helps keep our community safe and trusted.
-      </Text>
-
-      <Text style={styles.fieldLabel}>Document Type</Text>
-      <View style={styles.chipsRow}>
-        {ID_TYPES.map((type) => (
-          <SelectableChip
-            key={type.value}
-            label={type.label}
-            icon={type.icon}
-            selected={data.idDocumentType === type.value}
-            onPress={() => setData(prev => ({ ...prev, idDocumentType: type.value }))}
-          />
-        ))}
-      </View>
-
-      <Text style={styles.fieldLabel}>Upload Document</Text>
-
-      {data.idDocumentUri ? (
-        <View style={styles.imagePreviewContainer}>
-          <Image source={{ uri: data.idDocumentUri }} style={styles.idPreview} resizeMode="contain" />
-          <TouchableOpacity
-            style={styles.retakeButton}
-            onPress={() => setData(prev => ({ ...prev, idDocumentUri: '' }))}
-          >
-            <Ionicons name="close-circle" size={24} color={colors.status.error} />
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <View style={styles.uploadOptions}>
-          <TouchableOpacity
-            style={styles.uploadOption}
-            onPress={() => pickImage('camera', 'id')}
-          >
-            <Ionicons name="camera" size={32} color={colors.primary.blue} />
-            <Text style={styles.uploadOptionText}>Take Photo</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.uploadOption}
-            onPress={() => pickImage('library', 'id')}
-          >
-            <Ionicons name="images" size={32} color={colors.primary.blue} />
-            <Text style={styles.uploadOptionText}>Choose from Gallery</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      <View style={styles.tipCard}>
-        <Ionicons name="information-circle" size={18} color={colors.primary.blue} />
-        <Text style={styles.tipText}>
-          Make sure all text on the document is clearly legible. Avoid glare and shadows.
-        </Text>
-      </View>
+      <IdStep
+        idTypes={ID_TYPES}
+        selectedType={data.idDocumentType}
+        idDocumentUri={data.idDocumentUri}
+        onSelectType={(idDocumentType) => setData((prev) => ({ ...prev, idDocumentType }))}
+        onRemove={() => setData((prev) => ({ ...prev, idDocumentUri: '' }))}
+        onPickCamera={() => {
+          void pickImage('camera', 'id');
+        }}
+        onPickLibrary={() => {
+          void pickImage('library', 'id');
+        }}
+      />
     </View>
   );
 
   const renderSelfieStep = () => (
     <View style={styles.stepContainer}>
-      <Text style={styles.stepTitle}>Selfie Verification</Text>
-      <Text style={styles.stepDescription}>
-        Take a clear selfie. Your face will be compared against the photo on your ID to verify your identity.
-      </Text>
-
-      {data.selfieUri ? (
-        <View style={styles.imagePreviewContainer}>
-          <Image source={{ uri: data.selfieUri }} style={styles.selfiePreview} />
-          <TouchableOpacity
-            style={styles.retakeButton}
-            onPress={() => setData(prev => ({ ...prev, selfieUri: '' }))}
-          >
-            <Ionicons name="close-circle" size={24} color={colors.status.error} />
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <TouchableOpacity
-          style={styles.selfieCapture}
-          onPress={() => pickImage('camera', 'selfie')}
-        >
-          <View style={styles.selfiePlaceholder}>
-            <Ionicons name="camera" size={48} color={colors.primary.blue} />
-            <Text style={styles.selfiePlaceholderText}>Tap to Take Selfie</Text>
-          </View>
-        </TouchableOpacity>
-      )}
-
-      <Text style={styles.fieldLabel}>Guidelines</Text>
-      {[
-        'Good lighting — face should be clearly visible',
-        'Look directly at the camera',
-        'No sunglasses, hats, or face coverings',
-        'Neutral expression, similar to your ID photo',
-      ].map((guideline, i) => (
-        <View key={i} style={styles.guidelineRow}>
-          <Ionicons name="checkmark" size={16} color={colors.status.success} />
-          <Text style={styles.guidelineText}>{guideline}</Text>
-        </View>
-      ))}
+      <SelfieStep
+        selfieUri={data.selfieUri}
+        onCapture={() => {
+          void pickImage('camera', 'selfie');
+        }}
+        onRemove={() => setData((prev) => ({ ...prev, selfieUri: '' }))}
+      />
     </View>
   );
 
   const renderProfileSetupStep = () => (
     <View style={styles.stepContainer}>
-      <Text style={styles.stepTitle}>Profile Setup</Text>
-      <Text style={styles.stepDescription}>
-        Set up your Wingman profile. This is what clients will see when browsing.
-      </Text>
-
-      {/* Specialties */}
-      <Text style={styles.fieldLabel}>Specialties (select at least 2)</Text>
-      <View style={styles.chipsWrap}>
-        {SPECIALTIES.map((s) => (
-          <SelectableChip
-            key={s.value}
-            label={s.label}
-            icon={s.icon}
-            selected={data.specialties.includes(s.value)}
-            onPress={() => toggleSpecialty(s.value)}
-          />
-        ))}
-      </View>
-
-      {/* Hourly Rate */}
-      <Text style={styles.fieldLabel}>Hourly Rate</Text>
-      <View style={styles.rateInputRow}>
-        <Text style={styles.ratePrefix}>$</Text>
-        <TextInput
-          style={styles.rateInput}
-          value={data.hourlyRate > 0 ? data.hourlyRate.toString() : ''}
-          onChangeText={(text) => {
-            const rate = parseInt(text, 10);
-            setData(prev => ({ ...prev, hourlyRate: isNaN(rate) ? 0 : rate }));
-          }}
-          keyboardType="numeric"
-          maxLength={3}
-          placeholder="25"
-          placeholderTextColor={colors.text.muted}
-        />
-        <Text style={styles.rateSuffix}>/ hour</Text>
-      </View>
-      <Text style={styles.fieldHint}>Min ${HOURLY_RATE_MIN} — Max ${HOURLY_RATE_MAX}. You keep 90% of each booking.</Text>
-
-      {/* About */}
-      <Text style={styles.fieldLabel}>About You</Text>
-      <TextInput
-        style={styles.textArea}
-        value={data.about}
-        onChangeText={(text) => setData(prev => ({ ...prev, about: text }))}
-        placeholder="Tell potential clients about yourself, your experience, and what makes you a great wingman..."
-        placeholderTextColor={colors.text.muted}
-        multiline
-        numberOfLines={5}
-        textAlignVertical="top"
-        maxLength={500}
+      <ProfileStep
+        specialties={SPECIALTIES}
+        languages={LANGUAGES}
+        selectedSpecialties={data.specialties}
+        hourlyRate={data.hourlyRate}
+        about={data.about}
+        selectedLanguages={data.languages}
+        gallery={data.gallery}
+        minRate={HOURLY_RATE_MIN}
+        maxRate={HOURLY_RATE_MAX}
+        onToggleSpecialty={toggleSpecialty}
+        onHourlyRateChange={(hourlyRate) => setData((prev) => ({ ...prev, hourlyRate }))}
+        onAboutChange={(about) => setData((prev) => ({ ...prev, about }))}
+        onToggleLanguage={toggleLanguage}
+        onAddGallery={() => {
+          void pickImage('library', 'gallery');
+        }}
+        onRemoveGallery={removeGalleryPhoto}
       />
-      <Text style={styles.charCount}>{data.about.length}/500</Text>
-
-      {/* Languages */}
-      <Text style={styles.fieldLabel}>Languages</Text>
-      <View style={styles.chipsWrap}>
-        {LANGUAGES.map((lang) => (
-          <SelectableChip
-            key={lang}
-            label={lang}
-            selected={data.languages.includes(lang)}
-            onPress={() => toggleLanguage(lang)}
-          />
-        ))}
-      </View>
-
-      {/* Gallery */}
-      <Text style={styles.fieldLabel}>Gallery Photos (optional, up to 6)</Text>
-      <View style={styles.galleryGrid}>
-        {data.gallery.map((uri, i) => (
-          <View key={i} style={styles.galleryItem}>
-            <Image source={{ uri }} style={styles.galleryImage} />
-            <TouchableOpacity style={styles.galleryRemove} onPress={() => removeGalleryPhoto(i)}>
-              <Ionicons name="close-circle" size={22} color={colors.status.error} />
-            </TouchableOpacity>
-          </View>
-        ))}
-        {data.gallery.length < 6 && (
-          <TouchableOpacity
-            style={styles.galleryAdd}
-            onPress={() => pickImage('library', 'gallery')}
-          >
-            <Ionicons name="add" size={28} color={colors.text.tertiary} />
-          </TouchableOpacity>
-        )}
-      </View>
     </View>
   );
 
   const renderAgreementStep = () => (
     <View style={styles.stepContainer}>
-      <Text style={styles.stepTitle}>Wingman Agreement</Text>
-      <Text style={styles.stepDescription}>
-        Please review and accept the Wingman Service Agreement to continue.
-      </Text>
-
-      <Card variant="outlined" style={styles.agreementCard}>
-        <ScrollView style={styles.agreementScroll} nestedScrollEnabled>
-          <Text style={styles.agreementHeading}>Wingman Service Agreement</Text>
-          <Text style={styles.agreementText}>
-            By accepting this agreement, you acknowledge and agree to the following terms as a Wingman on the Wingman platform:
-          </Text>
-
-          {[
-            {
-              title: '1. Service Standards',
-              body: 'You agree to provide professional, respectful wingman services. You will arrive on time, dress appropriately for the activity, and maintain a positive and friendly demeanor throughout each booking.',
-            },
-            {
-              title: '2. Safety & Conduct',
-              body: 'You must adhere to all community guidelines and safety protocols. Illegal activity, harassment, discrimination, or any inappropriate behavior is strictly prohibited and will result in immediate removal from the platform.',
-            },
-            {
-              title: '3. Identity Verification',
-              body: 'You confirm that all identification documents and photos submitted are authentic and belong to you. Providing false or fraudulent documents will result in permanent removal and may be reported to authorities.',
-            },
-            {
-              title: '4. Payment Terms',
-              body: 'You will receive 90% of each booking total. The remaining 10% is retained by Wingman as a platform service fee. Payments are processed according to the platform payment schedule.',
-            },
-            {
-              title: '5. Cancellation Policy',
-              body: 'Cancellations must be made at least 24 hours before the scheduled booking. Repeated late cancellations or no-shows may result in penalties or account suspension.',
-            },
-            {
-              title: '6. Privacy & Data',
-              body: 'Your personal information, ID documents, and verification selfie are stored securely and will only be used for identity verification and platform safety purposes. Your information will never be shared with other users.',
-            },
-            {
-              title: '7. Account Termination',
-              body: 'Wingman reserves the right to suspend or terminate your wingman account at any time for violations of this agreement, community guidelines, or applicable laws.',
-            },
-          ].map((section, i) => (
-            <View key={i} style={styles.agreementSection}>
-              <Text style={styles.agreementSectionTitle}>{section.title}</Text>
-              <Text style={styles.agreementText}>{section.body}</Text>
-            </View>
-          ))}
-        </ScrollView>
-      </Card>
-
-      <TouchableOpacity
-        style={styles.checkboxRow}
-        onPress={async () => {
-          await haptics.selection();
-          setAgreementAccepted(!agreementAccepted);
+      <AgreementStep
+        accepted={agreementAccepted}
+        onToggleAccepted={() => {
+          void haptics.selection();
+          setAgreementAccepted((previous) => !previous);
         }}
-        activeOpacity={0.7}
-      >
-        <View style={[styles.checkbox, agreementAccepted && styles.checkboxChecked]}>
-          {agreementAccepted && <Ionicons name="checkmark" size={14} color={colors.primary.darkBlack} />}
-        </View>
-        <Text style={styles.checkboxLabel}>
-          I have read, understood, and agree to the Wingman Service Agreement
-        </Text>
-      </TouchableOpacity>
+      />
     </View>
   );
 
   const renderReviewStep = () => (
     <View style={styles.stepContainer}>
-      <Text style={styles.stepTitle}>Review & Submit</Text>
-      <Text style={styles.stepDescription}>
-        Review your application before submitting. You can go back to make changes.
-      </Text>
-
-      <Card variant="gradient" style={styles.summaryCard}>
-        <Text style={styles.summaryTitle}>Application Summary</Text>
-
-        <View style={styles.summaryRow}>
-          <Ionicons name="card" size={18} color={colors.primary.blue} />
-          <Text style={styles.summaryLabel}>ID Document</Text>
-          <Text style={styles.summaryValue}>
-            {ID_TYPES.find(t => t.value === data.idDocumentType)?.label}
-          </Text>
-          <Ionicons name="checkmark-circle" size={18} color={colors.status.success} />
-        </View>
-
-        <View style={styles.summaryRow}>
-          <Ionicons name="camera" size={18} color={colors.primary.blue} />
-          <Text style={styles.summaryLabel}>Selfie</Text>
-          <Text style={styles.summaryValue}>Captured</Text>
-          <Ionicons name="checkmark-circle" size={18} color={colors.status.success} />
-        </View>
-
-        <View style={styles.summaryRow}>
-          <Ionicons name="star" size={18} color={colors.primary.blue} />
-          <Text style={styles.summaryLabel}>Specialties</Text>
-          <Text style={styles.summaryValue}>{data.specialties.length} selected</Text>
-        </View>
-
-        <View style={styles.summaryRow}>
-          <Ionicons name="cash" size={18} color={colors.primary.blue} />
-          <Text style={styles.summaryLabel}>Rate</Text>
-          <Text style={styles.summaryValue}>${data.hourlyRate}/hr</Text>
-        </View>
-
-        <View style={styles.summaryRow}>
-          <Ionicons name="language" size={18} color={colors.primary.blue} />
-          <Text style={styles.summaryLabel}>Languages</Text>
-          <Text style={styles.summaryValue} numberOfLines={1}>{data.languages.join(', ')}</Text>
-        </View>
-
-        {data.gallery.length > 0 && (
-          <View style={styles.summaryRow}>
-            <Ionicons name="images" size={18} color={colors.primary.blue} />
-            <Text style={styles.summaryLabel}>Gallery</Text>
-            <Text style={styles.summaryValue}>{data.gallery.length} photos</Text>
-          </View>
-        )}
-
-        <View style={styles.summaryRow}>
-          <Ionicons name="document-text" size={18} color={colors.primary.blue} />
-          <Text style={styles.summaryLabel}>Agreement</Text>
-          <Text style={styles.summaryValue}>Accepted</Text>
-          <Ionicons name="checkmark-circle" size={18} color={colors.status.success} />
-        </View>
-      </Card>
-
-      <Card variant="outlined" style={styles.reviewNote}>
-        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md }}>
-          <Ionicons name="information-circle" size={20} color={colors.primary.blue} />
-          <Text style={styles.reviewNoteText}>
-            Your application will be reviewed by our team. This usually takes 1-3 business days. We'll notify you once a decision has been made.
-          </Text>
-        </View>
-      </Card>
+      <ReviewStep data={data} idTypes={ID_TYPES} />
     </View>
   );
 
@@ -888,7 +557,7 @@ export const CompanionOnboardingScreen: React.FC = () => {
 // Styles
 // ===========================================
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background.primary,

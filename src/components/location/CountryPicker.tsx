@@ -6,18 +6,23 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useCallback, useMemo, useState } from 'react';
 import {
-    Keyboard, SectionList,
-    StyleSheet, Text,
-    TextInput,
-    TouchableOpacity, View
+  Keyboard,
+  SectionList,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTheme } from '../../context/ThemeContext';
 import {
-    getCountriesByRegion, regionOrder, searchCountries
+  getCountriesByRegion,
+  regionOrder,
+  searchCountries,
 } from '../../data/countries';
-import { colors } from '../../theme/colors';
-import { spacing } from '../../theme/spacing';
-import { typography } from '../../theme/typography';
+import type { ThemeTokens } from '../../theme/tokens';
+import { useThemedStyles } from '../../theme/useThemedStyles';
 import type { Country, CountryPickerProps, CountryRegion } from '../../types/location';
 import { haptics } from '../../utils/haptics';
 import { BottomSheet } from '../BottomSheet';
@@ -34,11 +39,12 @@ export const CountryPicker: React.FC<CountryPickerProps> = ({
   onClose,
 }) => {
   const insets = useSafeAreaInsets();
+  const { tokens } = useTheme();
+  const styles = useThemedStyles(createStyles);
   const [searchQuery, setSearchQuery] = useState('');
 
   const sections = useMemo((): SectionData[] => {
     if (searchQuery.trim()) {
-      // When searching, show flat results grouped under "Search Results"
       const results = searchCountries(searchQuery);
       if (results.length === 0) {
         return [];
@@ -46,7 +52,6 @@ export const CountryPicker: React.FC<CountryPickerProps> = ({
       return [{ title: 'Americas' as CountryRegion, data: results }];
     }
 
-    // Show all countries grouped by region
     const grouped = getCountriesByRegion();
     return regionOrder.map((region) => ({
       title: region,
@@ -62,7 +67,7 @@ export const CountryPicker: React.FC<CountryPickerProps> = ({
       onClose();
       setSearchQuery('');
     },
-    [onSelect, onClose]
+    [onSelect, onClose],
   );
 
   const handleClose = useCallback(() => {
@@ -86,23 +91,22 @@ export const CountryPicker: React.FC<CountryPickerProps> = ({
             <Text style={styles.countryName}>{item.name}</Text>
             <Text style={styles.dialCode}>{item.dialCode}</Text>
           </View>
-          {isSelected && (
+          {isSelected ? (
             <Ionicons
               name="checkmark-circle"
               size={22}
-              color={colors.primary.blue}
+              color={tokens.colors.primary.blue}
             />
-          )}
+          ) : null}
         </TouchableOpacity>
       );
     },
-    [selectedCode, handleSelect]
+    [selectedCode, handleSelect, styles, tokens.colors.primary.blue],
   );
 
   const renderSectionHeader = useCallback(
     ({ section }: { section: SectionData }) => {
       if (searchQuery.trim()) {
-        // Don't show section header when searching
         return null;
       }
       return (
@@ -111,7 +115,7 @@ export const CountryPicker: React.FC<CountryPickerProps> = ({
         </View>
       );
     },
-    [searchQuery]
+    [searchQuery, styles],
   );
 
   const keyExtractor = useCallback((item: Country) => item.code, []);
@@ -124,39 +128,36 @@ export const CountryPicker: React.FC<CountryPickerProps> = ({
       initialSnapIndex={0}
     >
       <View style={styles.container}>
-        {/* Header */}
         <View style={styles.header}>
           <Text style={styles.title}>Select Country</Text>
           <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
-            <Ionicons name="close" size={24} color={colors.text.secondary} />
+            <Ionicons name="close" size={24} color={tokens.colors.text.secondary} />
           </TouchableOpacity>
         </View>
 
-        {/* Search Input */}
         <View style={styles.searchContainer}>
-          <Ionicons name="search" size={20} color={colors.text.tertiary} />
+          <Ionicons name="search" size={20} color={tokens.colors.text.tertiary} />
           <TextInput
             style={styles.searchInput}
             placeholder="Search countries..."
-            placeholderTextColor={colors.text.tertiary}
+            placeholderTextColor={tokens.colors.text.tertiary}
             value={searchQuery}
             onChangeText={setSearchQuery}
             autoCapitalize="none"
             autoCorrect={false}
             returnKeyType="search"
           />
-          {searchQuery.length > 0 && (
+          {searchQuery.length > 0 ? (
             <TouchableOpacity onPress={() => setSearchQuery('')}>
               <Ionicons
                 name="close-circle"
                 size={20}
-                color={colors.text.tertiary}
+                color={tokens.colors.text.tertiary}
               />
             </TouchableOpacity>
-          )}
+          ) : null}
         </View>
 
-        {/* Country List */}
         {sections.length > 0 ? (
           <SectionList
             sections={sections}
@@ -165,15 +166,12 @@ export const CountryPicker: React.FC<CountryPickerProps> = ({
             renderSectionHeader={renderSectionHeader}
             stickySectionHeadersEnabled
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={[
-              styles.listContent,
-              { paddingBottom: insets.bottom + spacing.xl },
-            ]}
+            contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + tokens.spacing.xl }]}
             keyboardShouldPersistTaps="handled"
           />
         ) : (
           <View style={styles.emptyContainer}>
-            <Ionicons name="search" size={48} color={colors.text.tertiary} />
+            <Ionicons name="search" size={48} color={tokens.colors.text.tertiary} />
             <Text style={styles.emptyText}>No countries found</Text>
           </View>
         )}
@@ -182,7 +180,7 @@ export const CountryPicker: React.FC<CountryPickerProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
   container: {
     flex: 1,
   },
@@ -263,7 +261,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     ...typography.presets.body,
-    color: colors.text.tertiary,
+    color: colors.text.secondary,
     marginTop: spacing.md,
   },
 });

@@ -9,14 +9,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar, EmptyFeed } from '../../components';
 import { RequirementsGate } from '../../components/RequirementsGate';
 import { useRequirements } from '../../context/RequirementsContext';
+import { useTheme } from '../../context/ThemeContext';
 import {
     createSocialFeedPost,
     fetchSocialFeedPosts,
     togglePostLike
 } from '../../services/api/friendsApi';
-import { colors } from '../../theme/colors';
-import { spacing } from '../../theme/spacing';
-import { typography } from '../../theme/typography';
+import type { ThemeTokens } from '../../theme/tokens';
+import { useThemedStyles } from '../../theme/useThemedStyles';
 import type { RootStackParamList } from '../../types';
 import type { Post } from '../../types/friends';
 import { haptics } from '../../utils/haptics';
@@ -30,6 +30,9 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 const SocialFeedContent: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
+  const { tokens } = useTheme();
+  const styles = useThemedStyles(createStyles);
+  const { colors } = tokens;
   const { friendsLimits } = useRequirements();
 
   const [posts, setPosts] = useState<Post[]>([]);
@@ -341,7 +344,7 @@ export const SocialFeedScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background.primary,
