@@ -106,7 +106,7 @@ export const CompanionCard: React.FC<CompanionCardProps> = ({
           </View>
         )}
         <LinearGradient
-          colors={['transparent', 'rgba(0,0,0,0.8)']}
+          colors={colors.gradients.fadeBottom}
           style={styles.featuredGradient}
         >
           <View style={styles.featuredContent}>
@@ -244,7 +244,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: spacing.sm,
     left: spacing.sm,
-    backgroundColor: 'rgba(255, 215, 0, 0.2)',
+    backgroundColor: colors.primary.goldSoft,
     borderRadius: spacing.radius.round,
     padding: 6,
     borderWidth: 1,
@@ -395,7 +395,7 @@ const styles = StyleSheet.create({
     right: spacing.lg,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: colors.surface.overlay,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: spacing.radius.round,

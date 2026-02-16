@@ -36,19 +36,19 @@ const STATUS_CONFIG: Record<OverallVerificationStatus, {
     label: 'Verification in Progress',
     color: colors.status.warning,
     icon: 'time-outline',
-    gradient: [colors.status.warningLight, 'rgba(251, 191, 36, 0.05)'] as const,
+    gradient: [colors.status.warningLight, colors.background.secondary] as const,
   },
   verified: {
     label: 'ID Verified',
     color: colors.verification.verified,
     icon: 'checkmark-circle',
-    gradient: [colors.status.successLight, 'rgba(52, 211, 153, 0.05)'] as const,
+    gradient: [colors.status.successLight, colors.background.secondary] as const,
   },
   premium_verified: {
     label: 'Premium Verified',
     color: colors.verification.premium,
     icon: 'star',
-    gradient: [colors.primary.goldSoft, 'rgba(255, 215, 0, 0.05)'] as const,
+    gradient: [colors.primary.goldSoft, colors.primary.goldSoft] as const,
   },
 };
 

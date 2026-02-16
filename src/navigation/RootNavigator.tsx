@@ -3,7 +3,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { colors } from '../theme/colors';
+import { useTheme } from '../context/ThemeContext';
 import type { RootStackParamList } from '../types';
 
 // Auth Screens
@@ -28,19 +28,19 @@ import { SafetyScreen } from '../screens/SafetyScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { SubscriptionScreen } from '../screens/SubscriptionScreen';
 import {
-    VerificationHistoryScreen
+  VerificationHistoryScreen,
 } from '../screens/verification';
 import { VerificationScreen } from '../screens/VerificationScreen';
 import { MainTabNavigator } from './MainTabNavigator';
 
 // Friends Feature Screens
 import {
-    EventsScreen, FriendMatchingScreen, FriendsScreen, GroupsScreen, SocialFeedScreen
+  EventsScreen, FriendMatchingScreen, FriendsScreen, GroupsScreen, SocialFeedScreen,
 } from '../screens/friends';
 
 // Companion Screens
 import {
-    CompanionApplicationStatusScreen, CompanionOnboardingScreen
+  CompanionApplicationStatusScreen, CompanionOnboardingScreen,
 } from '../screens/companion';
 import { CompanionDashboardScreen } from '../screens/CompanionDashboardScreen';
 
@@ -50,11 +50,11 @@ import { LegalDocumentScreen } from '../screens/legal';
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 /**
- * Auth Guard HOC - Wraps a screen component and redirects to Welcome if not authenticated
+ * Auth Guard HOC - Wraps a screen component and redirects to Welcome if not authenticated.
  */
 const withAuthGuard = <P extends object>(
   WrappedComponent: React.ComponentType<P>,
-  screenName: string
+  screenName: string,
 ): React.FC<P> => {
   const AuthGuardedComponent: React.FC<P> = (props) => {
     const { isAuthenticated } = useAuth();
@@ -62,17 +62,15 @@ const withAuthGuard = <P extends object>(
 
     useEffect(() => {
       if (!isAuthenticated) {
-        // Reset navigation to Welcome screen when accessing protected route while unauthenticated
         navigation.dispatch(
           CommonActions.reset({
             index: 0,
             routes: [{ name: 'Welcome' }],
-          })
+          }),
         );
       }
     }, [isAuthenticated, navigation]);
 
-    // Don't render the protected screen if not authenticated
     if (!isAuthenticated) {
       return null;
     }
@@ -114,6 +112,7 @@ const ProtectedEventsScreen = withAuthGuard(EventsScreen, 'Events');
 export const RootNavigator: React.FC = () => {
   const navigationRef = useNavigationContainerRef<RootStackParamList>();
   const { isAuthenticated, signupDraftStep } = useAuth();
+  const { tokens, reduceMotionEnabled } = useTheme();
   const [isNavigationReady, setIsNavigationReady] = useState(false);
 
   useEffect(() => {
@@ -148,7 +147,7 @@ export const RootNavigator: React.FC = () => {
           CommonActions.reset({
             index: 0,
             routes: [{ name: 'Main' }],
-          })
+          }),
         );
       }
       return;
@@ -160,7 +159,7 @@ export const RootNavigator: React.FC = () => {
           CommonActions.navigate({
             name: 'Signup',
             params: { resumeStep: signupDraftStep },
-          })
+          }),
         );
       }
       return;
@@ -171,10 +170,13 @@ export const RootNavigator: React.FC = () => {
         CommonActions.reset({
           index: 0,
           routes: [{ name: 'Welcome' }],
-        })
+        }),
       );
     }
   }, [isNavigationReady, isAuthenticated, signupDraftStep, navigationRef]);
+
+  const defaultAnimation = reduceMotionEnabled ? 'none' : 'slide_from_right';
+  const modalAnimation = reduceMotionEnabled ? 'none' : 'slide_from_bottom';
 
   return (
     <NavigationContainer ref={navigationRef} onReady={() => setIsNavigationReady(true)}>
@@ -182,8 +184,9 @@ export const RootNavigator: React.FC = () => {
         initialRouteName="Welcome"
         screenOptions={{
           headerShown: false,
-          contentStyle: { backgroundColor: colors.background.primary },
-          animation: 'slide_from_right',
+          contentStyle: { backgroundColor: tokens.colors.background.primary },
+          animation: defaultAnimation,
+          animationDuration: reduceMotionEnabled ? 0 : tokens.motion.duration.normal,
         }}
       >
         {/* Auth Flow - Public Screens */}
@@ -201,17 +204,17 @@ export const RootNavigator: React.FC = () => {
         <Stack.Screen
           name="CompanionProfile"
           component={ProtectedCompanionProfileScreen}
-          options={{ animation: 'slide_from_bottom' }}
+          options={{ animation: modalAnimation }}
         />
         <Stack.Screen
           name="Booking"
           component={ProtectedBookingScreen}
-          options={{ animation: 'slide_from_bottom' }}
+          options={{ animation: modalAnimation }}
         />
         <Stack.Screen
           name="BookingConfirmation"
           component={ProtectedBookingConfirmationScreen}
-          options={{ animation: 'fade' }}
+          options={{ animation: reduceMotionEnabled ? 'none' : 'fade' }}
         />
         <Stack.Screen name="Chat" component={ProtectedChatScreen} />
         <Stack.Screen name="Settings" component={ProtectedSettingsScreen} />
@@ -220,7 +223,7 @@ export const RootNavigator: React.FC = () => {
         <Stack.Screen
           name="Subscription"
           component={ProtectedSubscriptionScreen}
-          options={{ animation: 'slide_from_bottom' }}
+          options={{ animation: modalAnimation }}
         />
         <Stack.Screen name="Notifications" component={ProtectedNotificationsScreen} />
         <Stack.Screen name="Safety" component={ProtectedSafetyScreen} />
@@ -233,7 +236,7 @@ export const RootNavigator: React.FC = () => {
         <Stack.Screen
           name="Friends"
           component={ProtectedFriendsScreen}
-          options={{ animation: 'slide_from_bottom' }}
+          options={{ animation: modalAnimation }}
         />
         <Stack.Screen name="FriendMatching" component={ProtectedFriendMatchingScreen} />
         <Stack.Screen name="SocialFeed" component={ProtectedSocialFeedScreen} />
@@ -249,7 +252,7 @@ export const RootNavigator: React.FC = () => {
         <Stack.Screen
           name="LegalDocument"
           component={LegalDocumentScreen}
-          options={{ animation: 'slide_from_bottom' }}
+          options={{ animation: modalAnimation }}
         />
       </Stack.Navigator>
     </NavigationContainer>

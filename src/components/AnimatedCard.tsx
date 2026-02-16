@@ -67,7 +67,7 @@ export const AnimatedCard: React.FC<AnimatedCardProps> = ({
       case 'elevated':
         return {
           backgroundColor: colors.background.card,
-          shadowColor: '#000',
+          shadowColor: colors.shadow.heavy,
           shadowOffset: { width: 0, height: 8 },
           shadowOpacity: 0.15,
           shadowRadius: 24,
@@ -75,9 +75,9 @@ export const AnimatedCard: React.FC<AnimatedCardProps> = ({
         };
       case 'glass':
         return {
-          backgroundColor: 'rgba(255, 255, 255, 0.05)',
+          backgroundColor: colors.interactive.pressed,
           borderWidth: 1,
-          borderColor: 'rgba(255, 255, 255, 0.1)',
+          borderColor: colors.border.light,
         };
       default:
         return {

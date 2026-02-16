@@ -543,7 +543,7 @@ const styles = StyleSheet.create({
   safetyTip: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    backgroundColor: 'rgba(0, 212, 255, 0.08)',
+    backgroundColor: colors.primary.blueSoft,
     borderRadius: spacing.radius.lg,
     padding: spacing.md,
     gap: spacing.sm,

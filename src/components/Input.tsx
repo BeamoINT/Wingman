@@ -1,12 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import {
-    StyleSheet, Text, TextInput, TextInputProps,
-    TouchableOpacity, View, ViewStyle
+  StyleSheet,
+  Text,
+  TextInput,
+  TextInputProps,
+  TouchableOpacity,
+  View,
+  ViewStyle,
 } from 'react-native';
-import { colors } from '../theme/colors';
-import { spacing } from '../theme/spacing';
-import { typography } from '../theme/typography';
+import { useTheme } from '../context/ThemeContext';
 
 interface InputProps extends TextInputProps {
   label?: string;
@@ -32,6 +35,8 @@ export const Input: React.FC<InputProps> = ({
   ...props
 }) => {
   const [isFocused, setIsFocused] = useState(false);
+  const { tokens } = useTheme();
+  const { colors, spacing, typography } = tokens;
 
   const handleFocus: TextInputProps['onFocus'] = (e) => {
     setIsFocused(true);
@@ -43,13 +48,78 @@ export const Input: React.FC<InputProps> = ({
     props.onBlur?.(e);
   };
 
+  const styles = StyleSheet.create({
+    container: {
+      marginBottom: spacing.lg,
+    },
+    label: {
+      ...typography.presets.label,
+      color: colors.text.tertiary,
+      marginBottom: spacing.sm,
+      textTransform: 'uppercase',
+    },
+    inputContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.surface.level3,
+      borderRadius: spacing.radius.lg,
+      borderWidth: 1,
+      borderColor: colors.border.light,
+      minHeight: 50,
+    },
+    inputFocused: {
+      borderColor: colors.border.accent,
+      backgroundColor: colors.surface.level4,
+    },
+    inputError: {
+      borderColor: colors.status.error,
+      backgroundColor: colors.status.errorLight,
+    },
+    input: {
+      flex: 1,
+      paddingVertical: spacing.md,
+      paddingHorizontal: spacing.inputPadding,
+      fontFamily: typography.fontFamily.regular,
+      fontSize: typography.sizes.md,
+      color: colors.text.primary,
+    },
+    inputWithLeftIcon: {
+      paddingLeft: spacing.xs,
+    },
+    inputWithRightIcon: {
+      paddingRight: spacing.xs,
+    },
+    leftIcon: {
+      marginLeft: spacing.inputPadding,
+    },
+    rightIconButton: {
+      padding: spacing.inputPadding,
+      opacity: props.editable === false ? 0.5 : 1,
+    },
+    messageContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+      marginTop: spacing.xs,
+      minHeight: 18,
+    },
+    errorText: {
+      ...typography.presets.caption,
+      color: colors.status.error,
+    },
+    hintText: {
+      ...typography.presets.caption,
+      color: colors.text.tertiary,
+    },
+  });
+
   return (
     <View style={[styles.container, containerStyle]}>
-      {label && (
+      {label ? (
         <Text style={styles.label} accessibilityRole="text">
           {label}
         </Text>
-      )}
+      ) : null}
 
       <View
         style={[
@@ -59,21 +129,21 @@ export const Input: React.FC<InputProps> = ({
         ]}
         pointerEvents="auto"
       >
-        {leftIcon && (
+        {leftIcon ? (
           <View pointerEvents="none">
             <Ionicons
               name={leftIcon}
               size={20}
-              color={isFocused ? colors.primary.blue : colors.text.tertiary}
+              color={isFocused ? colors.accent.primary : colors.text.tertiary}
               style={styles.leftIcon}
             />
           </View>
-        )}
+        ) : null}
 
         <TextInput
           placeholderTextColor={colors.text.tertiary}
-          selectionColor={colors.primary.blue}
-          cursorColor={colors.primary.blue}
+          selectionColor={colors.accent.primary}
+          cursorColor={colors.accent.primary}
           {...props}
           style={[
             styles.input,
@@ -92,90 +162,29 @@ export const Input: React.FC<InputProps> = ({
           testID={testID}
         />
 
-        {rightIcon && (
-          <TouchableOpacity
-            onPress={onRightIconPress}
-            style={styles.rightIconButton}
-          >
-            <Ionicons
-              name={rightIcon}
-              size={20}
-              color={colors.text.tertiary}
-            />
+        {rightIcon ? (
+          <TouchableOpacity onPress={onRightIconPress} style={styles.rightIconButton}>
+            <Ionicons name={rightIcon} size={20} color={colors.text.tertiary} />
           </TouchableOpacity>
-        )}
+        ) : null}
       </View>
 
-      {error && (
-        <View
-          style={styles.errorContainer}
-          accessibilityRole="alert"
-          accessibilityLiveRegion="polite"
-        >
-          <Ionicons name="alert-circle" size={14} color={colors.status.error} />
-          <Text style={styles.errorText}>{error}</Text>
-        </View>
-      )}
-
-      {hint && !error && <Text style={styles.hintText}>{hint}</Text>}
+      <View style={styles.messageContainer}>
+        {error ? (
+          <>
+            <Ionicons name="alert-circle" size={14} color={colors.status.error} />
+            <Text
+              style={styles.errorText}
+              accessibilityRole="alert"
+              accessibilityLiveRegion="polite"
+            >
+              {error}
+            </Text>
+          </>
+        ) : hint ? (
+          <Text style={styles.hintText}>{hint}</Text>
+        ) : null}
+      </View>
     </View>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    marginBottom: spacing.lg,
-  },
-  label: {
-    ...typography.presets.label,
-    color: colors.text.secondary,
-    marginBottom: spacing.sm,
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.background.tertiary,
-    borderRadius: spacing.radius.md,
-    borderWidth: 1,
-    borderColor: colors.border.light,
-  },
-  inputFocused: {
-    borderColor: colors.primary.blue,
-  },
-  inputError: {
-    borderColor: colors.status.error,
-  },
-  input: {
-    flex: 1,
-    padding: spacing.inputPadding,
-    fontSize: typography.sizes.md,
-    color: colors.text.primary,
-  },
-  inputWithLeftIcon: {
-    paddingLeft: spacing.xs,
-  },
-  inputWithRightIcon: {
-    paddingRight: spacing.xs,
-  },
-  leftIcon: {
-    marginLeft: spacing.inputPadding,
-  },
-  rightIconButton: {
-    padding: spacing.inputPadding,
-  },
-  errorContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    marginTop: spacing.xs,
-  },
-  errorText: {
-    fontSize: typography.sizes.xs,
-    color: colors.status.error,
-  },
-  hintText: {
-    fontSize: typography.sizes.xs,
-    color: colors.text.tertiary,
-    marginTop: spacing.xs,
-  },
-});

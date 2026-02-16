@@ -25,7 +25,7 @@ export const SafetyBanner: React.FC<SafetyBannerProps> = ({
     return (
       <TouchableOpacity onPress={handlePress} activeOpacity={0.8}>
         <LinearGradient
-          colors={[colors.status.error, '#DC2626']}
+          colors={[colors.status.error, colors.status.warning]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
           style={styles.emergencyContainer}
@@ -58,7 +58,7 @@ export const SafetyBanner: React.FC<SafetyBannerProps> = ({
   return (
     <TouchableOpacity onPress={handlePress} activeOpacity={0.8}>
       <LinearGradient
-        colors={['rgba(78, 205, 196, 0.15)', 'rgba(78, 205, 196, 0.05)']}
+        colors={[colors.primary.blueSoft, colors.primary.blueSoft]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 0 }}
         style={styles.container}
@@ -108,7 +108,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: 'rgba(78, 205, 196, 0.2)',
+    backgroundColor: colors.primary.blueSoft,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: spacing.md,
@@ -154,7 +154,7 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: 'rgba(78, 205, 196, 0.2)',
+    backgroundColor: colors.primary.blueSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -181,7 +181,7 @@ const styles = StyleSheet.create({
   },
   emergencySubtitle: {
     ...typography.presets.caption,
-    color: 'rgba(255, 255, 255, 0.8)',
+    color: colors.text.primary,
     marginTop: 2,
   },
 });

@@ -1109,7 +1109,7 @@ const styles = StyleSheet.create({
   datePickerOverlay: {
     flex: 1,
     justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    backgroundColor: colors.surface.overlay,
   },
   datePickerModal: {
     backgroundColor: colors.background.secondary,

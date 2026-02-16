@@ -1,3 +1,15 @@
+import {
+  Manrope_400Regular,
+  Manrope_500Medium,
+  Manrope_600SemiBold,
+  Manrope_700Bold,
+} from '@expo-google-fonts/manrope';
+import {
+  SpaceGrotesk_500Medium,
+  SpaceGrotesk_600SemiBold,
+  SpaceGrotesk_700Bold,
+} from '@expo-google-fonts/space-grotesk';
+import { useFonts } from 'expo-font';
 import { StatusBar } from 'expo-status-bar';
 import React from 'react';
 import { StyleSheet } from 'react-native';
@@ -8,6 +20,7 @@ import { ErrorBoundary, LoadingScreen, OfflineBanner } from './src/components';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { NetworkProvider } from './src/context/NetworkContext';
 import { RequirementsProvider } from './src/context/RequirementsContext';
+import { ThemeProvider, useTheme } from './src/context/ThemeContext';
 import { VerificationProvider } from './src/context/VerificationContext';
 import { RootNavigator } from './src/navigation';
 
@@ -18,11 +31,15 @@ configureReanimatedLogger({
 });
 
 /**
- * Inner app component that has access to auth context.
- * Shows loading screen while restoring session.
+ * Inner app component that has access to contexts.
  */
 function AppContent() {
   const { isRestoringSession } = useAuth();
+  const { isDark, isThemeReady } = useTheme();
+
+  if (!isThemeReady) {
+    return <LoadingScreen message="Loading your appearance..." />;
+  }
 
   if (isRestoringSession) {
     return <LoadingScreen message="Restoring your session..." />;
@@ -30,6 +47,7 @@ function AppContent() {
 
   return (
     <>
+      <StatusBar style={isDark ? 'light' : 'dark'} />
       <OfflineBanner />
       <RootNavigator />
     </>
@@ -50,20 +68,37 @@ function handleError(error: Error, errorInfo: React.ErrorInfo) {
 }
 
 export default function App() {
+  const [fontsLoaded, fontError] = useFonts({
+    Manrope_400Regular,
+    Manrope_500Medium,
+    Manrope_600SemiBold,
+    Manrope_700Bold,
+    SpaceGrotesk_500Medium,
+    SpaceGrotesk_600SemiBold,
+    SpaceGrotesk_700Bold,
+  });
+
+  const fontsReady = fontsLoaded || Boolean(fontError);
+
   return (
     <GestureHandlerRootView style={styles.container}>
       <ErrorBoundary onError={handleError}>
         <SafeAreaProvider>
-          <NetworkProvider>
-            <AuthProvider>
-              <VerificationProvider>
-                <RequirementsProvider>
-                  <StatusBar style="light" />
-                  <AppContent />
-                </RequirementsProvider>
-              </VerificationProvider>
-            </AuthProvider>
-          </NetworkProvider>
+          <ThemeProvider>
+            {!fontsReady ? (
+              <LoadingScreen message="Loading fonts..." />
+            ) : (
+              <NetworkProvider>
+                <AuthProvider>
+                  <VerificationProvider>
+                    <RequirementsProvider>
+                      <AppContent />
+                    </RequirementsProvider>
+                  </VerificationProvider>
+                </AuthProvider>
+              </NetworkProvider>
+            )}
+          </ThemeProvider>
         </SafeAreaProvider>
       </ErrorBoundary>
     </GestureHandlerRootView>

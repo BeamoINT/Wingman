@@ -8,6 +8,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Card } from '../components';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
 import { typography } from '../theme/typography';
@@ -34,6 +35,7 @@ export const SettingsScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const { themeMode, resolvedTheme, setThemeMode } = useTheme();
 
   const [notifications, setNotifications] = useState(true);
   const [emailUpdates, setEmailUpdates] = useState(true);
@@ -52,6 +54,28 @@ export const SettingsScreen: React.FC = () => {
     await haptics.selection();
     setter(value);
   };
+
+  const cycleThemeMode = async () => {
+    await haptics.selection();
+
+    if (themeMode === 'system') {
+      await setThemeMode('light');
+      return;
+    }
+
+    if (themeMode === 'light') {
+      await setThemeMode('dark');
+      return;
+    }
+
+    await setThemeMode('system');
+  };
+
+  const appearanceValue = themeMode === 'system'
+    ? `System (${resolvedTheme === 'dark' ? 'Dark' : 'Light'})`
+    : themeMode === 'dark'
+      ? 'Dark'
+      : 'Light';
 
   const settingSections: SettingSection[] = [
     {
@@ -127,6 +151,14 @@ export const SettingsScreen: React.FC = () => {
           label: 'Haptic Feedback',
           type: 'toggle',
           value: hapticFeedback,
+        },
+        {
+          id: 'appearance',
+          icon: 'color-palette',
+          label: 'Appearance',
+          type: 'value',
+          value: appearanceValue,
+          onPress: cycleThemeMode,
         },
         {
           id: 'language',

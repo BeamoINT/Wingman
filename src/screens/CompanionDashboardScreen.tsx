@@ -419,14 +419,14 @@ export const CompanionDashboardScreen: React.FC = () => {
           <Text style={styles.sectionTitle}>Performance</Text>
           <View style={styles.statsGrid}>
             <Card style={styles.statCard}>
-              <View style={[styles.statIcon, { backgroundColor: 'rgba(255, 215, 0, 0.15)' }]}>
+              <View style={[styles.statIcon, { backgroundColor: colors.primary.goldSoft }]}>
                 <Ionicons name="star" size={20} color={colors.primary.gold} />
               </View>
               <Text style={styles.statValue}>{stats.rating > 0 ? stats.rating.toFixed(1) : '--'}</Text>
               <Text style={styles.statLabel}>Rating</Text>
             </Card>
             <Card style={styles.statCard}>
-              <View style={[styles.statIcon, { backgroundColor: 'rgba(78, 205, 196, 0.15)' }]}>
+              <View style={[styles.statIcon, { backgroundColor: colors.primary.blueSoft }]}>
                 <Ionicons name="flash" size={20} color={colors.primary.blue} />
               </View>
               <Text style={styles.statValue}>
@@ -437,14 +437,14 @@ export const CompanionDashboardScreen: React.FC = () => {
               <Text style={styles.statLabel}>Avg Response</Text>
             </Card>
             <Card style={styles.statCard}>
-              <View style={[styles.statIcon, { backgroundColor: 'rgba(74, 222, 128, 0.15)' }]}>
+              <View style={[styles.statIcon, { backgroundColor: colors.status.successLight }]}>
                 <Ionicons name="checkmark-circle" size={20} color={colors.status.success} />
               </View>
               <Text style={styles.statValue}>{stats.completionRate}%</Text>
               <Text style={styles.statLabel}>Completion</Text>
             </Card>
             <Card style={styles.statCard}>
-              <View style={[styles.statIcon, { backgroundColor: 'rgba(167, 139, 250, 0.15)' }]}>
+              <View style={[styles.statIcon, { backgroundColor: colors.verification.trustedLight }]}>
                 <Ionicons name="repeat" size={20} color={colors.verification.trusted} />
               </View>
               <Text style={styles.statValue}>{stats.repeatClientRate}%</Text>
@@ -714,7 +714,7 @@ const styles = StyleSheet.create({
   },
   earningsStatDivider: {
     width: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.1)',
+    backgroundColor: colors.interactive.pressed,
   },
   withdrawButton: {
     flexDirection: 'row',

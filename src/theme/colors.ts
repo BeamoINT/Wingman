@@ -1,151 +1,306 @@
+import { Appearance } from 'react-native';
+
 /**
- * Wingman Color Palette
- * Primary: Black, White, Electric Blue
- * Designed for a premium, modern social companion app
+ * Wingman color system.
  *
- * Design Philosophy:
- * - Deep blacks create depth and elegance
- * - Electric blue accent provides energy and modernity
- * - Silver highlights premium features
- * - Clean black and white foundation
+ * Includes semantic tokens for modern adaptive theming while preserving
+ * backwards-compatible keys used across the existing app.
  */
 
-export const colors = {
-  // Primary Colors
-  primary: {
-    // Blacks - Deep and sophisticated
-    black: '#0A0A0F',
-    darkBlack: '#050508',
-    lightBlack: '#13131A',
+export type ThemeName = 'light' | 'dark';
 
-    // Electric Blue - Primary accent
-    blue: '#00D4FF',
-    blueLight: '#33DFFF',
-    blueDark: '#00A8CC',
-    blueMuted: '#0099BB',
-    blueGlow: 'rgba(0, 212, 255, 0.25)',
-    blueSoft: 'rgba(0, 212, 255, 0.12)',
+interface BasePalette {
+  canvas: string;
+  surface0: string;
+  surface1: string;
+  surface2: string;
+  surface3: string;
+  textPrimary: string;
+  textSecondary: string;
+  textTertiary: string;
+  textMuted: string;
+  accent: string;
+  accentStrong: string;
+  accentSoft: string;
+  accentGlow: string;
+  silver: string;
+  silverLight: string;
+  silverDark: string;
+  silverSoft: string;
+  silverGlow: string;
+  coral: string;
+  coralLight: string;
+  coralDark: string;
+  coralSoft: string;
+  success: string;
+  successSoft: string;
+  warning: string;
+  warningSoft: string;
+  error: string;
+  errorSoft: string;
+  info: string;
+  infoSoft: string;
+  borderSubtle: string;
+  borderLight: string;
+  borderMedium: string;
+  borderHeavy: string;
+  overlay: string;
+  shadowLight: string;
+  shadowMedium: string;
+  shadowHeavy: string;
+}
 
-    // Silver - Premium accent (replacing gold)
-    silver: '#C0C0C0',
-    silverLight: '#E8E8E8',
-    silverDark: '#A0A0A0',
-    silverGlow: 'rgba(192, 192, 192, 0.25)',
-    silverSoft: 'rgba(192, 192, 192, 0.12)',
+const darkPalette: BasePalette = {
+  canvas: '#070B14',
+  surface0: '#0D1424',
+  surface1: '#131E33',
+  surface2: '#192740',
+  surface3: '#223250',
+  textPrimary: '#F8FAFF',
+  textSecondary: '#C2CCE2',
+  textTertiary: '#8C9AB7',
+  textMuted: '#66748F',
+  accent: '#2FA8FF',
+  accentStrong: '#007EEA',
+  accentSoft: 'rgba(47, 168, 255, 0.14)',
+  accentGlow: 'rgba(47, 168, 255, 0.34)',
+  silver: '#D3D7E3',
+  silverLight: '#EEF2FC',
+  silverDark: '#AAB6CF',
+  silverSoft: 'rgba(211, 215, 227, 0.14)',
+  silverGlow: 'rgba(211, 215, 227, 0.3)',
+  coral: '#FF7C6B',
+  coralLight: '#FF9D91',
+  coralDark: '#E46052',
+  coralSoft: 'rgba(255, 124, 107, 0.14)',
+  success: '#22C55E',
+  successSoft: 'rgba(34, 197, 94, 0.14)',
+  warning: '#F59E0B',
+  warningSoft: 'rgba(245, 158, 11, 0.14)',
+  error: '#EF4444',
+  errorSoft: 'rgba(239, 68, 68, 0.14)',
+  info: '#38BDF8',
+  infoSoft: 'rgba(56, 189, 248, 0.14)',
+  borderSubtle: 'rgba(194, 204, 226, 0.08)',
+  borderLight: 'rgba(194, 204, 226, 0.14)',
+  borderMedium: 'rgba(194, 204, 226, 0.22)',
+  borderHeavy: 'rgba(194, 204, 226, 0.34)',
+  overlay: 'rgba(5, 10, 19, 0.9)',
+  shadowLight: 'rgba(2, 10, 30, 0.16)',
+  shadowMedium: 'rgba(2, 10, 30, 0.32)',
+  shadowHeavy: 'rgba(2, 10, 30, 0.46)',
+};
 
-    // Gold - Mapped to silver for backwards compatibility
-    gold: '#C0C0C0',
-    goldLight: '#E8E8E8',
-    goldDark: '#A0A0A0',
-    goldGlow: 'rgba(192, 192, 192, 0.25)',
-    goldSoft: 'rgba(192, 192, 192, 0.12)',
+const lightPalette: BasePalette = {
+  canvas: '#F4F7FF',
+  surface0: '#FFFFFF',
+  surface1: '#F0F4FE',
+  surface2: '#E7EDFB',
+  surface3: '#DBE5F8',
+  textPrimary: '#0B162D',
+  textSecondary: '#334362',
+  textTertiary: '#62708C',
+  textMuted: '#8591AA',
+  accent: '#1B75F0',
+  accentStrong: '#0A54C6',
+  accentSoft: 'rgba(27, 117, 240, 0.12)',
+  accentGlow: 'rgba(27, 117, 240, 0.24)',
+  silver: '#7D8CA8',
+  silverLight: '#9BA9C2',
+  silverDark: '#5F6D87',
+  silverSoft: 'rgba(125, 140, 168, 0.12)',
+  silverGlow: 'rgba(125, 140, 168, 0.2)',
+  coral: '#E85A4F',
+  coralLight: '#F17D73',
+  coralDark: '#CF473C',
+  coralSoft: 'rgba(232, 90, 79, 0.12)',
+  success: '#16A34A',
+  successSoft: 'rgba(22, 163, 74, 0.12)',
+  warning: '#D97706',
+  warningSoft: 'rgba(217, 119, 6, 0.12)',
+  error: '#DC2626',
+  errorSoft: 'rgba(220, 38, 38, 0.12)',
+  info: '#0284C7',
+  infoSoft: 'rgba(2, 132, 199, 0.12)',
+  borderSubtle: 'rgba(51, 67, 98, 0.08)',
+  borderLight: 'rgba(51, 67, 98, 0.14)',
+  borderMedium: 'rgba(51, 67, 98, 0.22)',
+  borderHeavy: 'rgba(51, 67, 98, 0.32)',
+  overlay: 'rgba(11, 22, 45, 0.6)',
+  shadowLight: 'rgba(17, 28, 47, 0.08)',
+  shadowMedium: 'rgba(17, 28, 47, 0.16)',
+  shadowHeavy: 'rgba(17, 28, 47, 0.24)',
+};
 
-    // Coral - For social/friends features
-    coral: '#FF6B6B',
-    coralLight: '#FF8E8E',
-    coralDark: '#E55555',
-    coralSoft: 'rgba(255, 107, 107, 0.12)',
-  },
+const paletteByTheme: Record<ThemeName, BasePalette> = {
+  dark: darkPalette,
+  light: lightPalette,
+};
 
-  // Background Colors - Layered depth
-  background: {
-    primary: '#0A0A0F',    // Deepest black
-    secondary: '#0F0F16',  // Slightly lifted
-    tertiary: '#16161F',   // Card backgrounds
-    card: '#1A1A24',       // Interactive cards
-    cardHover: '#22222E',  // Hover state
-    elevated: '#1E1E28',   // Elevated surfaces
-    overlay: 'rgba(5, 5, 8, 0.92)',
-    gradient: ['#0A0A0F', '#0F0F16', '#16161F'],
-  },
+const createThemeColors = (theme: ThemeName) => {
+  const p = paletteByTheme[theme];
 
-  // Text Colors - Clear hierarchy
-  text: {
-    primary: '#FFFFFF',
-    secondary: '#B0B0B0',
-    tertiary: '#707070',
-    muted: '#505050',
-    placeholder: '#606060',
-    accent: '#00D4FF',
-    gold: '#C0C0C0',
-    inverse: '#0A0A0F',
-  },
+  return {
+    theme,
+    isDark: theme === 'dark',
 
-  // Status Colors - Clear feedback
-  status: {
-    success: '#34D399',
-    successLight: 'rgba(52, 211, 153, 0.12)',
-    successMuted: '#22C080',
-    warning: '#FBBF24',
-    warningLight: 'rgba(251, 191, 36, 0.12)',
-    error: '#F87171',
-    errorLight: 'rgba(248, 113, 113, 0.12)',
-    info: '#00D4FF',
-    infoLight: 'rgba(0, 212, 255, 0.12)',
-  },
+    semantic: {
+      background: p.canvas,
+      surface: p.surface0,
+      surfaceElevated: p.surface1,
+      textPrimary: p.textPrimary,
+      textSecondary: p.textSecondary,
+      textTertiary: p.textTertiary,
+      borderSubtle: p.borderSubtle,
+      borderStrong: p.borderMedium,
+      accent: p.accent,
+    },
 
-  // Verification/Badge Colors
-  verification: {
-    verified: '#34D399',
-    premium: '#C0C0C0',
-    trusted: '#00D4FF',
-    trustedLight: 'rgba(0, 212, 255, 0.12)',
-  },
+    surface: {
+      level0: p.canvas,
+      level1: p.surface0,
+      level2: p.surface1,
+      level3: p.surface2,
+      level4: p.surface3,
+      overlay: p.overlay,
+    },
 
-  // Border Colors - Subtle definition
-  border: {
-    subtle: 'rgba(255, 255, 255, 0.04)',
-    light: 'rgba(255, 255, 255, 0.08)',
-    medium: 'rgba(255, 255, 255, 0.12)',
-    heavy: 'rgba(255, 255, 255, 0.18)',
-    accent: 'rgba(0, 212, 255, 0.4)',
-    gold: 'rgba(192, 192, 192, 0.4)',
-    focus: 'rgba(0, 212, 255, 0.6)',
-  },
+    accent: {
+      primary: p.accent,
+      strong: p.accentStrong,
+      soft: p.accentSoft,
+      glow: p.accentGlow,
+      secondary: p.coral,
+      secondarySoft: p.coralSoft,
+    },
 
-  // Gradient Presets - Smooth transitions
-  gradients: {
-    // Primary button gradient
-    primary: ['#00D4FF', '#00A8CC'],
-    primarySoft: ['rgba(0, 212, 255, 0.2)', 'rgba(0, 168, 204, 0.1)'],
+    text: {
+      primary: p.textPrimary,
+      secondary: p.textSecondary,
+      tertiary: p.textTertiary,
+      muted: p.textMuted,
+      placeholder: p.textTertiary,
+      accent: p.accent,
+      gold: p.silver,
+      inverse: theme === 'dark' ? '#060B14' : '#FFFFFF',
+    },
 
-    // Silver/Premium gradients
-    gold: ['#E8E8E8', '#C0C0C0', '#A0A0A0'],
-    goldSoft: ['rgba(192, 192, 192, 0.2)', 'rgba(160, 160, 160, 0.1)'],
-    premium: ['#C0C0C0', '#00D4FF'],
+    border: {
+      subtle: p.borderSubtle,
+      light: p.borderLight,
+      medium: p.borderMedium,
+      heavy: p.borderHeavy,
+      accent: p.accentGlow,
+      gold: p.silverGlow,
+      focus: p.accentGlow,
+      strong: p.borderHeavy,
+    },
 
-    // Background gradients
-    dark: ['#16161F', '#0A0A0F'],
-    darkReverse: ['#0A0A0F', '#16161F'],
-    cardShine: ['rgba(255, 255, 255, 0.06)', 'rgba(255, 255, 255, 0)'],
+    status: {
+      success: p.success,
+      successLight: p.successSoft,
+      successMuted: theme === 'dark' ? '#1F9D4D' : '#15803D',
+      warning: p.warning,
+      warningLight: p.warningSoft,
+      error: p.error,
+      errorLight: p.errorSoft,
+      info: p.info,
+      infoLight: p.infoSoft,
+    },
 
-    // Accent gradients
-    blueToPurple: ['#00D4FF', '#0099DD'],
-    sunset: ['#00D4FF', '#00A8CC'],
+    verification: {
+      verified: p.success,
+      premium: p.silver,
+      trusted: p.accent,
+      trustedLight: p.accentSoft,
+    },
 
-    // Overlay gradients
-    fadeBottom: ['transparent', 'rgba(10, 10, 15, 0.95)'],
-    fadeTop: ['rgba(10, 10, 15, 0.95)', 'transparent'],
-  },
+    shadow: {
+      light: p.shadowLight,
+      medium: p.shadowMedium,
+      heavy: p.shadowHeavy,
+      blue: p.accentSoft,
+      blueStrong: p.accentGlow,
+      gold: p.silverSoft,
+      goldStrong: p.silverGlow,
+    },
 
-  // Shadow Colors - Depth and elevation
-  shadow: {
-    light: 'rgba(0, 0, 0, 0.08)',
-    medium: 'rgba(0, 0, 0, 0.2)',
-    heavy: 'rgba(0, 0, 0, 0.4)',
-    blue: 'rgba(0, 212, 255, 0.2)',
-    blueStrong: 'rgba(0, 212, 255, 0.35)',
-    gold: 'rgba(192, 192, 192, 0.2)',
-    goldStrong: 'rgba(192, 192, 192, 0.35)',
-  },
+    interactive: {
+      pressed: theme === 'dark' ? 'rgba(248, 250, 255, 0.06)' : 'rgba(11, 22, 45, 0.06)',
+      hover: theme === 'dark' ? 'rgba(248, 250, 255, 0.1)' : 'rgba(11, 22, 45, 0.1)',
+      focus: p.accentSoft,
+      selected: p.accentSoft,
+    },
 
-  // Interactive States
-  interactive: {
-    pressed: 'rgba(255, 255, 255, 0.05)',
-    hover: 'rgba(255, 255, 255, 0.08)',
-    focus: 'rgba(0, 212, 255, 0.15)',
-    selected: 'rgba(0, 212, 255, 0.12)',
-  },
+    gradients: {
+      primary: [p.accent, p.accentStrong],
+      primarySoft: [p.accentSoft, 'transparent'],
+      gold: [p.silverLight, p.silver, p.silverDark],
+      goldSoft: [p.silverSoft, 'transparent'],
+      premium: [p.silver, p.accent],
+      dark: [p.surface3, p.surface0],
+      darkReverse: [p.surface0, p.surface3],
+      cardShine: theme === 'dark'
+        ? ['rgba(248, 250, 255, 0.06)', 'rgba(248, 250, 255, 0)']
+        : ['rgba(11, 22, 45, 0.05)', 'rgba(11, 22, 45, 0)'],
+      blueToPurple: [p.accent, p.accentStrong],
+      sunset: [p.coralLight, p.coral],
+      fadeBottom: ['transparent', p.overlay],
+      fadeTop: [p.overlay, 'transparent'],
+    },
+
+    primary: {
+      black: p.canvas,
+      darkBlack: theme === 'dark' ? '#040812' : '#DDE7FB',
+      lightBlack: p.surface2,
+      blue: p.accent,
+      blueLight: theme === 'dark' ? '#66BEFF' : '#3C8AF7',
+      blueDark: p.accentStrong,
+      blueMuted: theme === 'dark' ? '#2A89CC' : '#2E6AC7',
+      blueGlow: p.accentGlow,
+      blueSoft: p.accentSoft,
+      silver: p.silver,
+      silverLight: p.silverLight,
+      silverDark: p.silverDark,
+      silverGlow: p.silverGlow,
+      silverSoft: p.silverSoft,
+      gold: p.silver,
+      goldLight: p.silverLight,
+      goldDark: p.silverDark,
+      goldGlow: p.silverGlow,
+      goldSoft: p.silverSoft,
+      coral: p.coral,
+      coralLight: p.coralLight,
+      coralDark: p.coralDark,
+      coralSoft: p.coralSoft,
+    },
+
+    background: {
+      primary: p.canvas,
+      secondary: p.surface0,
+      tertiary: p.surface1,
+      card: p.surface2,
+      cardHover: p.surface3,
+      elevated: theme === 'dark' ? '#273A58' : '#D0DCF2',
+      overlay: p.overlay,
+      gradient: [p.canvas, p.surface0, p.surface1],
+    },
+  } as const;
+};
+
+export const lightColors = createThemeColors('light');
+export const darkColors = createThemeColors('dark');
+
+export const themeColors = {
+  light: lightColors,
+  dark: darkColors,
 } as const;
 
-export type Colors = typeof colors;
+export const getColorsForTheme = (theme: ThemeName) => themeColors[theme];
+
+// Backwards compatibility for legacy style imports.
+const initialTheme: ThemeName = Appearance.getColorScheme() === 'light' ? 'light' : 'dark';
+export const colors = getColorsForTheme(initialTheme);
+
+export type Colors = typeof darkColors;
+export type ThemeColors = Colors;

@@ -318,7 +318,7 @@ export const CompanionProfileScreen: React.FC = () => {
             </View>
           )}
           <LinearGradient
-            colors={['transparent', 'rgba(0,0,0,0.8)']}
+            colors={['transparent', colors.surface.overlay]}
             style={styles.heroGradient}
           />
 
@@ -589,7 +589,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: colors.surface.overlay,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -603,7 +603,7 @@ const styles = StyleSheet.create({
     left: spacing.screenPadding,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    backgroundColor: colors.surface.overlay,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: spacing.radius.round,
@@ -639,7 +639,7 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: 'rgba(255, 215, 0, 0.2)',
+    backgroundColor: colors.primary.goldSoft,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
@@ -713,7 +713,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    backgroundColor: 'rgba(78, 205, 196, 0.1)',
+    backgroundColor: colors.primary.blueSoft,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: spacing.radius.round,
@@ -723,7 +723,7 @@ const styles = StyleSheet.create({
     color: colors.primary.blue,
   },
   interestTag: {
-    backgroundColor: 'rgba(167, 139, 250, 0.15)',
+    backgroundColor: colors.verification.trustedLight,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: spacing.radius.round,
@@ -742,7 +742,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: 'rgba(255, 215, 0, 0.15)',
+    backgroundColor: colors.primary.goldSoft,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.sm,

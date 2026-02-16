@@ -57,9 +57,9 @@ export const Skeleton: React.FC<SkeletonProps> = ({
       <AnimatedLinearGradient
         colors={[
           'transparent',
-          'rgba(255, 255, 255, 0.05)',
-          'rgba(255, 255, 255, 0.1)',
-          'rgba(255, 255, 255, 0.05)',
+          colors.interactive.pressed,
+          colors.interactive.hover,
+          colors.interactive.pressed,
           'transparent',
         ]}
         start={{ x: 0, y: 0.5 }}

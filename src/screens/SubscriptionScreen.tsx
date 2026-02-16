@@ -380,7 +380,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: 'rgba(78, 205, 196, 0.15)',
+    backgroundColor: colors.primary.blueSoft,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.md,

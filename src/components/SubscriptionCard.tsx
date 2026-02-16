@@ -60,8 +60,8 @@ export const SubscriptionCard: React.FC<SubscriptionCardProps> = ({
     return `$${monthly.toFixed(0)}`;
   };
 
-  const eliteColors = ['rgba(255, 215, 0, 0.1)', 'rgba(255, 215, 0, 0.05)'] as const;
-  const premiumColors = ['rgba(167, 139, 250, 0.1)', 'rgba(167, 139, 250, 0.05)'] as const;
+  const eliteColors = [colors.primary.goldSoft, colors.primary.goldSoft] as const;
+  const premiumColors = [colors.verification.trustedLight, colors.verification.trustedLight] as const;
   const gradientColors = subscription.tier === 'elite' ? eliteColors : premiumColors;
 
   const cardContent = (

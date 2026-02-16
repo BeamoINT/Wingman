@@ -531,7 +531,7 @@ const styles = StyleSheet.create({
   },
   toggleChipActive: {
     borderColor: colors.primary.blue,
-    backgroundColor: 'rgba(74, 144, 226, 0.12)',
+    backgroundColor: colors.primary.blueSoft,
   },
   toggleChipLabel: {
     ...typography.presets.bodySmall,
@@ -552,7 +552,7 @@ const styles = StyleSheet.create({
   },
   sortChipActive: {
     borderColor: colors.primary.blue,
-    backgroundColor: 'rgba(74, 144, 226, 0.12)',
+    backgroundColor: colors.primary.blueSoft,
   },
   sortChipLabel: {
     ...typography.presets.caption,

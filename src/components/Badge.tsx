@@ -32,11 +32,11 @@ export const Badge: React.FC<BadgeProps> = ({
       case 'info':
         return colors.status.infoLight;
       case 'gold':
-        return 'rgba(255, 215, 0, 0.15)';
+        return colors.primary.goldSoft;
       case 'verified':
-        return 'rgba(78, 205, 196, 0.15)';
+        return colors.primary.blueSoft;
       case 'premium':
-        return 'rgba(167, 139, 250, 0.15)';
+        return colors.verification.trustedLight;
       default:
         return colors.background.tertiary;
     }
@@ -69,7 +69,7 @@ export const Badge: React.FC<BadgeProps> = ({
   if (variant === 'premium') {
     return (
       <LinearGradient
-        colors={['rgba(255, 215, 0, 0.2)', 'rgba(167, 139, 250, 0.2)']}
+        colors={[colors.primary.goldSoft, colors.verification.trustedLight]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 0 }}
         style={[

@@ -3,8 +3,9 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { BlurView } from 'expo-blur';
 import React from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
-import { colors } from '../theme/colors';
+import { useTheme } from '../context/ThemeContext';
 import { spacing } from '../theme/spacing';
+import { typography } from '../theme/typography';
 import type { MainTabParamList } from '../types';
 import { haptics } from '../utils/haptics';
 
@@ -18,21 +19,88 @@ import { VerificationTabScreen } from '../screens/verification/VerificationTabSc
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
-const TabBarBackground = () => (
-  <BlurView intensity={80} tint="dark" style={StyleSheet.absoluteFill} />
-);
-
 export const MainTabNavigator: React.FC = () => {
+  const { tokens } = useTheme();
+  const { colors } = tokens;
+
+  const styles = StyleSheet.create({
+    tabBar: {
+      position: 'absolute',
+      left: spacing.sm,
+      right: spacing.sm,
+      bottom: Platform.OS === 'ios' ? spacing.md : spacing.sm,
+      borderRadius: spacing.radius.xxl,
+      borderTopWidth: 0,
+      height: Platform.OS === 'ios' ? 76 : 70,
+      paddingTop: spacing.xs,
+      paddingBottom: Platform.OS === 'ios' ? spacing.md : spacing.sm,
+      backgroundColor: 'transparent',
+      elevation: 0,
+      shadowOpacity: 0,
+      overflow: 'hidden',
+    },
+    tabBarLabel: {
+      ...typography.presets.caption,
+      fontSize: 11,
+      lineHeight: 14,
+      marginTop: 0,
+      marginBottom: Platform.OS === 'ios' ? 0 : 2,
+      fontFamily: typography.fontFamily.medium,
+    },
+    activeIconContainer: {
+      backgroundColor: colors.accent.soft,
+      borderColor: colors.border.light,
+      borderWidth: 1,
+      borderRadius: spacing.radius.pill,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 3,
+      marginTop: -1,
+    },
+  });
+
+  const TabBarBackground = () => {
+    if (Platform.OS === 'web') {
+      return (
+        <View
+          style={[
+            StyleSheet.absoluteFill,
+            {
+              backgroundColor: colors.surface.level1,
+              borderWidth: 1,
+              borderColor: colors.border.light,
+            },
+          ]}
+        />
+      );
+    }
+
+    return (
+      <BlurView
+        intensity={85}
+        tint={tokens.isDark ? 'dark' : 'light'}
+        style={[
+          StyleSheet.absoluteFill,
+          {
+            borderWidth: 1,
+            borderColor: colors.border.light,
+            backgroundColor: tokens.isDark ? colors.surface.overlay : colors.surface.level1,
+          },
+        ]}
+      />
+    );
+  };
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarShowLabel: true,
-        tabBarActiveTintColor: colors.primary.blue,
+        tabBarActiveTintColor: colors.accent.primary,
         tabBarInactiveTintColor: colors.text.tertiary,
         tabBarStyle: styles.tabBar,
         tabBarBackground: TabBarBackground,
         tabBarLabelStyle: styles.tabBarLabel,
+        tabBarHideOnKeyboard: true,
         tabBarIcon: ({ focused, color }) => {
           let iconName: keyof typeof Ionicons.glyphMap;
 
@@ -61,7 +129,7 @@ export const MainTabNavigator: React.FC = () => {
 
           return (
             <View style={focused ? styles.activeIconContainer : undefined}>
-              <Ionicons name={iconName} size={24} color={color} />
+              <Ionicons name={iconName} size={20} color={color} />
             </View>
           );
         },
@@ -81,26 +149,3 @@ export const MainTabNavigator: React.FC = () => {
     </Tab.Navigator>
   );
 };
-
-const styles = StyleSheet.create({
-  tabBar: {
-    position: 'absolute',
-    backgroundColor: 'transparent',
-    borderTopWidth: 0,
-    elevation: 0,
-    height: Platform.OS === 'ios' ? 88 : 68,
-    paddingTop: spacing.sm,
-  },
-  tabBarLabel: {
-    fontSize: 11,
-    fontWeight: '500',
-    marginTop: 2,
-    marginBottom: Platform.OS === 'ios' ? 0 : spacing.sm,
-  },
-  activeIconContainer: {
-    backgroundColor: 'rgba(78, 205, 196, 0.15)',
-    borderRadius: 12,
-    padding: 4,
-    marginBottom: -4,
-  },
-});

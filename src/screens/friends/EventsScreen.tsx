@@ -489,7 +489,7 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: 'rgba(78, 205, 196, 0.1)',
+    backgroundColor: colors.primary.blueSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -551,10 +551,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background.tertiary,
   },
   rsvpButtonActive: {
-    backgroundColor: 'rgba(72, 187, 120, 0.1)',
+    backgroundColor: colors.status.successLight,
   },
   rsvpButtonInterested: {
-    backgroundColor: 'rgba(255, 107, 107, 0.1)',
+    backgroundColor: colors.status.errorLight,
   },
   rsvpButtonText: {
     ...typography.presets.caption,

@@ -32,7 +32,7 @@ export const LocationDetectButton: React.FC<LocationDetectButtonProps> = ({
       style={styles.container}
     >
       <LinearGradient
-        colors={['#4ECDC4', '#45B7AA']}
+        colors={[colors.primary.blue, colors.primary.blueDark]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 0 }}
         style={[

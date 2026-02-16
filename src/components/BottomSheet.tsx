@@ -172,7 +172,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.border.subtle,
     // Shadow
-    shadowColor: '#000',
+    shadowColor: colors.shadow.heavy,
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.25,
     shadowRadius: 20,

@@ -19,7 +19,9 @@ export { ErrorBoundary } from './ErrorBoundary';
 export { ErrorFallback } from './ErrorFallback';
 export { FadeIn, ScaleIn, Stagger } from './FadeIn';
 export { Header } from './Header';
+export { FilterChip } from './FilterChip';
 export { Input } from './Input';
+export { InlineBanner } from './InlineBanner';
 // Loading & Empty State Components
 export { LoadingIndicator, LoadingOverlay, LoadingScreen } from './LoadingOverlay';
 // Location Components
@@ -28,13 +30,16 @@ export {
 } from './location';
 // Network Components
 export { OfflineBanner } from './OfflineBanner';
+export { PillTabs } from './PillTabs';
 export { ProgressBar } from './ProgressBar';
 export { Rating } from './Rating';
 // Security Components
 export { RequirementsGate, useFeatureGate } from './RequirementsGate';
 export { SafetyBanner } from './SafetyBanner';
+export { ScreenScaffold } from './ScreenScaffold';
 export { ScreenTransition } from './ScreenTransition';
 export { SelectableChip } from './SelectableChip';
+export { SectionHeader } from './SectionHeader';
 export {
     Skeleton, SkeletonAvatar, SkeletonCard,
     SkeletonCompanionCard,
@@ -47,7 +52,6 @@ export {
     VerificationStatusCard,
     VerificationStepItem
 } from './verification';
-
 
 
 

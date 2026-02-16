@@ -545,7 +545,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.xs,
     paddingVertical: spacing.sm,
-    backgroundColor: 'rgba(0, 212, 255, 0.1)',
+    backgroundColor: colors.primary.blueSoft,
     borderBottomWidth: 1,
     borderBottomColor: colors.border.light,
   },
@@ -602,7 +602,7 @@ const styles = StyleSheet.create({
     fontSize: 10,
   },
   messageTimeMe: {
-    color: 'rgba(255, 255, 255, 0.75)',
+    color: colors.text.secondary,
   },
   inputContainer: {
     flexDirection: 'row',

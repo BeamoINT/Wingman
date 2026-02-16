@@ -1,35 +1,45 @@
 import { Platform } from 'react-native';
 
 /**
- * Typography System
- * Modern, clean typography for the app
+ * Typography system using modern brand fonts with graceful fallback.
  */
 
 const fontFamily = Platform.select({
   ios: {
-    regular: 'System',
-    medium: 'System',
-    semibold: 'System',
-    bold: 'System',
+    regular: 'Manrope_400Regular',
+    medium: 'Manrope_500Medium',
+    semibold: 'Manrope_600SemiBold',
+    bold: 'Manrope_700Bold',
+    displayRegular: 'SpaceGrotesk_500Medium',
+    displayMedium: 'SpaceGrotesk_600SemiBold',
+    displayBold: 'SpaceGrotesk_700Bold',
+    fallback: 'System',
   },
   android: {
-    regular: 'Roboto',
-    medium: 'Roboto',
-    semibold: 'Roboto',
-    bold: 'Roboto',
+    regular: 'Manrope_400Regular',
+    medium: 'Manrope_500Medium',
+    semibold: 'Manrope_600SemiBold',
+    bold: 'Manrope_700Bold',
+    displayRegular: 'SpaceGrotesk_500Medium',
+    displayMedium: 'SpaceGrotesk_600SemiBold',
+    displayBold: 'SpaceGrotesk_700Bold',
+    fallback: 'sans-serif',
   },
   default: {
-    regular: 'System',
-    medium: 'System',
-    semibold: 'System',
-    bold: 'System',
+    regular: 'Manrope_400Regular',
+    medium: 'Manrope_500Medium',
+    semibold: 'Manrope_600SemiBold',
+    bold: 'Manrope_700Bold',
+    displayRegular: 'SpaceGrotesk_500Medium',
+    displayMedium: 'SpaceGrotesk_600SemiBold',
+    displayBold: 'SpaceGrotesk_700Bold',
+    fallback: 'sans-serif',
   },
 });
 
 export const typography = {
   fontFamily,
 
-  // Font Sizes
   sizes: {
     xxs: 10,
     xs: 12,
@@ -39,19 +49,17 @@ export const typography = {
     xl: 20,
     xxl: 24,
     xxxl: 28,
-    display: 32,
-    hero: 40,
+    display: 34,
+    hero: 44,
   },
 
-  // Line Heights
   lineHeights: {
-    tight: 1.2,
-    normal: 1.4,
-    relaxed: 1.6,
-    loose: 1.8,
+    tight: 1.15,
+    normal: 1.35,
+    relaxed: 1.55,
+    loose: 1.75,
   },
 
-  // Font Weights
   weights: {
     regular: '400' as const,
     medium: '500' as const,
@@ -60,78 +68,95 @@ export const typography = {
     heavy: '800' as const,
   },
 
-  // Letter Spacing
   letterSpacing: {
-    tight: -0.5,
+    tighter: -0.8,
+    tight: -0.4,
     normal: 0,
-    wide: 0.5,
-    wider: 1,
-    widest: 2,
+    wide: 0.3,
+    wider: 0.7,
+    widest: 1.2,
   },
 
-  // Preset Text Styles
   presets: {
     hero: {
-      fontSize: 40,
+      fontFamily: fontFamily.displayBold,
+      fontSize: 44,
       fontWeight: '700' as const,
-      letterSpacing: -0.5,
-      lineHeight: 48,
+      letterSpacing: -0.8,
+      lineHeight: 52,
     },
     h1: {
-      fontSize: 32,
+      fontFamily: fontFamily.displayBold,
+      fontSize: 34,
       fontWeight: '700' as const,
-      letterSpacing: -0.5,
-      lineHeight: 40,
+      letterSpacing: -0.6,
+      lineHeight: 42,
     },
     h2: {
-      fontSize: 24,
+      fontFamily: fontFamily.displayMedium,
+      fontSize: 28,
       fontWeight: '600' as const,
-      letterSpacing: 0,
-      lineHeight: 32,
+      letterSpacing: -0.4,
+      lineHeight: 36,
     },
     h3: {
-      fontSize: 20,
+      fontFamily: fontFamily.displayMedium,
+      fontSize: 22,
       fontWeight: '600' as const,
-      letterSpacing: 0,
-      lineHeight: 28,
+      letterSpacing: -0.2,
+      lineHeight: 30,
     },
     h4: {
+      fontFamily: fontFamily.displayRegular,
       fontSize: 18,
-      fontWeight: '600' as const,
-      letterSpacing: 0,
-      lineHeight: 24,
+      fontWeight: '500' as const,
+      letterSpacing: -0.1,
+      lineHeight: 25,
     },
     body: {
+      fontFamily: fontFamily.regular,
       fontSize: 16,
       fontWeight: '400' as const,
       letterSpacing: 0,
       lineHeight: 24,
     },
+    bodyMedium: {
+      fontFamily: fontFamily.medium,
+      fontSize: 16,
+      fontWeight: '500' as const,
+      letterSpacing: 0,
+      lineHeight: 24,
+    },
     bodySmall: {
+      fontFamily: fontFamily.regular,
       fontSize: 14,
       fontWeight: '400' as const,
       letterSpacing: 0,
       lineHeight: 20,
     },
     caption: {
+      fontFamily: fontFamily.medium,
       fontSize: 12,
-      fontWeight: '400' as const,
-      letterSpacing: 0.5,
+      fontWeight: '500' as const,
+      letterSpacing: 0.3,
       lineHeight: 16,
     },
     button: {
+      fontFamily: fontFamily.semibold,
       fontSize: 16,
       fontWeight: '600' as const,
-      letterSpacing: 0.5,
+      letterSpacing: 0.2,
       lineHeight: 24,
     },
     buttonSmall: {
+      fontFamily: fontFamily.semibold,
       fontSize: 14,
       fontWeight: '600' as const,
-      letterSpacing: 0.5,
+      letterSpacing: 0.2,
       lineHeight: 20,
     },
     label: {
+      fontFamily: fontFamily.medium,
       fontSize: 12,
       fontWeight: '500' as const,
       letterSpacing: 1,

@@ -422,7 +422,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(78, 205, 196, 0.1)',
+    backgroundColor: colors.primary.blueSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },

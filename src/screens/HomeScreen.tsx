@@ -98,25 +98,25 @@ export const HomeScreen: React.FC = () => {
         {/* Quick Actions */}
         <View style={styles.quickActions}>
           <TouchableOpacity style={styles.quickAction} onPress={async () => await haptics.light()}>
-            <View style={[styles.quickActionIcon, { backgroundColor: 'rgba(78, 205, 196, 0.15)' }]}>
+            <View style={[styles.quickActionIcon, { backgroundColor: colors.primary.blueSoft }]}>
               <Ionicons name="search" size={20} color={colors.primary.blue} />
             </View>
             <Text style={styles.quickActionText}>Find Now</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.quickAction} onPress={async () => await haptics.light()}>
-            <View style={[styles.quickActionIcon, { backgroundColor: 'rgba(255, 215, 0, 0.15)' }]}>
+            <View style={[styles.quickActionIcon, { backgroundColor: colors.primary.goldSoft }]}>
               <Ionicons name="calendar" size={20} color={colors.primary.gold} />
             </View>
             <Text style={styles.quickActionText}>Schedule</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.quickAction} onPress={async () => await haptics.light()}>
-            <View style={[styles.quickActionIcon, { backgroundColor: 'rgba(167, 139, 250, 0.15)' }]}>
+            <View style={[styles.quickActionIcon, { backgroundColor: colors.verification.trustedLight }]}>
               <Ionicons name="people" size={20} color={colors.verification.trusted} />
             </View>
             <Text style={styles.quickActionText}>Friends</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.quickAction} onPress={async () => await haptics.light()}>
-            <View style={[styles.quickActionIcon, { backgroundColor: 'rgba(74, 222, 128, 0.15)' }]}>
+            <View style={[styles.quickActionIcon, { backgroundColor: colors.status.successLight }]}>
               <Ionicons name="shield" size={20} color={colors.status.success} />
             </View>
             <Text style={styles.quickActionText}>Safety</Text>

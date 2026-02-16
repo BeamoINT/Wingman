@@ -237,7 +237,7 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border.light,
   },
   countryItemSelected: {
-    backgroundColor: 'rgba(78, 205, 196, 0.1)',
+    backgroundColor: colors.primary.blueSoft,
   },
   flag: {
     fontSize: 28,

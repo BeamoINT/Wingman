@@ -197,13 +197,13 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   webBlurContainer: {
-    backgroundColor: 'rgba(10, 10, 15, 0.95)',
+    backgroundColor: colors.surface.overlay,
   },
   content: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: spacing.md,
-    backgroundColor: 'rgba(30, 30, 40, 0.85)',
+    backgroundColor: colors.background.elevated,
     borderRadius: spacing.radius.xl,
     borderLeftWidth: 3,
     // Subtle border

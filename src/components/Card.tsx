@@ -1,17 +1,20 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import React from 'react';
 import {
-    Pressable, StyleProp, StyleSheet, TouchableOpacity, View, ViewStyle
+  Pressable,
+  StyleProp,
+  StyleSheet,
+  View,
+  ViewStyle,
 } from 'react-native';
-import { colors } from '../theme/colors';
-import { spacing } from '../theme/spacing';
+import { useTheme } from '../context/ThemeContext';
 import { haptics } from '../utils/haptics';
 
 interface CardProps {
   children: React.ReactNode;
   style?: StyleProp<ViewStyle>;
   onPress?: () => void;
-  variant?: 'default' | 'elevated' | 'outlined' | 'gradient' | 'premium';
+  variant?: 'default' | 'elevated' | 'outlined' | 'gradient' | 'premium' | 'accent';
   padding?: 'none' | 'small' | 'medium' | 'large';
   hapticOnPress?: boolean;
 }
@@ -24,6 +27,11 @@ export const Card: React.FC<CardProps> = ({
   padding = 'medium',
   hapticOnPress = true,
 }) => {
+  const { tokens } = useTheme();
+  const { colors, spacing } = tokens;
+
+  const resolvedVariant = variant === 'premium' ? 'accent' : variant;
+
   const handlePress = async () => {
     if (hapticOnPress) {
       await haptics.light();
@@ -31,117 +39,109 @@ export const Card: React.FC<CardProps> = ({
     onPress?.();
   };
 
-  const cardStyles = [
-    styles.base,
-    styles[variant],
-    styles[`padding${padding.charAt(0).toUpperCase() + padding.slice(1)}` as keyof typeof styles],
-    style,
-  ];
+  const styles = StyleSheet.create({
+    base: {
+      borderRadius: spacing.radius.xl,
+      overflow: 'hidden',
+      borderWidth: 1,
+      borderColor: 'transparent',
+    },
+    default: {
+      backgroundColor: colors.surface.level3,
+      borderColor: colors.border.subtle,
+    },
+    elevated: {
+      backgroundColor: colors.surface.level4,
+      borderColor: colors.border.light,
+      shadowColor: colors.shadow.medium,
+      ...spacing.elevation.md,
+    },
+    outlined: {
+      backgroundColor: colors.surface.level2,
+      borderColor: colors.border.light,
+    },
+    gradient: {
+      borderColor: colors.border.light,
+    },
+    accent: {
+      backgroundColor: colors.accent.soft,
+      borderColor: colors.border.accent,
+    },
+    paddingNone: {
+      padding: 0,
+    },
+    paddingSmall: {
+      padding: spacing.sm,
+    },
+    paddingMedium: {
+      padding: spacing.lg,
+    },
+    paddingLarge: {
+      padding: spacing.xl,
+    },
+    pressed: {
+      opacity: 0.94,
+      transform: [{ scale: 0.992 }],
+    },
+    gradientContainer: {
+      borderRadius: spacing.radius.xl,
+      overflow: 'hidden',
+      borderWidth: 1,
+      borderColor: colors.border.light,
+    },
+  });
 
-  if (variant === 'gradient') {
+  const paddingStyles = {
+    none: styles.paddingNone,
+    small: styles.paddingSmall,
+    medium: styles.paddingMedium,
+    large: styles.paddingLarge,
+  } as const;
+
+  const padStyle = paddingStyles[padding];
+
+  if (resolvedVariant === 'gradient') {
     const content = (
-      <LinearGradient
-        colors={[colors.background.card, colors.background.tertiary]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={[styles.base, styles.paddingMedium, style]}
-      >
-        {children}
-      </LinearGradient>
-    );
-
-    return onPress ? (
-      <TouchableOpacity onPress={handlePress} activeOpacity={0.8}>
-        {content}
-      </TouchableOpacity>
-    ) : (
-      content
-    );
-  }
-
-  if (variant === 'premium') {
-    const content = (
-      <View style={[styles.base, styles.premium, style]}>
+      <View style={[styles.gradientContainer, style]}>
         <LinearGradient
-          colors={['rgba(255, 215, 0, 0.15)', 'rgba(255, 215, 0, 0.05)']}
+          colors={colors.gradients.dark}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={[styles.premiumGradient, styles[`padding${padding.charAt(0).toUpperCase() + padding.slice(1)}` as keyof typeof styles]]}
+          style={[padStyle]}
         >
           {children}
         </LinearGradient>
       </View>
     );
 
-    return onPress ? (
-      <TouchableOpacity onPress={handlePress} activeOpacity={0.8}>
-        {content}
-      </TouchableOpacity>
-    ) : (
-      content
-    );
-  }
+    if (!onPress) {
+      return content;
+    }
 
-  if (onPress) {
     return (
-      <Pressable
-        onPress={handlePress}
-        style={({ pressed }) => [
-          cardStyles,
-          pressed && styles.pressed,
-        ]}
-      >
-        {children}
+      <Pressable onPress={handlePress} style={({ pressed }) => pressed && styles.pressed}>
+        {content}
       </Pressable>
     );
   }
 
-  return <View style={cardStyles}>{children}</View>;
-};
+  const cardStyles = [
+    styles.base,
+    styles[resolvedVariant],
+    padStyle,
+    style,
+  ];
 
-const styles = StyleSheet.create({
-  base: {
-    borderRadius: spacing.radius.lg,
-    overflow: 'hidden',
-  },
-  default: {
-    backgroundColor: colors.background.card,
-  },
-  elevated: {
-    backgroundColor: colors.background.card,
-    shadowColor: colors.shadow.heavy,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  outlined: {
-    backgroundColor: colors.background.card,
-    borderWidth: 1,
-    borderColor: colors.border.light,
-  },
-  gradient: {},
-  premium: {
-    borderWidth: 1,
-    borderColor: colors.border.gold,
-  },
-  premiumGradient: {
-    flex: 1,
-  },
-  paddingNone: {
-    padding: 0,
-  },
-  paddingSmall: {
-    padding: spacing.sm,
-  },
-  paddingMedium: {
-    padding: spacing.lg,
-  },
-  paddingLarge: {
-    padding: spacing.xl,
-  },
-  pressed: {
-    opacity: 0.9,
-    transform: [{ scale: 0.98 }],
-  },
-});
+  if (!onPress) {
+    return <View style={cardStyles}>{children}</View>;
+  }
+
+  return (
+    <Pressable
+      onPress={handlePress}
+      style={({ pressed }) => [cardStyles, pressed && styles.pressed]}
+    >
+      {children}
+    </Pressable>
+  );
+};
