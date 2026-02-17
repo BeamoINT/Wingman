@@ -23,10 +23,8 @@ export const MainTabNavigator: React.FC = () => {
   const insets = useSafeAreaInsets();
 
   const tabBarTopPadding = spacing.xxs;
-  const tabBarBottomPadding = insets.bottom > 0
-    ? Math.min(insets.bottom, spacing.sm)
-    : spacing.xxs;
-  const tabBarHeight = 30 + tabBarTopPadding + tabBarBottomPadding;
+  const tabBarBottomPadding = insets.bottom > 0 ? insets.bottom : spacing.xs;
+  const tabBarHeight = 32 + tabBarTopPadding + tabBarBottomPadding;
 
   const styles = StyleSheet.create({
     tabBar: {
