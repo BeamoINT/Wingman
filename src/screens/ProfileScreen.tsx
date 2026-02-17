@@ -73,6 +73,20 @@ export const ProfileScreen: React.FC = () => {
 
   const fullName = user ? `${user.firstName} ${user.lastName}`.trim() : 'User';
   const isProSubscriber = user?.subscriptionTier === 'pro';
+  const metroLocationLabel = (() => {
+    const metroAreaName = user?.location?.metroAreaName?.trim();
+    if (metroAreaName) {
+      return metroAreaName;
+    }
+
+    const fallbackParts = [user?.location?.city, user?.location?.state]
+      .filter((part): part is string => typeof part === 'string' && part.trim().length > 0);
+    if (fallbackParts.length > 0) {
+      return fallbackParts.join(', ');
+    }
+
+    return null;
+  })();
   const verificationSubtitle = (() => {
     if (idVerificationStatus === 'verified') {
       if (idVerificationReminder.stage && idVerificationReminder.stage !== 'expired') {
@@ -264,6 +278,12 @@ export const ProfileScreen: React.FC = () => {
               <View style={styles.profileInfo}>
                 <Text style={styles.profileName}>{fullName}</Text>
                 <Text style={styles.profileEmail}>{user?.email || ''}</Text>
+                {metroLocationLabel && (
+                  <View style={styles.profileLocationRow}>
+                    <Ionicons name="location-outline" size={14} color={colors.text.tertiary} />
+                    <Text style={styles.profileLocationText}>{metroLocationLabel}</Text>
+                  </View>
+                )}
                 <View style={styles.profileBadges}>
                   {user?.isVerified && (
                     <Badge label="Verified" variant="verified" icon="checkmark-circle" size="small" />
@@ -474,7 +494,18 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     ...typography.presets.bodySmall,
     color: colors.text.tertiary,
     marginTop: 2,
+    marginBottom: spacing.xs,
+  },
+  profileLocationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
     marginBottom: spacing.sm,
+  },
+  profileLocationText: {
+    ...typography.presets.caption,
+    color: colors.text.tertiary,
+    flexShrink: 1,
   },
   profileBadges: {
     flexDirection: 'row',

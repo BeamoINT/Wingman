@@ -189,6 +189,7 @@ export async function updateProfile(updates: UpdateProfileInput): Promise<{ prof
 
       if (metroResolution.metro) {
         metroUpdates.auto_metro_area_id = metroResolution.metro.metroAreaId;
+        metroUpdates.metro_area_id = metroResolution.metro.metroAreaId;
         metroUpdates.metro_area_name = metroResolution.metro.metroAreaName;
         metroUpdates.metro_city = metroResolution.metro.metroCity;
         metroUpdates.metro_state = metroResolution.metro.metroState;

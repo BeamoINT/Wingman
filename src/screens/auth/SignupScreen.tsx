@@ -331,23 +331,22 @@ export const SignupScreen: React.FC = () => {
     }
   };
 
-  const handlePhotoUpload = async () => {
+  const handlePhotoCapture = async () => {
     await haptics.medium();
 
-    // Request permission
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    // Request camera permission for real-time capture only
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert(
-        'Permission Required',
-        'Please allow access to your photos to add a profile picture.',
+        'Camera Permission Required',
+        'Please allow camera access to take your profile photo in real time.',
         [{ text: 'OK' }]
       );
       return;
     }
 
     try {
-      // Launch image picker
-      const result = await ImagePicker.launchImageLibraryAsync({
+      const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [1, 1],
@@ -359,10 +358,10 @@ export const SignupScreen: React.FC = () => {
         await haptics.success();
       }
     } catch (error) {
-      console.error('Error picking image:', error);
+      console.error('Error capturing image:', error);
       Alert.alert(
         'Error',
-        'Failed to select image. Please try again.',
+        'Failed to open camera. Please try again.',
         [{ text: 'OK' }]
       );
     }
@@ -707,10 +706,10 @@ export const SignupScreen: React.FC = () => {
       case 6:
         return (
           <View key="step-6" style={styles.stepContent}>
-            <Text style={styles.stepTitle}>Add a profile photo</Text>
-            <Text style={styles.stepSubtitle}>Use a clear photo that matches your government photo ID</Text>
+            <Text style={styles.stepTitle}>Take a profile photo</Text>
+            <Text style={styles.stepSubtitle}>Use a clear, live camera photo that matches your government photo ID</Text>
 
-            <TouchableOpacity style={styles.photoUpload} onPress={handlePhotoUpload}>
+            <TouchableOpacity style={styles.photoUpload} onPress={handlePhotoCapture}>
               {signupData.avatar ? (
                 <Image
                   source={{ uri: signupData.avatar }}
@@ -718,20 +717,23 @@ export const SignupScreen: React.FC = () => {
                 />
               ) : (
                 <View style={styles.photoPlaceholder}>
-                  <Ionicons name="camera" size={48} color={colors.text.tertiary} />
-                  <Text style={styles.photoText}>Tap to add photo</Text>
+                  <View style={styles.photoIconBadge}>
+                    <Ionicons name="camera" size={34} color={colors.primary.blue} />
+                  </View>
+                  <Text style={styles.photoText}>Take profile photo</Text>
+                  <Text style={styles.photoSubtext}>Camera capture only</Text>
                 </View>
               )}
             </TouchableOpacity>
 
             {signupData.avatar && (
-              <TouchableOpacity onPress={handlePhotoUpload} style={styles.changePhotoButton}>
-                <Text style={styles.changePhotoText}>Change Photo</Text>
+              <TouchableOpacity onPress={handlePhotoCapture} style={styles.changePhotoButton}>
+                <Text style={styles.changePhotoText}>Retake Photo</Text>
               </TouchableOpacity>
             )}
 
             <Text style={styles.photoHint}>
-              You can skip this step and add it later, but bookings require a photo that clearly matches your photo ID.
+              Live camera capture helps keep profiles authentic and verification-ready.
             </Text>
           </View>
         );
@@ -971,16 +973,30 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     height: 160,
     borderRadius: 80,
     backgroundColor: colors.background.tertiary,
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: colors.border.medium,
-    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+  },
+  photoIconBadge: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.primary.blueSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
   photoText: {
+    ...typography.presets.bodySmall,
+    color: colors.text.primary,
+    textAlign: 'center',
+  },
+  photoSubtext: {
     ...typography.presets.caption,
     color: colors.text.tertiary,
-    marginTop: spacing.sm,
+    textAlign: 'center',
   },
   photoHint: {
     ...typography.presets.caption,

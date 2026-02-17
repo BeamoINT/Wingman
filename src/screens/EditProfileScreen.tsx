@@ -69,6 +69,21 @@ export const EditProfileScreen: React.FC = () => {
     () => selectedAvatarUri || user?.avatar || null,
     [selectedAvatarUri, user?.avatar],
   );
+  const savedMetroAreaLabel = useMemo(() => {
+    const metroAreaName = user?.location?.metroAreaName?.trim();
+    if (metroAreaName) {
+      return metroAreaName;
+    }
+
+    const fallbackParts = [user?.location?.city, user?.location?.state]
+      .filter((part): part is string => typeof part === 'string' && part.trim().length > 0);
+
+    if (fallbackParts.length > 0) {
+      return fallbackParts.join(', ');
+    }
+
+    return 'Your metro area will appear here after you save your location.';
+  }, [user?.location?.city, user?.location?.metroAreaName, user?.location?.state]);
 
   const handleBackPress = async () => {
     await haptics.light();
@@ -78,25 +93,30 @@ export const EditProfileScreen: React.FC = () => {
   const handlePickPhoto = async () => {
     await haptics.light();
 
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (permission.status !== 'granted') {
       Alert.alert(
-        'Permission Required',
-        'Please allow photo access so you can upload a profile picture.',
+        'Camera Permission Required',
+        'Please allow camera access so you can take your profile photo in real time.',
       );
       return;
     }
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.9,
-    });
+    try {
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.9,
+      });
 
-    if (!result.canceled && result.assets[0]?.uri) {
-      setSelectedAvatarUri(result.assets[0].uri);
-      setAttestedPhotoMatch(false);
+      if (!result.canceled && result.assets[0]?.uri) {
+        setSelectedAvatarUri(result.assets[0].uri);
+        setAttestedPhotoMatch(false);
+      }
+    } catch (error) {
+      console.error('Error taking profile photo:', error);
+      Alert.alert('Profile Photo', 'Unable to open the camera right now. Please try again.');
     }
   };
 
@@ -128,7 +148,7 @@ export const EditProfileScreen: React.FC = () => {
     if (!hasAvatar) {
       Alert.alert(
         'Profile Photo Required',
-        'Please upload a profile photo before saving profile verification settings.',
+        'Please take a profile photo with your camera before saving profile verification settings.',
       );
       return;
     }
@@ -159,7 +179,7 @@ export const EditProfileScreen: React.FC = () => {
       if (selectedAvatarUri) {
         const { error: avatarError } = await uploadProfileAvatar(selectedAvatarUri);
         if (avatarError) {
-          Alert.alert('Profile Photo', avatarError.message || 'Unable to upload profile photo right now.');
+          Alert.alert('Profile Photo', avatarError.message || 'Unable to save your profile photo right now.');
           return;
         }
       }
@@ -211,14 +231,17 @@ export const EditProfileScreen: React.FC = () => {
               <Image source={{ uri: activeAvatarUri }} style={styles.photoImage} />
             ) : (
               <View style={styles.photoPlaceholder}>
-                <Ionicons name="camera-outline" size={26} color={tokens.colors.text.tertiary} />
-                <Text style={styles.photoPlaceholderText}>Upload profile photo</Text>
+                <View style={styles.photoPlaceholderIconWrap}>
+                  <Ionicons name="camera-outline" size={28} color={tokens.colors.primary.blue} />
+                </View>
+                <Text style={styles.photoPlaceholderTitle}>Take profile photo</Text>
+                <Text style={styles.photoPlaceholderSubtitle}>Camera capture only</Text>
               </View>
             )}
           </TouchableOpacity>
 
           <Button
-            title={activeAvatarUri ? 'Change Photo' : 'Upload Photo'}
+            title={activeAvatarUri ? 'Retake Photo' : 'Take Photo'}
             onPress={handlePickPhoto}
             variant="outline"
             size="small"
@@ -286,6 +309,13 @@ export const EditProfileScreen: React.FC = () => {
             value={location}
             onChange={setLocation}
           />
+          <View style={styles.metroSummaryRow}>
+            <Ionicons name="business-outline" size={18} color={tokens.colors.text.tertiary} />
+            <View style={styles.metroSummaryContent}>
+              <Text style={styles.metroSummaryLabel}>Saved Metro Area</Text>
+              <Text style={styles.metroSummaryValue}>{savedMetroAreaLabel}</Text>
+            </View>
+          </View>
         </Card>
       </View>
 
@@ -313,8 +343,8 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     gap: spacing.md,
   },
   photoPreview: {
-    width: 112,
-    height: 112,
+    width: 136,
+    height: 136,
     borderRadius: spacing.radius.lg,
     overflow: 'hidden',
     borderWidth: 1,
@@ -331,10 +361,25 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.xs,
+    paddingHorizontal: spacing.sm,
   },
-  photoPlaceholderText: {
+  photoPlaceholderIconWrap: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary.blueSoft,
+  },
+  photoPlaceholderTitle: {
+    ...typography.presets.bodySmall,
+    color: colors.text.primary,
+    textAlign: 'center',
+  },
+  photoPlaceholderSubtitle: {
     ...typography.presets.caption,
     color: colors.text.tertiary,
+    textAlign: 'center',
   },
   attestationRow: {
     flexDirection: 'row',
@@ -361,5 +406,31 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
   },
   locationCard: {
     paddingBottom: 0,
+  },
+  metroSummaryRow: {
+    marginTop: spacing.md,
+    marginBottom: spacing.md,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
+    borderRadius: spacing.radius.md,
+    backgroundColor: colors.surface.level1,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    alignItems: 'flex-start',
+  },
+  metroSummaryContent: {
+    flex: 1,
+    gap: spacing.xxs,
+  },
+  metroSummaryLabel: {
+    ...typography.presets.caption,
+    color: colors.text.tertiary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  metroSummaryValue: {
+    ...typography.presets.bodySmall,
+    color: colors.text.primary,
   },
 });

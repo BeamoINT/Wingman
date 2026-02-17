@@ -323,7 +323,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       city,
       state: typeof profile.state === 'string' ? profile.state : undefined,
       country,
-      countryCode: typeof signupData.countryCode === 'string' ? signupData.countryCode : undefined,
+      countryCode: typeof profile.country_code === 'string' ? profile.country_code : undefined,
     });
 
     const metroPayload = buildMetroUpdatePayload(resolution);
@@ -356,7 +356,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     return (updatedProfile || profile) as Record<string, unknown>;
-  }, [signupData.countryCode]);
+  }, []);
 
   const upsertFriendProfileFromSignup = useCallback(async (
     userId: string,
@@ -487,7 +487,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         // Supabase auth callbacks should not await async work, or OTP flows can stall.
         void (async () => {
-          const profile = await fetchUserProfile(newSession.user.id);
+          let profile = await fetchUserProfile(newSession.user.id);
+          if (isCancelled || currentSequence !== authChangeSequence) return;
+
+          profile = await resolveAndPersistMetroForUser(
+            newSession.user.id,
+            (profile || null) as Record<string, unknown> | null,
+          );
           if (isCancelled || currentSequence !== authChangeSequence) return;
 
           const appUser = transformSupabaseUser(newSession.user, profile);
@@ -497,8 +503,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           // Check verification status
           const emailVerified = newSession.user.email_confirmed_at !== null;
+          const phoneVerified = (profile as { phone_verified?: boolean } | null)?.phone_verified === true;
           setNeedsEmailVerification(!emailVerified);
-          setNeedsPhoneVerification(!profile?.phone_verified);
+          setNeedsPhoneVerification(!phoneVerified);
         })();
       } else if (event === 'SIGNED_OUT') {
         // Only clear state on explicit sign-out, not on INITIAL_SESSION with null
@@ -518,7 +525,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       clearTimeout(safetyTimeout);
       subscription.unsubscribe();
     };
-  }, [fetchUserProfile]);
+  }, [fetchUserProfile, resolveAndPersistMetroForUser]);
 
   useEffect(() => {
     if (!supabaseUser?.id) {
@@ -836,14 +843,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setIsNewUser(false);
 
         // Fetch profile and set user
-        const profile = await fetchUserProfile(data.user.id);
+        let profile = await fetchUserProfile(data.user.id);
+        profile = await resolveAndPersistMetroForUser(
+          data.user.id,
+          (profile || null) as Record<string, unknown> | null,
+        );
         const appUser = transformSupabaseUser(data.user, profile);
         setUser(appUser);
         await storeUser(appUser);
 
         // Check verification status
         setNeedsEmailVerification(!data.user.email_confirmed_at);
-        setNeedsPhoneVerification(!profile?.phone_verified);
+        const phoneVerified = (profile as { phone_verified?: boolean } | null)?.phone_verified === true;
+        setNeedsPhoneVerification(!phoneVerified);
 
         trackEvent('auth_signin_success', { source: 'password' });
         return { success: true };
