@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import React, { useMemo, useState } from 'react';
 import {
@@ -113,14 +114,33 @@ export const EditProfileScreen: React.FC = () => {
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.9,
+        base64: true,
       });
 
       if (!result.canceled && result.assets[0]?.uri) {
+        const asset = result.assets[0];
+        let normalizedUri = asset.uri;
+        let normalizedSize = typeof asset.fileSize === 'number' ? asset.fileSize : undefined;
+
+        // Persist camera captures as a stable JPEG file so remote rendering is reliable across sessions.
+        if (typeof asset.base64 === 'string' && asset.base64.length > 0 && FileSystem.cacheDirectory) {
+          const normalizedPath = `${FileSystem.cacheDirectory}profile-avatar-${Date.now()}.jpg`;
+          await FileSystem.writeAsStringAsync(normalizedPath, asset.base64, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          normalizedUri = normalizedPath;
+
+          const fileInfo = await FileSystem.getInfoAsync(normalizedPath);
+          if (fileInfo.exists && typeof fileInfo.size === 'number') {
+            normalizedSize = fileInfo.size;
+          }
+        }
+
         setSelectedAvatarAsset({
-          uri: result.assets[0].uri,
-          width: typeof result.assets[0].width === 'number' ? result.assets[0].width : undefined,
-          height: typeof result.assets[0].height === 'number' ? result.assets[0].height : undefined,
-          fileSizeBytes: typeof result.assets[0].fileSize === 'number' ? result.assets[0].fileSize : undefined,
+          uri: normalizedUri,
+          width: typeof asset.width === 'number' ? asset.width : undefined,
+          height: typeof asset.height === 'number' ? asset.height : undefined,
+          fileSizeBytes: normalizedSize,
         });
         setAttestedPhotoMatch(false);
       }

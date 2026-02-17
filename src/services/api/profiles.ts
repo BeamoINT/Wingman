@@ -10,7 +10,6 @@ import { trackEvent } from '../monitoring/events';
 const PROFILE_AVATAR_BUCKET_CANDIDATES = [
   'profile-avatars',
   'profile-photos',
-  'avatars',
 ] as const;
 
 const isBucketMissingError = (error: unknown): boolean => {
@@ -134,6 +133,25 @@ function isMissingCaptureVerificationRpcError(error: unknown): boolean {
     || (code.startsWith('PGRST') && message.includes('mark_profile_photo_capture_verified_v1'))
     || message.includes('mark_profile_photo_capture_verified_v1')
   );
+}
+
+async function isReadablePublicImageUrl(url: string): Promise<boolean> {
+  try {
+    const headResponse = await fetch(url, { method: 'HEAD' });
+    if (headResponse.ok) {
+      return true;
+    }
+
+    // Some storage/CDN stacks reject HEAD; fallback to a lightweight GET check.
+    if (headResponse.status === 405 || headResponse.status === 403 || headResponse.status === 401) {
+      const getResponse = await fetch(url, { method: 'GET' });
+      return getResponse.ok;
+    }
+
+    return false;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -413,6 +431,14 @@ export async function uploadProfileAvatar(
     const avatarUrl = publicUrlData?.publicUrl;
     if (!avatarUrl) {
       return { profile: null, error: new Error('Unable to generate profile photo URL') };
+    }
+
+    const avatarUrlReadable = await isReadablePublicImageUrl(avatarUrl);
+    if (!avatarUrlReadable) {
+      return {
+        profile: null,
+        error: new Error('Profile photo URL is not publicly readable. Ask an admin to verify profile-avatars storage policies.'),
+      };
     }
 
     const { data: updatedProfile, error: profileError } = await supabase

@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Image, StyleSheet, Text, View, ViewStyle } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 import type { ThemeTokens } from '../theme/tokens';
@@ -37,7 +37,21 @@ export const Avatar: React.FC<AvatarProps> = ({
   const { tokens } = useTheme();
   const { colors, spacing, typography } = tokens;
   const styles = useThemedStyles(createStyles);
+  const [imageLoadFailed, setImageLoadFailed] = useState(false);
   const dimensions = sizeMap[size];
+  const normalizedSource = useMemo(() => {
+    if (typeof source !== 'string') {
+      return null;
+    }
+    const trimmed = source.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }, [source]);
+
+  useEffect(() => {
+    setImageLoadFailed(false);
+  }, [normalizedSource]);
+
+  const shouldRenderImage = Boolean(normalizedSource) && !imageLoadFailed;
   const initials = name
     ? name
         .split(' ')
@@ -62,13 +76,14 @@ export const Avatar: React.FC<AvatarProps> = ({
 
   return (
     <View style={[styles.container, { width: dimensions, height: dimensions }, style]}>
-      {source ? (
+      {shouldRenderImage ? (
         <Image
-          source={{ uri: source }}
+          source={{ uri: normalizedSource as string }}
           style={[
             styles.image,
             { width: dimensions, height: dimensions, borderRadius: dimensions / 2 },
           ]}
+          onError={() => setImageLoadFailed(true)}
         />
       ) : (
         <LinearGradient
