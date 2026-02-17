@@ -5,7 +5,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
     ActivityIndicator, Alert,
     FlatList,
-    Linking,
     RefreshControl, StyleSheet, Text, TouchableOpacity, View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -176,10 +175,6 @@ function mapBookingStatusToBadge(status: BookingStatus): 'success' | 'warning' |
   }
 }
 
-function buildMapUrl(query: string): string {
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
-}
-
 function meetupStatusLabel(status?: Booking['meetupStatus']): string {
   switch (status) {
     case 'agreed':
@@ -294,20 +289,27 @@ export const BookingsScreen: React.FC = () => {
   }, [loadBookings]);
 
   const handleOpenDirections = useCallback(async (booking: Booking) => {
-    const query = booking.location.address || booking.location.name;
-    if (!query.trim()) {
+    const destinationName = (booking.location.name || booking.location.address || '').trim();
+    if (!destinationName) {
       Alert.alert('No Location', 'This booking does not have a location yet.');
       return;
     }
 
-    const mapUrl = buildMapUrl(query);
     try {
-      await Linking.openURL(mapUrl);
+      navigation.navigate('Directions', {
+        destinationName,
+        destinationAddress: booking.location.address || undefined,
+        destinationPlaceId: booking.location.placeId || undefined,
+        destinationLatitude: booking.location.coordinates?.latitude,
+        destinationLongitude: booking.location.coordinates?.longitude,
+        conversationId: booking.conversationId,
+        source: 'bookings_list',
+      });
     } catch (error) {
-      console.error('Error opening map:', error);
-      Alert.alert('Unable to Open Maps', 'Please check your maps application and try again.');
+      console.error('Error opening directions:', error);
+      Alert.alert('Unable to Open Directions', 'Please try again in a moment.');
     }
-  }, []);
+  }, [navigation]);
 
   const handleMessageCompanion = useCallback(async (booking: Booking) => {
     if (booking.conversationId) {

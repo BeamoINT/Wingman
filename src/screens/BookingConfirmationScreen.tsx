@@ -6,7 +6,6 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
-    Linking,
     ScrollView, StyleSheet, Text, TouchableOpacity, View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -152,10 +151,6 @@ function formatTime(time: string): string {
   return `${displayHours}:${(Number.isNaN(minutes) ? 0 : minutes).toString().padStart(2, '0')} ${period}`;
 }
 
-function buildMapUrl(query: string): string {
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
-}
-
 function statusVariant(status: BookingStatus): 'success' | 'warning' | 'info' | 'error' {
   switch (status) {
     case 'confirmed':
@@ -264,21 +259,27 @@ export const BookingConfirmationScreen: React.FC = () => {
   const handleDirections = useCallback(async () => {
     if (!booking) return;
 
-    const query = booking.location.address || booking.location.name;
-    if (!query.trim()) {
+    const destinationName = (booking.location.name || booking.location.address || '').trim();
+    if (!destinationName) {
       Alert.alert('No Location', 'This booking does not have a location yet.');
       return;
     }
 
-    const mapUrl = buildMapUrl(query);
-
     try {
-      await Linking.openURL(mapUrl);
+      navigation.navigate('Directions', {
+        destinationName,
+        destinationAddress: booking.location.address || undefined,
+        destinationPlaceId: booking.location.placeId || undefined,
+        destinationLatitude: booking.location.coordinates?.latitude,
+        destinationLongitude: booking.location.coordinates?.longitude,
+        conversationId: booking.conversationId,
+        source: 'booking_confirmation',
+      });
     } catch (error) {
-      console.error('Error opening map:', error);
-      Alert.alert('Unable to Open Maps', 'Please check your maps application and try again.');
+      console.error('Error opening directions:', error);
+      Alert.alert('Unable to Open Directions', 'Please try again in a moment.');
     }
-  }, [booking]);
+  }, [booking, navigation]);
 
   const handleCancelBooking = useCallback(() => {
     if (!booking) return;

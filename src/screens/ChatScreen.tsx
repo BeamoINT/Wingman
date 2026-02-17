@@ -595,19 +595,26 @@ const ChatScreenContent: React.FC = () => {
   }, [conversationId, scrollToBottom]);
 
   const handleOpenMeetupInMaps = useCallback(async (proposal: MeetupLocationProposal) => {
-    const query = proposal.placeAddress || proposal.placeName;
-    if (!query.trim()) {
+    const destinationName = proposal.placeName?.trim() || proposal.placeAddress?.trim() || '';
+    if (!destinationName) {
       return;
     }
 
     try {
-      const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
-      await Linking.openURL(mapsUrl);
-      trackEvent('meetup_open_maps');
-    } catch {
-      Alert.alert('Unable to open maps', 'Please try again in a moment.');
+      navigation.navigate('Directions', {
+        destinationName,
+        destinationAddress: proposal.placeAddress || undefined,
+        destinationPlaceId: proposal.placeId || undefined,
+        destinationLatitude: proposal.latitude,
+        destinationLongitude: proposal.longitude,
+        conversationId,
+        source: 'chat_meetup',
+      });
+    } catch (error) {
+      console.error('Unable to open in-app directions', error);
+      Alert.alert('Unable to open directions', 'Please try again in a moment.');
     }
-  }, []);
+  }, [conversationId, navigation]);
 
   const handleSend = useCallback(async () => {
     const content = inputText.trim();
@@ -925,7 +932,7 @@ const ChatScreenContent: React.FC = () => {
             proposal={proposal}
             isCurrentUserProposer={isCurrentUserProposer}
             isBusy={isMeetupSubmitting}
-            onOpenMaps={() => {
+            onGetDirections={() => {
               void handleOpenMeetupInMaps(proposal);
             }}
             onAccept={() => {

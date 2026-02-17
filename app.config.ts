@@ -29,9 +29,11 @@ const config: ExpoConfig = {
       googleMapsApiKey: googleMapsApiKeyIos,
     },
     infoPlist: {
-      UIBackgroundModes: ['fetch', 'remote-notification'],
+      UIBackgroundModes: ['fetch', 'remote-notification', 'location'],
       NSLocationWhenInUseUsageDescription:
-        'Wingman needs your location to find companions near you and auto-fill your location during signup.',
+        'Wingman uses your location to show in-app directions and help you coordinate meetup arrivals.',
+      NSLocationAlwaysAndWhenInUseUsageDescription:
+        'Wingman needs background location access to keep live location sharing active while you travel to a meetup.',
       NSPhotoLibraryUsageDescription:
         'Wingman needs access to your photo library so you can send images and videos in encrypted chats.',
       NSPhotoLibraryAddUsageDescription:
@@ -56,6 +58,9 @@ const config: ExpoConfig = {
     permissions: [
       'ACCESS_COARSE_LOCATION',
       'ACCESS_FINE_LOCATION',
+      'ACCESS_BACKGROUND_LOCATION',
+      'FOREGROUND_SERVICE',
+      'FOREGROUND_SERVICE_LOCATION',
       'CAMERA',
       'RECORD_AUDIO',
       'READ_MEDIA_IMAGES',
@@ -71,7 +76,12 @@ const config: ExpoConfig = {
       'expo-location',
       {
         locationWhenInUsePermission:
-          'Wingman needs your location to find companions near you and auto-fill your location during signup.',
+          'Wingman uses your location to show in-app directions and help you coordinate meetup arrivals.',
+        locationAlwaysAndWhenInUsePermission:
+          'Wingman needs background location access to keep live location sharing active while you travel to a meetup.',
+        isIosBackgroundLocationEnabled: true,
+        isAndroidBackgroundLocationEnabled: true,
+        isAndroidForegroundServiceEnabled: true,
       },
     ],
     [

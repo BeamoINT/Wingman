@@ -25,6 +25,7 @@ import { BlockedUsersScreen } from '../screens/BlockedUsersScreen';
 import { BookingScreen } from '../screens/BookingScreen';
 import { ChatScreen } from '../screens/ChatScreen';
 import { CompanionProfileScreen } from '../screens/CompanionProfileScreen';
+import { DirectionsScreen } from '../screens/DirectionsScreen';
 import { EditProfileScreen } from '../screens/EditProfileScreen';
 import { MetroMapPickerScreen } from '../screens/MetroMapPickerScreen';
 import { MetroPreferencesScreen } from '../screens/MetroPreferencesScreen';
@@ -93,6 +94,7 @@ const ProtectedCompanionProfileScreen = withAuthGuard(CompanionProfileScreen, 'C
 const ProtectedBookingScreen = withAuthGuard(BookingScreen, 'Booking');
 const ProtectedBookingConfirmationScreen = withAuthGuard(BookingConfirmationScreen, 'BookingConfirmation');
 const ProtectedChatScreen = withAuthGuard(ChatScreen, 'Chat');
+const ProtectedDirectionsScreen = withAuthGuard(DirectionsScreen, 'Directions');
 const ProtectedSettingsScreen = withAuthGuard(SettingsScreen, 'Settings');
 const ProtectedBlockedUsersScreen = withAuthGuard(BlockedUsersScreen, 'BlockedUsers');
 const ProtectedSubscriptionScreen = withAuthGuard(SubscriptionScreen, 'Subscription');
@@ -240,6 +242,11 @@ export const RootNavigator: React.FC = () => {
           options={{ animation: reduceMotionEnabled ? 'none' : 'fade' }}
         />
         <Stack.Screen name="Chat" component={ProtectedChatScreen} />
+        <Stack.Screen
+          name="Directions"
+          component={ProtectedDirectionsScreen}
+          options={{ animation: modalAnimation }}
+        />
         <Stack.Screen name="EditProfile" component={ProtectedEditProfileScreen} />
         <Stack.Screen name="Settings" component={ProtectedSettingsScreen} />
         <Stack.Screen name="BlockedUsers" component={ProtectedBlockedUsersScreen} />

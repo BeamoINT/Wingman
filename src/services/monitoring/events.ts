@@ -28,6 +28,13 @@ export type MonitoringEventName =
   | 'meetup_proposal_declined'
   | 'meetup_proposal_countered'
   | 'meetup_open_maps'
+  | 'directions_request_success'
+  | 'directions_request_fail'
+  | 'directions_route_selected'
+  | 'live_location_share_started'
+  | 'live_location_share_stopped'
+  | 'live_location_permission_denied'
+  | 'live_location_cleanup_run'
   | 'google_maps_runtime_unavailable';
 
 type EventPayload = Record<string, string | number | boolean | null | undefined>;

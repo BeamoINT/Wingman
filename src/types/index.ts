@@ -404,6 +404,15 @@ export type RootStackParamList = {
   Booking: { companionId: string; conversationId?: string };
   BookingConfirmation: { bookingId: string };
   Chat: { conversationId: string };
+  Directions: {
+    destinationName: string;
+    destinationAddress?: string;
+    destinationPlaceId?: string;
+    destinationLatitude?: number;
+    destinationLongitude?: number;
+    conversationId?: string;
+    source?: 'chat_meetup' | 'booking_confirmation' | 'bookings_list';
+  };
   Settings: undefined;
   BlockedUsers: undefined;
   ChangePassword: undefined;

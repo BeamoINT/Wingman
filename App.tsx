@@ -13,10 +13,12 @@ import { configureReanimatedLogger, ReanimatedLogLevel } from 'react-native-rean
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ErrorBoundary, LoadingScreen } from './src/components';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
+import { LiveLocationProvider } from './src/context/LiveLocationContext';
 import { NetworkProvider } from './src/context/NetworkContext';
 import { RequirementsProvider } from './src/context/RequirementsContext';
 import { ThemeProvider, useTheme } from './src/context/ThemeContext';
 import { VerificationProvider } from './src/context/VerificationContext';
+import { LiveLocationIndicator } from './src/components/LiveLocationIndicator';
 import { RootNavigator } from './src/navigation';
 import { captureError, initializeSentry } from './src/services/monitoring/sentry';
 
@@ -90,6 +92,7 @@ function AppContent({ onPhaseChange }: { onPhaseChange: (phase: AppStartupPhase)
     <>
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <RootNavigator />
+      <LiveLocationIndicator />
     </>
   );
 }
@@ -151,7 +154,9 @@ export default function App() {
                 <AuthProvider>
                   <VerificationProvider>
                     <RequirementsProvider>
-                      <AppContent onPhaseChange={setStartupPhase} />
+                      <LiveLocationProvider>
+                        <AppContent onPhaseChange={setStartupPhase} />
+                      </LiveLocationProvider>
                     </RequirementsProvider>
                   </VerificationProvider>
                 </AuthProvider>

@@ -46,7 +46,7 @@ interface MeetupLocationCardProps {
   proposal: MeetupLocationProposal;
   isCurrentUserProposer: boolean;
   isBusy?: boolean;
-  onOpenMaps?: () => void;
+  onGetDirections?: () => void;
   onAccept?: () => void;
   onDecline?: () => void;
   onSuggestAlternative?: () => void;
@@ -56,7 +56,7 @@ export const MeetupLocationCard: React.FC<MeetupLocationCardProps> = ({
   proposal,
   isCurrentUserProposer,
   isBusy = false,
-  onOpenMaps,
+  onGetDirections,
   onAccept,
   onDecline,
   onSuggestAlternative,
@@ -135,11 +135,11 @@ export const MeetupLocationCard: React.FC<MeetupLocationCardProps> = ({
       <View style={styles.actionsRow}>
         <TouchableOpacity
           style={styles.actionButton}
-          onPress={onOpenMaps}
-          disabled={!onOpenMaps || isBusy}
+          onPress={onGetDirections}
+          disabled={!onGetDirections || isBusy}
         >
           <Ionicons name="navigate-outline" size={14} color={colors.text.secondary} />
-          <Text style={styles.actionText}>Open in Google Maps</Text>
+          <Text style={styles.actionText}>Get Directions</Text>
         </TouchableOpacity>
 
         {showResponseActions ? (
