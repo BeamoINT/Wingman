@@ -6,6 +6,12 @@ import { trackEvent } from '../monitoring/events';
 import { supabase } from '../supabase';
 
 type RawRecord = Record<string, unknown>;
+type QueryError = {
+  code?: string | null;
+  message?: string | null;
+};
+
+const LIVE_LOCATION_UNAVAILABLE_ERROR_MESSAGE = 'Live location is temporarily unavailable. Please try again soon.';
 
 function toStringValue(value: unknown, fallback = ''): string {
   return typeof value === 'string' ? value : fallback;
@@ -27,6 +33,25 @@ function toErrorMessage(value: unknown, fallback: string): string {
     return value;
   }
   return fallback;
+}
+
+function isMissingSchemaError(error: unknown, identifier: string): boolean {
+  const typedError = error as QueryError | null | undefined;
+  const code = String(typedError?.code || '');
+  const message = String(typedError?.message || '').toLowerCase();
+  return (
+    (code.startsWith('PGRST') || code === '42883')
+    && message.includes(identifier.toLowerCase())
+    && (
+      message.includes('does not exist')
+      || message.includes('could not find the function')
+      || message.includes('schema cache')
+    )
+  );
+}
+
+function isMissingLiveLocationRpc(error: unknown, rpcName: string): boolean {
+  return isMissingSchemaError(error, `function public.${rpcName}`);
 }
 
 function normalizeShare(row: RawRecord): LiveLocationShareSession {
@@ -73,6 +98,9 @@ export async function startLiveLocationShare(
     });
 
     if (error) {
+      if (isMissingLiveLocationRpc(error, 'start_live_location_share_v1')) {
+        return { share: null, error: new Error(LIVE_LOCATION_UNAVAILABLE_ERROR_MESSAGE) };
+      }
       return { share: null, error: new Error(toErrorMessage(error, 'Unable to start location sharing.')) };
     }
 
@@ -86,6 +114,9 @@ export async function startLiveLocationShare(
       error: null,
     };
   } catch (error) {
+    if (isMissingLiveLocationRpc(error, 'start_live_location_share_v1')) {
+      return { share: null, error: new Error(LIVE_LOCATION_UNAVAILABLE_ERROR_MESSAGE) };
+    }
     return {
       share: null,
       error: new Error(toErrorMessage(error, 'Unable to start location sharing.')),
@@ -102,6 +133,9 @@ export async function stopLiveLocationShare(
     });
 
     if (error) {
+      if (isMissingLiveLocationRpc(error, 'stop_live_location_share_v1')) {
+        return { success: false, error: new Error(LIVE_LOCATION_UNAVAILABLE_ERROR_MESSAGE) };
+      }
       return { success: false, error: new Error(toErrorMessage(error, 'Unable to stop location sharing.')) };
     }
 
@@ -110,6 +144,9 @@ export async function stopLiveLocationShare(
       error: null,
     };
   } catch (error) {
+    if (isMissingLiveLocationRpc(error, 'stop_live_location_share_v1')) {
+      return { success: false, error: new Error(LIVE_LOCATION_UNAVAILABLE_ERROR_MESSAGE) };
+    }
     return {
       success: false,
       error: new Error(toErrorMessage(error, 'Unable to stop location sharing.')),
@@ -138,6 +175,9 @@ export async function upsertLiveLocationPoint(input: {
     });
 
     if (error) {
+      if (isMissingLiveLocationRpc(error, 'upsert_live_location_point_v1')) {
+        return { point: null, error: new Error(LIVE_LOCATION_UNAVAILABLE_ERROR_MESSAGE) };
+      }
       return { point: null, error: new Error(toErrorMessage(error, 'Unable to update live location.')) };
     }
 
@@ -151,6 +191,9 @@ export async function upsertLiveLocationPoint(input: {
       error: null,
     };
   } catch (error) {
+    if (isMissingLiveLocationRpc(error, 'upsert_live_location_point_v1')) {
+      return { point: null, error: new Error(LIVE_LOCATION_UNAVAILABLE_ERROR_MESSAGE) };
+    }
     return {
       point: null,
       error: new Error(toErrorMessage(error, 'Unable to update live location.')),
@@ -167,6 +210,9 @@ export async function listLiveLocationPoints(
     });
 
     if (error) {
+      if (isMissingLiveLocationRpc(error, 'list_live_location_points_v1')) {
+        return { points: [], error: null };
+      }
       return { points: [], error: new Error(toErrorMessage(error, 'Unable to load shared locations.')) };
     }
 
@@ -178,6 +224,9 @@ export async function listLiveLocationPoints(
       error: null,
     };
   } catch (error) {
+    if (isMissingLiveLocationRpc(error, 'list_live_location_points_v1')) {
+      return { points: [], error: null };
+    }
     return {
       points: [],
       error: new Error(toErrorMessage(error, 'Unable to load shared locations.')),
@@ -193,6 +242,9 @@ export async function listMyActiveLiveLocationShares(): Promise<{
     const { data, error } = await supabase.rpc('list_my_active_live_location_shares_v1');
 
     if (error) {
+      if (isMissingLiveLocationRpc(error, 'list_my_active_live_location_shares_v1')) {
+        return { shares: [], error: null };
+      }
       return { shares: [], error: new Error(toErrorMessage(error, 'Unable to load location share status.')) };
     }
 
@@ -204,6 +256,9 @@ export async function listMyActiveLiveLocationShares(): Promise<{
       error: null,
     };
   } catch (error) {
+    if (isMissingLiveLocationRpc(error, 'list_my_active_live_location_shares_v1')) {
+      return { shares: [], error: null };
+    }
     return {
       shares: [],
       error: new Error(toErrorMessage(error, 'Unable to load location share status.')),
@@ -220,6 +275,13 @@ export async function expireLiveLocationState(): Promise<{
     const { data, error } = await supabase.rpc('expire_live_location_state_v1');
 
     if (error) {
+      if (isMissingLiveLocationRpc(error, 'expire_live_location_state_v1')) {
+        return {
+          expiredSharesCount: 0,
+          deletedPointsCount: 0,
+          error: null,
+        };
+      }
       return {
         expiredSharesCount: 0,
         deletedPointsCount: 0,
@@ -242,6 +304,13 @@ export async function expireLiveLocationState(): Promise<{
       error: null,
     };
   } catch (error) {
+    if (isMissingLiveLocationRpc(error, 'expire_live_location_state_v1')) {
+      return {
+        expiredSharesCount: 0,
+        deletedPointsCount: 0,
+        error: null,
+      };
+    }
     return {
       expiredSharesCount: 0,
       deletedPointsCount: 0,
