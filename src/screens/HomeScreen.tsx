@@ -1,5 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
+import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { useNavigation } from '@react-navigation/native';
+import type { CompositeNavigationProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
@@ -9,13 +11,16 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CompanionCard, SafetyBanner } from '../components';
 import { useAuth } from '../context/AuthContext';
 import { fetchCompanions } from '../services/companionsApi';
-import type { Companion, RootStackParamList } from '../types';
+import type { Companion, MainTabParamList, RootStackParamList } from '../types';
 import { haptics } from '../utils/haptics';
 import { useTheme } from '../context/ThemeContext';
 import type { ThemeTokens } from '../theme/tokens';
 import { useThemedStyles } from '../theme/useThemedStyles';
 
-type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+type NavigationProp = CompositeNavigationProp<
+  BottomTabNavigationProp<MainTabParamList, 'Home'>,
+  NativeStackNavigationProp<RootStackParamList>
+>;
 
 function getGreeting(): string {
   const hour = new Date().getHours();
@@ -68,6 +73,31 @@ export const HomeScreen: React.FC = () => {
     navigation.navigate('Safety');
   };
 
+  const handleFindNowPress = async () => {
+    await haptics.light();
+    navigation.navigate('Discover');
+  };
+
+  const handleSchedulePress = async () => {
+    await haptics.light();
+    navigation.navigate('Bookings');
+  };
+
+  const handleFriendsPress = async () => {
+    await haptics.light();
+    navigation.navigate('Friends');
+  };
+
+  const handleSeeAllPress = async () => {
+    await haptics.light();
+    navigation.navigate('Discover');
+  };
+
+  const handleCategoryPress = async () => {
+    await haptics.light();
+    navigation.navigate('Discover');
+  };
+
   const handleSubscriptionPress = async () => {
     await haptics.medium();
     navigation.navigate('Subscription');
@@ -99,25 +129,25 @@ export const HomeScreen: React.FC = () => {
 
         {/* Quick Actions */}
         <View style={styles.quickActions}>
-          <TouchableOpacity style={styles.quickAction} onPress={async () => await haptics.light()}>
+          <TouchableOpacity style={styles.quickAction} onPress={handleFindNowPress}>
             <View style={[styles.quickActionIcon, { backgroundColor: colors.primary.blueSoft }]}>
               <Ionicons name="search" size={20} color={colors.primary.blue} />
             </View>
             <Text style={styles.quickActionText}>Find Now</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.quickAction} onPress={async () => await haptics.light()}>
+          <TouchableOpacity style={styles.quickAction} onPress={handleSchedulePress}>
             <View style={[styles.quickActionIcon, { backgroundColor: colors.primary.goldSoft }]}>
               <Ionicons name="calendar" size={20} color={colors.primary.gold} />
             </View>
             <Text style={styles.quickActionText}>Schedule</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.quickAction} onPress={async () => await haptics.light()}>
+          <TouchableOpacity style={styles.quickAction} onPress={handleFriendsPress}>
             <View style={[styles.quickActionIcon, { backgroundColor: colors.verification.trustedLight }]}>
               <Ionicons name="people" size={20} color={colors.verification.trusted} />
             </View>
             <Text style={styles.quickActionText}>Friends</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.quickAction} onPress={async () => await haptics.light()}>
+          <TouchableOpacity style={styles.quickAction} onPress={handleSafetyPress}>
             <View style={[styles.quickActionIcon, { backgroundColor: colors.status.successLight }]}>
               <Ionicons name="shield" size={20} color={colors.status.success} />
             </View>
@@ -169,12 +199,12 @@ export const HomeScreen: React.FC = () => {
         {/* Featured Wingman */}
         {featuredCompanion && (
           <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Featured Wingman</Text>
-              <TouchableOpacity onPress={async () => await haptics.light()}>
-                <Text style={styles.seeAllText}>See all</Text>
-              </TouchableOpacity>
-            </View>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Featured Wingman</Text>
+            <TouchableOpacity onPress={handleSeeAllPress}>
+              <Text style={styles.seeAllText}>See all</Text>
+            </TouchableOpacity>
+          </View>
             <CompanionCard
               companion={featuredCompanion}
               variant="featured"
@@ -191,12 +221,12 @@ export const HomeScreen: React.FC = () => {
         {/* Available Now */}
         {availableCompanions.length > 0 && (
           <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Available Now</Text>
-              <TouchableOpacity onPress={async () => await haptics.light()}>
-                <Text style={styles.seeAllText}>See all</Text>
-              </TouchableOpacity>
-            </View>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Available Now</Text>
+            <TouchableOpacity onPress={handleSeeAllPress}>
+              <Text style={styles.seeAllText}>See all</Text>
+            </TouchableOpacity>
+          </View>
             <View style={styles.companionGrid}>
               {availableCompanions.map((companion) => (
                 <CompanionCard
@@ -228,7 +258,7 @@ export const HomeScreen: React.FC = () => {
               <TouchableOpacity
                 key={index}
                 style={styles.categoryCard}
-                onPress={async () => await haptics.light()}
+                onPress={handleCategoryPress}
               >
                 <View style={[styles.categoryIcon, { backgroundColor: `${category.color}20` }]}>
                   <Ionicons name={category.icon as any} size={24} color={category.color} />
