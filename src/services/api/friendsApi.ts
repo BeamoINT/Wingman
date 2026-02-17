@@ -134,8 +134,20 @@ function isMissingProfilesPublicView(error: unknown): boolean {
 
 function isMissingRpc(error: unknown, rpcName: string): boolean {
   const typedError = error as QueryError | null | undefined;
+  const code = String(typedError?.code || '').toUpperCase();
   const message = String(typedError?.message || '').toLowerCase();
-  return message.includes(`function public.${rpcName}`) && message.includes('does not exist');
+  const mentionsFunction = (
+    message.includes(`function public.${rpcName}`)
+    || message.includes(rpcName.toLowerCase())
+  );
+
+  return mentionsFunction && (
+    message.includes('does not exist')
+    || message.includes('could not find the function')
+    || message.includes('schema cache')
+    || code === '42883'
+    || code.startsWith('PGRST')
+  );
 }
 
 function calculateAge(dateOfBirth?: string): number {
@@ -229,6 +241,9 @@ function transformRecommendationRowToFriendProfile(rowData: unknown): FriendProf
   const metroState = toOptionalString(row.metro_state);
   const metroCountry = toOptionalString(row.metro_country);
   const locationLabel = toOptionalString(row.location_label);
+  const fallbackCity = toOptionalString(row.city);
+  const fallbackState = toOptionalString(row.state);
+  const fallbackCountry = toOptionalString(row.country);
   const distanceKm = toNumber(row.distance_km, Number.NaN);
 
   return {
@@ -240,9 +255,9 @@ function transformRecommendationRowToFriendProfile(rowData: unknown): FriendProf
     bio: toOptionalString(row.about),
     age: 18,
     location: {
-      city: locationLabel || metroAreaName || 'Unknown',
-      state: metroState || undefined,
-      country: metroCountry || FALLBACK_COUNTRY,
+      city: locationLabel || metroAreaName || metroCity || fallbackCity || 'Unknown',
+      state: metroState || fallbackState || undefined,
+      country: metroCountry || fallbackCountry || FALLBACK_COUNTRY,
       metroAreaId,
       metroAreaName,
       metroCity,
@@ -396,6 +411,7 @@ async function ensureCurrentUserMetroResolved(userId: string): Promise<void> {
 
   if (resolution.metro) {
     payload.auto_metro_area_id = resolution.metro.metroAreaId;
+    payload.metro_area_id = resolution.metro.metroAreaId;
     payload.metro_area_name = resolution.metro.metroAreaName;
     payload.metro_city = resolution.metro.metroCity;
     payload.metro_state = resolution.metro.metroState;
@@ -416,9 +432,10 @@ async function ensureCurrentUserMetroResolved(userId: string): Promise<void> {
 
   if (updateError) {
     const message = String(updateError.message || '').toLowerCase();
-    if (message.includes('auto_metro_area_id')) {
+    if (message.includes('auto_metro_area_id') || message.includes('metro_area_id')) {
       const legacyPayload = { ...payload };
       delete legacyPayload.auto_metro_area_id;
+      delete legacyPayload.metro_area_id;
       const legacyResult = await supabase
         .from('profiles')
         .update(legacyPayload)
@@ -474,38 +491,96 @@ export async function fetchRankedFriendProfiles(limit = 30, offset = 0): Promise
 
     await ensureCurrentUserMetroResolved(userId);
 
-    const rpcName = (friendsFeatureFlags.friendsMatchingV4Enabled && friendsFeatureFlags.friendsGlobalMetroEnabled)
+    const primaryRpcName = (friendsFeatureFlags.friendsMatchingV4Enabled && friendsFeatureFlags.friendsGlobalMetroEnabled)
       ? 'get_friend_recommendations_v4'
       : 'get_friend_recommendations_v3';
+    const rpcCandidates = Array.from(new Set([
+      primaryRpcName,
+      'get_friend_recommendations_v3',
+      'get_friend_recommendations_v2',
+    ]));
 
     let rpcData: unknown;
     let rpcError: QueryError | null = null;
+    let resolvedRpcName: string | null = null;
 
-    const primaryCall = await supabase.rpc(rpcName, {
-      p_limit: limit,
-      p_offset: offset,
-    });
-    rpcData = primaryCall.data;
-    rpcError = primaryCall.error;
-
-    if (
-      rpcError
-      && rpcName === 'get_friend_recommendations_v4'
-      && (isMissingRpc(rpcError, 'get_friend_recommendations_v4') || !friendsFeatureFlags.friendsRankedListEnabled)
-    ) {
-      const fallbackCall = await supabase.rpc('get_friend_recommendations_v3', {
+    for (let index = 0; index < rpcCandidates.length; index += 1) {
+      const rpcName = rpcCandidates[index];
+      const rpcCall = await supabase.rpc(rpcName, {
         p_limit: limit,
         p_offset: offset,
       });
-      rpcData = fallbackCall.data;
-      rpcError = fallbackCall.error;
+
+      if (!rpcCall.error) {
+        resolvedRpcName = rpcName;
+        rpcData = rpcCall.data;
+        rpcError = null;
+        break;
+      }
+
+      rpcError = rpcCall.error;
+      if (rpcName === 'get_friend_recommendations_v4') {
+        trackEvent('friends_recommendations_v4_failed', { code: rpcCall.error.code || 'unknown' });
+      }
+
+      const hasMoreCandidates = index < rpcCandidates.length - 1;
+      if (!hasMoreCandidates) {
+        break;
+      }
+
+      const missingRpc = isMissingRpc(rpcCall.error, rpcName);
+      const canSoftFallback = (
+        missingRpc
+        || rpcName === 'get_friend_recommendations_v4'
+      );
+
+      if (!canSoftFallback) {
+        break;
+      }
     }
 
     if (rpcError) {
-      if (rpcName === 'get_friend_recommendations_v4') {
-        trackEvent('friends_recommendations_v4_failed', { code: rpcError.code || 'unknown' });
+      const from = Math.max(0, offset);
+      const to = from + Math.max(1, limit) - 1;
+      const fallbackQuery = await supabase
+        .from('profiles_public')
+        .select(PROFILE_PUBLIC_SELECT)
+        .neq('id', userId)
+        .eq('id_verified', true)
+        .order('updated_at', { ascending: false })
+        .range(from, to);
+
+      if (!fallbackQuery.error) {
+        const fallbackRows = Array.isArray(fallbackQuery.data) ? fallbackQuery.data : [];
+        const fallbackProfiles = fallbackRows
+          .map((row) => transformProfileToFriendProfile(row as unknown as RawRecord))
+          .filter((profile) => !!profile.id);
+        return { profiles: fallbackProfiles, error: null };
       }
-      trackEvent('location_data_blocked_read', { source: 'friend_recommendations' });
+
+      const fallbackError = fallbackQuery.error as QueryError | null;
+      if (fallbackError && isMissingProfilesPublicView(fallbackError)) {
+        const legacyQuery = await supabase
+          .from('profiles')
+          .select(LEGACY_PROFILE_SELECT)
+          .neq('id', userId)
+          .eq('id_verified', true)
+          .order('updated_at', { ascending: false })
+          .range(from, to);
+
+        if (!legacyQuery.error) {
+          const legacyRows = Array.isArray(legacyQuery.data) ? legacyQuery.data : [];
+          const legacyProfiles = legacyRows
+            .map((row) => transformProfileToFriendProfile(row as unknown as RawRecord))
+            .filter((profile) => !!profile.id);
+          return { profiles: legacyProfiles, error: null };
+        }
+      }
+
+      trackEvent('location_data_blocked_read', {
+        source: 'friend_recommendations',
+        rpc: resolvedRpcName || primaryRpcName,
+      });
       return {
         profiles: [],
         error: new Error(rpcError.message || 'Failed to load recommendations'),
@@ -517,7 +592,7 @@ export async function fetchRankedFriendProfiles(limit = 30, offset = 0): Promise
       .map((row) => transformRecommendationRowToFriendProfile(row as RawRecord))
       .filter((profile) => !!profile.id);
 
-    if (profiles.length > 0 && rpcName === 'get_friend_recommendations_v4') {
+    if (profiles.length > 0 && resolvedRpcName === 'get_friend_recommendations_v4') {
       const impressionIds = profiles
         .map((profile) => profile.userId)
         .filter((id) => id && id !== userId);

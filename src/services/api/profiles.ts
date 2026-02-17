@@ -263,12 +263,10 @@ export async function updateProfile(updates: UpdateProfileInput): Promise<{ prof
         profile = metroProfile as ProfileData;
       } else if (metroError) {
         const message = String((metroError as { message?: string })?.message || '').toLowerCase();
-        if (message.includes('auto_metro_area_id')) {
+        if (message.includes('auto_metro_area_id') || message.includes('metro_area_id')) {
           const fallbackMetroUpdates = { ...metroUpdates };
           delete fallbackMetroUpdates.auto_metro_area_id;
-          if (metroResolution.metro) {
-            fallbackMetroUpdates.metro_area_id = metroResolution.metro.metroAreaId;
-          }
+          delete fallbackMetroUpdates.metro_area_id;
 
           const { data: legacyMetroProfile, error: legacyMetroError } = await supabase
             .from('profiles')

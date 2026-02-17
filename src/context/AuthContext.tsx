@@ -340,9 +340,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (error) {
       const message = String(error.message || '').toLowerCase();
-      if (message.includes('auto_metro_area_id')) {
+      if (message.includes('auto_metro_area_id') || message.includes('metro_area_id')) {
         const fallbackPayload = { ...metroPayload };
         delete fallbackPayload.auto_metro_area_id;
+        delete fallbackPayload.metro_area_id;
         const fallbackResult = await supabase
           .from('profiles')
           .update(fallbackPayload)
