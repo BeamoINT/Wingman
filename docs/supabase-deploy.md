@@ -30,6 +30,8 @@ supabase link --project-ref <project-ref>
 ```bash
 supabase db push
 ```
+Important: `20260301_wingman_onboarding_stripe_agreement.sql` introduces immediate hard enforcement for wingmen.
+Users with expired/unverified ID or missing current agreement acceptance will be blocked from companion profile writes until re-compliant.
 3. Deploy edge functions:
 ```bash
 supabase functions deploy create-media-upload-url
@@ -77,6 +79,13 @@ supabase secrets set LIVE_LOCATION_MAINTENANCE_SECRET=...
 # Header: x-maintenance-secret: <LIVE_LOCATION_MAINTENANCE_SECRET>
 ```
 8. Verify function health with authenticated calls from a staging build.
+9. Verify companion onboarding RPCs:
+```bash
+# Authenticated RPC smoke tests
+# public.get_wingman_onboarding_state_v1()
+# public.accept_companion_agreement_v1('1.0', 'onboarding')
+# public.upsert_wingman_profile_v1(...)
+```
 
 ## Validation checklist
 1. `conversation_members` and `participant_ids` are present on `conversations`.
@@ -89,3 +98,6 @@ supabase secrets set LIVE_LOCATION_MAINTENANCE_SECRET=...
 8. `id-verification-maintenance` marks expired users and sends 90/30/7/1-day Resend reminders.
 9. `get-directions` returns recommended route + alternatives for authenticated users.
 10. `live-location-maintenance` expires stale shares and removes expired points.
+11. `stripe-identity-webhook` writes failure reason code/message for failed verification attempts.
+12. `companion_agreement_acceptance_log` captures immutable acceptance records with agreement version + timestamp.
+13. `upsert_wingman_profile_v1` auto-publishes companion profiles only when active ID verification and current agreement acceptance are both satisfied.

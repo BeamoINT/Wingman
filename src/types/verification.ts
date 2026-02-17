@@ -88,6 +88,18 @@ export type IdVerificationStatus =
   | 'failed_name_mismatch'
   | 'failed';
 
+export type IdVerificationFailureReason =
+  | 'name_mismatch'
+  | 'photo_mismatch'
+  | 'document_unreadable'
+  | 'document_expired'
+  | 'selfie_capture_failed'
+  | 'photo_id_attestation_missing'
+  | 'requires_input'
+  | 'verification_canceled'
+  | 'verification_failed'
+  | string;
+
 export type IdVerificationReminderStage = 90 | 30 | 7 | 1 | 'expired' | null;
 
 export interface IdVerificationReminder {
@@ -115,6 +127,8 @@ export interface VerificationState {
   phoneVerified: boolean;
   idVerified: boolean;
   idVerificationStatus: IdVerificationStatus;
+  idVerificationFailureCode: IdVerificationFailureReason | null;
+  idVerificationFailureMessage: string | null;
   idVerificationExpiresAt: string | null;
   idVerifiedAt: string | null;
   idVerificationReminder: IdVerificationReminder;
@@ -132,6 +146,8 @@ export const defaultVerificationState: VerificationState = {
   phoneVerified: false,
   idVerified: false,
   idVerificationStatus: 'unverified',
+  idVerificationFailureCode: null,
+  idVerificationFailureMessage: null,
   idVerificationExpiresAt: null,
   idVerifiedAt: null,
   idVerificationReminder: {
@@ -156,6 +172,8 @@ export interface VerificationStatusResponse {
   phoneVerified: boolean;
   idVerified: boolean;
   idVerificationStatus: IdVerificationStatus;
+  idVerificationFailureCode: IdVerificationFailureReason | null;
+  idVerificationFailureMessage: string | null;
   idVerificationExpiresAt: string | null;
   idVerifiedAt: string | null;
   verificationLevel: VerificationLevel;

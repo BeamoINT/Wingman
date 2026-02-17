@@ -16,6 +16,15 @@ type ProfileRow = {
   id_verified_at?: string | null;
   id_verification_status?: string | null;
   id_verification_expires_at?: string | null;
+  id_verification_failure_code?: string | null;
+  id_verification_failure_message?: string | null;
+  id_verification_last_failed_at?: string | null;
+};
+
+type FailureReason = {
+  code: string;
+  message: string;
+  sourceSignals: string[];
 };
 
 function jsonResponse(body: Record<string, unknown>, status = 200): Response {
@@ -91,6 +100,168 @@ function getThreeYearExpiryIso(now = new Date()): string {
   return expiry.toISOString();
 }
 
+function addSignal(target: Set<string>, raw: unknown): void {
+  const value = toString(raw).toLowerCase();
+  if (value) {
+    target.add(value);
+  }
+}
+
+function collectFailureSignals(
+  session: Stripe.Identity.VerificationSession,
+  verificationReport: Record<string, unknown> | null,
+): string[] {
+  const signals = new Set<string>();
+
+  const lastError = (session as unknown as Record<string, unknown>).last_error as Record<string, unknown> | null | undefined;
+  if (lastError && typeof lastError === "object") {
+    addSignal(signals, lastError.code);
+    addSignal(signals, lastError.reason);
+    addSignal(signals, lastError.type);
+  }
+
+  const documentSection = verificationReport?.document as Record<string, unknown> | undefined;
+  const selfieSection = verificationReport?.selfie as Record<string, unknown> | undefined;
+
+  if (documentSection) {
+    addSignal(signals, documentSection.status);
+    const documentError = documentSection.error as Record<string, unknown> | undefined;
+    addSignal(signals, documentError?.code);
+    addSignal(signals, documentError?.reason);
+    addSignal(signals, documentSection.error_code);
+    addSignal(signals, documentSection.error_reason);
+  }
+
+  if (selfieSection) {
+    addSignal(signals, selfieSection.status);
+    const selfieError = selfieSection.error as Record<string, unknown> | undefined;
+    addSignal(signals, selfieError?.code);
+    addSignal(signals, selfieError?.reason);
+    addSignal(signals, selfieSection.error_code);
+    addSignal(signals, selfieSection.error_reason);
+  }
+
+  addSignal(signals, (session as unknown as Record<string, unknown>).status);
+
+  return [...signals];
+}
+
+function hasSignal(signals: string[], tokens: string[]): boolean {
+  return signals.some((signal) => tokens.some((token) => signal.includes(token)));
+}
+
+function resolveFailureReason(
+  session: Stripe.Identity.VerificationSession,
+  verificationReport: Record<string, unknown> | null,
+  options: {
+    nameMismatch: boolean;
+    hasPhotoIdAttestation: boolean;
+    sessionStatus: string;
+  },
+): FailureReason {
+  if (!options.hasPhotoIdAttestation) {
+    return {
+      code: "photo_id_attestation_missing",
+      message: "Confirm in Edit Profile that your legal name and profile photo match your government photo ID.",
+      sourceSignals: ["photo_id_attestation_missing"],
+    };
+  }
+
+  if (options.nameMismatch) {
+    return {
+      code: "name_mismatch",
+      message: "Your profile legal name must exactly match the name on your government photo ID.",
+      sourceSignals: ["name_mismatch"],
+    };
+  }
+
+  if (options.sessionStatus === "canceled") {
+    return {
+      code: "verification_canceled",
+      message: "Verification was canceled before completion. Restart and complete all capture steps.",
+      sourceSignals: ["session_canceled"],
+    };
+  }
+
+  const signals = collectFailureSignals(session, verificationReport);
+
+  if (hasSignal(signals, ["expired", "document_expired"])) {
+    return {
+      code: "document_expired",
+      message: "Your ID appears expired. Retry with a valid, unexpired government-issued photo ID.",
+      sourceSignals: signals,
+    };
+  }
+
+  if (hasSignal(signals, ["selfie_document_mismatch", "selfie_mismatch", "face_mismatch", "portrait_mismatch"])) {
+    return {
+      code: "photo_mismatch",
+      message: "Your selfie did not match your ID photo closely enough. Retry in good lighting and align your face clearly.",
+      sourceSignals: signals,
+    };
+  }
+
+  if (hasSignal(signals, ["document_unverified", "document_too_blurry", "document_blurry", "document_unreadable", "document_missing"])) {
+    return {
+      code: "document_unreadable",
+      message: "Your ID image could not be verified. Retry with a sharp, glare-free photo and all edges visible.",
+      sourceSignals: signals,
+    };
+  }
+
+  if (hasSignal(signals, ["selfie", "face_not_found", "selfie_unverified"])) {
+    return {
+      code: "selfie_capture_failed",
+      message: "Selfie verification failed. Retry with your face centered, uncovered, and well-lit.",
+      sourceSignals: signals,
+    };
+  }
+
+  if (options.sessionStatus === "requires_input") {
+    return {
+      code: "requires_input",
+      message: "Verification requires additional input. Retry and follow all ID and selfie capture instructions.",
+      sourceSignals: signals,
+    };
+  }
+
+  return {
+    code: "verification_failed",
+    message: "ID verification failed. Retry with a clear government-issued ID and live selfie capture.",
+    sourceSignals: signals,
+  };
+}
+
+async function getVerificationReport(
+  stripe: Stripe,
+  session: Stripe.Identity.VerificationSession,
+): Promise<Record<string, unknown> | null> {
+  const rawReportRef = (session as unknown as Record<string, unknown>).last_verification_report;
+  const reportId = (() => {
+    const direct = toString(rawReportRef);
+    if (direct) return direct;
+    if (rawReportRef && typeof rawReportRef === "object") {
+      return toString((rawReportRef as Record<string, unknown>).id);
+    }
+    return "";
+  })();
+  if (!reportId) {
+    return null;
+  }
+
+  try {
+    const report = await stripe.identity.verificationReports.retrieve(reportId);
+    if (!report || typeof report !== "object") {
+      return null;
+    }
+
+    return report as unknown as Record<string, unknown>;
+  } catch (error) {
+    console.error("Unable to retrieve verification report:", error);
+    return null;
+  }
+}
+
 async function getProfileForSession(
   supabaseAdmin: ReturnType<typeof createClient>,
   session: Stripe.Identity.VerificationSession
@@ -102,7 +273,7 @@ async function getProfileForSession(
     const { data } = await supabaseAdmin
       .from("profiles")
       .select(
-        "id,first_name,last_name,profile_photo_id_match_attested,id_verified,id_verified_at,id_verification_status,id_verification_expires_at"
+        "id,first_name,last_name,profile_photo_id_match_attested,id_verified,id_verified_at,id_verification_status,id_verification_expires_at,id_verification_failure_code,id_verification_failure_message,id_verification_last_failed_at"
       )
       .eq("id", metadataUserId)
       .maybeSingle();
@@ -115,7 +286,7 @@ async function getProfileForSession(
   const { data: fallbackData } = await supabaseAdmin
     .from("profiles")
     .select(
-      "id,first_name,last_name,profile_photo_id_match_attested,id_verified,id_verified_at,id_verification_status,id_verification_expires_at"
+      "id,first_name,last_name,profile_photo_id_match_attested,id_verified,id_verified_at,id_verification_status,id_verification_expires_at,id_verification_failure_code,id_verification_failure_message,id_verification_last_failed_at"
     )
     .eq("id_verification_provider_ref", session.id)
     .maybeSingle();
@@ -141,6 +312,21 @@ async function logVerificationEvent(
 
   if (error && !["42P01", "PGRST205"].includes(String(error.code || ""))) {
     console.error("Failed to log verification event:", error);
+  }
+}
+
+async function updateCompanionApplicationFailureState(
+  supabaseAdmin: ReturnType<typeof createClient>,
+  userId: string,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  const { error } = await supabaseAdmin
+    .from("companion_applications")
+    .update(payload)
+    .eq("user_id", userId);
+
+  if (error && !["42P01", "42703", "PGRST205"].includes(String(error.code || ""))) {
+    console.error("Failed to update companion application verification failure state:", error);
   }
 }
 
@@ -239,13 +425,13 @@ serve(async (req) => {
 
     const now = new Date();
     const nowIso = now.toISOString();
-    const expectedProfileName = buildExpectedProfileName(profile);
     const verifiedName = extractVerifiedFullName(session);
-    const normalizedExpected = normalizeHumanName(expectedProfileName);
+    const normalizedExpected = normalizeHumanName(buildExpectedProfileName(profile));
     const normalizedVerified = normalizeHumanName(verifiedName);
     const nameMatches = !!normalizedExpected && normalizedExpected === normalizedVerified;
     const hasPhotoIdAttestation = profile.profile_photo_id_match_attested === true;
     const currentlyActive = isCurrentlyActiveVerification(profile);
+    const verificationReport = await getVerificationReport(stripe, session);
 
     const sessionStatus = toString(session.status).toLowerCase();
 
@@ -255,6 +441,8 @@ serve(async (req) => {
       updated_at: nowIso,
     };
 
+    let companionApplicationUpdate: Record<string, unknown> | null = null;
+
     if (sessionStatus === "verified" && hasPhotoIdAttestation && nameMatches) {
       updatePayload = {
         ...updatePayload,
@@ -262,6 +450,15 @@ serve(async (req) => {
         id_verified_at: nowIso,
         id_verification_status: "verified",
         id_verification_expires_at: getThreeYearExpiryIso(now),
+        id_verification_failure_code: null,
+        id_verification_failure_message: null,
+        id_verification_last_failed_at: null,
+      };
+
+      companionApplicationUpdate = {
+        id_verification_failure_code: null,
+        id_verification_failure_message: null,
+        updated_at: nowIso,
       };
 
       await logVerificationEvent(
@@ -273,10 +470,15 @@ serve(async (req) => {
           provider: "stripe_identity",
           session_id: session.id,
           verified_at: nowIso,
-          verified_name: verifiedName,
         },
       );
     } else if (sessionStatus === "verified" && (!hasPhotoIdAttestation || !nameMatches)) {
+      const failure = resolveFailureReason(session, verificationReport, {
+        nameMismatch: !nameMatches,
+        hasPhotoIdAttestation,
+        sessionStatus,
+      });
+
       if (!currentlyActive) {
         updatePayload = {
           ...updatePayload,
@@ -284,6 +486,15 @@ serve(async (req) => {
           id_verified_at: null,
           id_verification_status: hasPhotoIdAttestation ? "failed_name_mismatch" : "failed",
           id_verification_expires_at: null,
+          id_verification_failure_code: failure.code,
+          id_verification_failure_message: failure.message,
+          id_verification_last_failed_at: nowIso,
+        };
+
+        companionApplicationUpdate = {
+          id_verification_failure_code: failure.code,
+          id_verification_failure_message: failure.message,
+          updated_at: nowIso,
         };
       }
 
@@ -295,9 +506,9 @@ serve(async (req) => {
         {
           provider: "stripe_identity",
           session_id: session.id,
-          reason: hasPhotoIdAttestation ? "name_mismatch" : "photo_id_match_attestation_missing",
-          expected_profile_name: expectedProfileName,
-          verified_name: verifiedName,
+          reason_code: failure.code,
+          reason_message: failure.message,
+          signal_count: failure.sourceSignals.length,
           preserved_previous_active_verification: currentlyActive,
         },
       );
@@ -306,8 +517,17 @@ serve(async (req) => {
         updatePayload = {
           ...updatePayload,
           id_verification_status: "pending",
+          id_verification_failure_code: null,
+          id_verification_failure_message: null,
+          id_verification_last_failed_at: null,
         };
       }
+
+      companionApplicationUpdate = {
+        id_verification_failure_code: null,
+        id_verification_failure_message: null,
+        updated_at: nowIso,
+      };
 
       await logVerificationEvent(
         supabaseAdmin,
@@ -321,12 +541,27 @@ serve(async (req) => {
         },
       );
     } else if (sessionStatus === "requires_input" || sessionStatus === "canceled") {
+      const failure = resolveFailureReason(session, verificationReport, {
+        nameMismatch: false,
+        hasPhotoIdAttestation,
+        sessionStatus,
+      });
+
       if (!currentlyActive) {
         updatePayload = {
           ...updatePayload,
           id_verified: false,
           id_verification_status: "failed",
           id_verification_expires_at: null,
+          id_verification_failure_code: failure.code,
+          id_verification_failure_message: failure.message,
+          id_verification_last_failed_at: nowIso,
+        };
+
+        companionApplicationUpdate = {
+          id_verification_failure_code: failure.code,
+          id_verification_failure_message: failure.message,
+          updated_at: nowIso,
         };
       }
 
@@ -339,11 +574,12 @@ serve(async (req) => {
           provider: "stripe_identity",
           session_id: session.id,
           status: sessionStatus,
+          reason_code: failure.code,
+          reason_message: failure.message,
           preserved_previous_active_verification: currentlyActive,
         },
       );
     } else {
-      // Ignore other statuses while keeping provider reference current.
       await logVerificationEvent(
         supabaseAdmin,
         profile.id,
@@ -365,6 +601,14 @@ serve(async (req) => {
     if (profileUpdateError) {
       console.error("Failed to update profile verification lifecycle from webhook:", profileUpdateError);
       return jsonResponse({ error: "Failed to persist verification status" }, 500);
+    }
+
+    if (companionApplicationUpdate) {
+      await updateCompanionApplicationFailureState(
+        supabaseAdmin,
+        profile.id,
+        companionApplicationUpdate,
+      );
     }
 
     const { error: idempotencyInsertError } = await supabaseAdmin

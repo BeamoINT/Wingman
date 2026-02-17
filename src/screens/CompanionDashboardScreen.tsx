@@ -379,6 +379,18 @@ export const CompanionDashboardScreen: React.FC = () => {
             </View>
           </Card>
         </TouchableOpacity>
+
+        <Button
+          title="Edit Wingman Profile"
+          onPress={async () => {
+            await haptics.light();
+            navigation.navigate('WingmanProfileSetup', { source: 'dashboard' });
+          }}
+          variant="outline"
+          fullWidth
+          icon="create"
+          iconPosition="left"
+        />
       </View>
 
       <View style={styles.section}>

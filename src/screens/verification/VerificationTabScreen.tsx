@@ -47,6 +47,7 @@ export const VerificationTabScreen: React.FC = () => {
     overallStatus,
     verificationLevel,
     idVerificationStatus,
+    idVerificationFailureMessage,
     idVerificationExpiresAt,
     idVerifiedAt,
     idVerificationReminder,
@@ -123,7 +124,7 @@ export const VerificationTabScreen: React.FC = () => {
 
       <InlineBanner
         title="Identity checks protect every booking"
-        message="Your legal profile name must exactly match your government photo ID. All users must complete ID verification and confirm photo-ID match before booking."
+        message="Your legal profile name must exactly match your government photo ID. Stripe Identity uses live selfie liveness capture, and all users must complete verification before booking."
         variant="info"
       />
 
@@ -146,7 +147,7 @@ export const VerificationTabScreen: React.FC = () => {
       {idVerificationStatus === 'failed_name_mismatch' ? (
         <InlineBanner
           title="Name mismatch detected"
-          message="Your profile legal name must exactly match your photo ID. Update your name in Edit Profile or retry with matching ID."
+          message={idVerificationFailureMessage || 'Your profile legal name must exactly match your photo ID. Update your name in Edit Profile or retry with matching ID.'}
           variant="error"
         />
       ) : null}
@@ -154,7 +155,7 @@ export const VerificationTabScreen: React.FC = () => {
       {idVerificationStatus === 'failed' ? (
         <InlineBanner
           title="Verification incomplete"
-          message="ID verification failed. Retry with a clear government-issued ID and matching profile legal name."
+          message={idVerificationFailureMessage || 'ID verification failed. Retry with a clear government-issued ID and matching profile legal name.'}
           variant="warning"
         />
       ) : null}

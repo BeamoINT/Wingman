@@ -156,6 +156,9 @@ export const RequirementsGate: React.FC<RequirementsGateProps> = ({
           case 'EditProfile':
             navigation.navigate('EditProfile');
             break;
+          case 'CompanionAgreement':
+            navigation.navigate('CompanionAgreement', { returnToOnboarding: true });
+            break;
           case 'LegalDocument':
             // Determine which legal document to navigate to
             if (requirement.requirement.toLowerCase().includes('terms')) {

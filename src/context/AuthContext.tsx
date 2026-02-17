@@ -147,6 +147,8 @@ function transformSupabaseUser(supabaseUser: SupabaseUser, profile?: any): User 
     idVerificationStatus: normalizedIdVerificationStatus,
     idVerificationExpiresAt: profile?.id_verification_expires_at || null,
     idVerifiedAt: profile?.id_verified_at || null,
+    idVerificationFailureCode: profile?.id_verification_failure_code || null,
+    idVerificationFailureMessage: profile?.id_verification_failure_message || null,
     createdAt: supabaseUser.created_at || new Date().toISOString(),
     lastActive: new Date().toISOString(),
   };

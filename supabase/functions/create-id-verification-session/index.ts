@@ -21,6 +21,9 @@ type ProfileRow = {
   id_verified?: boolean | null;
   id_verification_status?: string | null;
   id_verification_expires_at?: string | null;
+  id_verification_failure_code?: string | null;
+  id_verification_failure_message?: string | null;
+  id_verification_last_failed_at?: string | null;
 };
 
 function jsonResponse(body: Record<string, unknown>, status = 200): Response {
@@ -118,7 +121,7 @@ serve(async (req) => {
     const { data: profileData, error: profileError } = await supabaseAdmin
       .from("profiles")
       .select(
-        "first_name,last_name,profile_photo_id_match_attested,id_verified,id_verification_status,id_verification_expires_at"
+        "first_name,last_name,profile_photo_id_match_attested,id_verified,id_verification_status,id_verification_expires_at,id_verification_failure_code,id_verification_failure_message,id_verification_last_failed_at"
       )
       .eq("id", userId)
       .maybeSingle();
@@ -134,7 +137,7 @@ serve(async (req) => {
     if (!firstName || !lastName) {
       return jsonResponse(
         {
-          error: "Your profile legal name is required. Add your first and last name exactly as shown on your government photo ID.",
+          error: "Your legal profile name is required. Add your first and last name exactly as shown on your government-issued photo ID.",
         },
         400
       );
@@ -192,6 +195,9 @@ serve(async (req) => {
       profileUpdates.id_verification_status = "pending";
       profileUpdates.id_verified = false;
     }
+    profileUpdates.id_verification_failure_code = null;
+    profileUpdates.id_verification_failure_message = null;
+    profileUpdates.id_verification_last_failed_at = null;
 
     const { error: updateError } = await supabaseAdmin
       .from("profiles")
@@ -201,6 +207,19 @@ serve(async (req) => {
     if (updateError) {
       console.error("Unable to update profile verification status before session launch:", updateError);
       return jsonResponse({ error: "Unable to start ID verification right now." }, 500);
+    }
+
+    const { error: appResetError } = await supabaseAdmin
+      .from("companion_applications")
+      .update({
+        id_verification_failure_code: null,
+        id_verification_failure_message: null,
+        updated_at: nowIso,
+      })
+      .eq("user_id", userId);
+
+    if (appResetError && !["42P01", "42703", "PGRST205"].includes(String(appResetError.code || ""))) {
+      console.error("Unable to clear companion application verification failure state:", appResetError);
     }
 
     const { error: eventError } = await supabaseAdmin

@@ -50,6 +50,7 @@ export const VerificationScreen: React.FC = () => {
     phoneVerified,
     idVerified,
     idVerificationStatus,
+    idVerificationFailureMessage,
     idVerificationExpiresAt,
     idVerifiedAt,
     idVerificationReminder,
@@ -100,13 +101,13 @@ export const VerificationScreen: React.FC = () => {
             return 'Continue your in-progress ID verification';
           }
           if (idVerificationStatus === 'failed_name_mismatch') {
-            return 'Your legal profile name must exactly match your government ID';
+            return idVerificationFailureMessage || 'Your legal profile name must exactly match your government ID';
           }
           if (idVerificationStatus === 'expired') {
             return 'Verification expired. Re-verify to continue booking';
           }
           if (idVerificationStatus === 'failed') {
-            return 'Verification failed. Retry with a clear government-issued ID';
+            return idVerificationFailureMessage || 'Verification failed. Retry with a clear government-issued ID';
           }
           return 'Upload a government-issued ID';
         })(),
@@ -282,7 +283,7 @@ export const VerificationScreen: React.FC = () => {
       {idVerificationStatus === 'failed_name_mismatch' ? (
         <InlineBanner
           title="Name mismatch"
-          message="Your profile legal name must match your government photo ID exactly. Update your profile name or retry with matching ID."
+          message={idVerificationFailureMessage || 'Your profile legal name must match your government photo ID exactly. Update your profile name or retry with matching ID.'}
           variant="error"
         />
       ) : null}
@@ -303,6 +304,7 @@ export const VerificationScreen: React.FC = () => {
         <Card variant="outlined" style={styles.benefitsCard}>
           {[
             'All users must complete ID verification before booking',
+            'ID verification requires live Stripe selfie capture (no uploaded selfie photos)',
             'Profile legal name must exactly match submitted photo ID name',
             'Profile photos must clearly match the submitted photo ID',
             'Phone verification adds account recovery protection',

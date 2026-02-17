@@ -58,6 +58,8 @@ export const VerificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const [phoneVerified, setPhoneVerified] = useState(false);
   const [idVerified, setIdVerified] = useState(false);
   const [idVerificationStatus, setIdVerificationStatus] = useState<IdVerificationStatus>('unverified');
+  const [idVerificationFailureCode, setIdVerificationFailureCode] = useState<string | null>(null);
+  const [idVerificationFailureMessage, setIdVerificationFailureMessage] = useState<string | null>(null);
   const [idVerificationExpiresAt, setIdVerificationExpiresAt] = useState<string | null>(null);
   const [idVerifiedAt, setIdVerifiedAt] = useState<string | null>(null);
   const [verificationLevel, setVerificationLevel] = useState<VerificationLevel>('basic');
@@ -125,6 +127,8 @@ export const VerificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         setPhoneVerified(status.phoneVerified);
         setIdVerified(status.idVerified);
         setIdVerificationStatus(status.idVerificationStatus);
+        setIdVerificationFailureCode(status.idVerificationFailureCode);
+        setIdVerificationFailureMessage(status.idVerificationFailureMessage);
         setIdVerificationExpiresAt(status.idVerificationExpiresAt);
         setIdVerifiedAt(status.idVerifiedAt);
         setVerificationLevel(status.verificationLevel);
@@ -214,7 +218,7 @@ export const VerificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         return 'Your ID verification expired. Re-verify to keep booking access';
       }
       if (idVerificationStatus === 'failed') {
-        return 'Verification failed. Retry with a clear government-issued photo ID';
+        return idVerificationFailureMessage || 'Verification failed. Retry with a clear government-issued photo ID';
       }
       return 'Verify your identity with a government ID';
     })();
@@ -286,6 +290,8 @@ export const VerificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     } else {
       setIdVerificationStatus('pending');
     }
+    setIdVerificationFailureCode(null);
+    setIdVerificationFailureMessage(null);
 
     return {
       success: true,
@@ -315,6 +321,8 @@ export const VerificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       setPhoneVerified(false);
       setIdVerified(false);
       setIdVerificationStatus('unverified');
+      setIdVerificationFailureCode(null);
+      setIdVerificationFailureMessage(null);
       setIdVerificationExpiresAt(null);
       setIdVerifiedAt(null);
       setVerificationLevel('basic');
@@ -350,6 +358,8 @@ export const VerificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     phoneVerified,
     idVerified,
     idVerificationStatus,
+    idVerificationFailureCode,
+    idVerificationFailureMessage,
     idVerificationExpiresAt,
     idVerifiedAt,
     idVerificationReminder,

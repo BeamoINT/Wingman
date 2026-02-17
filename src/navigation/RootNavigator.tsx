@@ -46,7 +46,10 @@ import {
 
 // Companion Screens
 import {
-  CompanionApplicationStatusScreen, CompanionOnboardingScreen,
+  CompanionAgreementScreen,
+  CompanionApplicationStatusScreen,
+  CompanionOnboardingScreen,
+  WingmanProfileSetupScreen,
 } from '../screens/companion';
 import { CompanionDashboardScreen } from '../screens/CompanionDashboardScreen';
 
@@ -110,6 +113,8 @@ const ProtectedMetroMapPickerScreen = withAuthGuard(MetroMapPickerScreen, 'Metro
 
 // Companion Feature - Protected
 const ProtectedCompanionOnboardingScreen = withAuthGuard(CompanionOnboardingScreen, 'CompanionOnboarding');
+const ProtectedCompanionAgreementScreen = withAuthGuard(CompanionAgreementScreen, 'CompanionAgreement');
+const ProtectedWingmanProfileSetupScreen = withAuthGuard(WingmanProfileSetupScreen, 'WingmanProfileSetup');
 const ProtectedCompanionApplicationStatusScreen = withAuthGuard(CompanionApplicationStatusScreen, 'CompanionApplicationStatus');
 const ProtectedCompanionDashboardScreen = withAuthGuard(CompanionDashboardScreen, 'CompanionDashboard');
 
@@ -284,6 +289,16 @@ export const RootNavigator: React.FC = () => {
 
         {/* Companion Feature - Protected */}
         <Stack.Screen name="CompanionOnboarding" component={ProtectedCompanionOnboardingScreen} />
+        <Stack.Screen
+          name="CompanionAgreement"
+          component={ProtectedCompanionAgreementScreen}
+          options={{ animation: modalAnimation }}
+        />
+        <Stack.Screen
+          name="WingmanProfileSetup"
+          component={ProtectedWingmanProfileSetupScreen}
+          options={{ animation: modalAnimation }}
+        />
         <Stack.Screen name="CompanionApplicationStatus" component={ProtectedCompanionApplicationStatusScreen} />
         <Stack.Screen name="CompanionDashboard" component={ProtectedCompanionDashboardScreen} />
 

@@ -23,6 +23,8 @@ export interface User {
   idVerificationStatus?: 'unverified' | 'pending' | 'verified' | 'expired' | 'failed_name_mismatch' | 'failed';
   idVerificationExpiresAt?: string | null;
   idVerifiedAt?: string | null;
+  idVerificationFailureCode?: string | null;
+  idVerificationFailureMessage?: string | null;
   createdAt: string;
   lastActive?: string;
 }
@@ -293,10 +295,42 @@ export interface CompanionApplication {
   gallery: string[];
   companionAgreementAccepted: boolean;
   companionAgreementAcceptedAt: string | null;
+  companionAgreementVersion: string | null;
+  companionAgreementAcknowledgedAt: string | null;
+  onboardingLastStep: number | null;
+  profileSetupCompletedAt: string | null;
+  idVerificationFailureCode: string | null;
+  idVerificationFailureMessage: string | null;
   rejectionReason: string | null;
   submittedAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface WingmanOnboardingState {
+  currentStep: 1 | 2 | 3;
+  totalSteps: 3;
+  idVerificationCompleted: boolean;
+  idVerificationStatus: string;
+  idVerificationFailureCode: string | null;
+  idVerificationFailureMessage: string | null;
+  companionAgreementCompleted: boolean;
+  companionAgreementVersion: string | null;
+  companionAgreementAcceptedAt: string | null;
+  profileSetupCompleted: boolean;
+  profileSetupCompletedAt: string | null;
+  onboardingLastStep: number;
+  companionId: string | null;
+  companionApplicationStatus: string | null;
+}
+
+export interface WingmanProfileSetupPayload {
+  specialties: CompanionSpecialty[];
+  hourlyRate: number;
+  about: string;
+  languages: string[];
+  gallery: string[];
+  isAvailable: boolean;
 }
 
 export interface CompanionOnboardingData {
@@ -431,6 +465,8 @@ export type RootStackParamList = {
   LegalDocument: { documentType: LegalDocumentType };
   // Companion onboarding screens
   CompanionOnboarding: { resumeStep?: number } | undefined;
+  CompanionAgreement: { returnToOnboarding?: boolean } | undefined;
+  WingmanProfileSetup: { source?: 'onboarding' | 'dashboard' } | undefined;
   CompanionApplicationStatus: undefined;
   CompanionDashboard: undefined;
   // Friends feature screens

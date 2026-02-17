@@ -199,7 +199,7 @@ export const EditProfileScreen: React.FC = () => {
 
       <InlineBanner
         title="Booking safety requirement"
-        message="Your legal first and last name must exactly match your government photo ID, and your profile photo must clearly match that same ID."
+        message="Your legal first and last name must exactly match your government photo ID character-for-character. This name is used during Stripe Identity verification, and mismatches will fail verification."
         variant="info"
       />
 
@@ -245,12 +245,14 @@ export const EditProfileScreen: React.FC = () => {
             value={firstName}
             onChangeText={setFirstName}
             autoCapitalize="words"
+            placeholder="Legal first name on your photo ID"
           />
           <Input
             label="Last Name"
             value={lastName}
             onChangeText={setLastName}
             autoCapitalize="words"
+            placeholder="Legal last name on your photo ID"
           />
           <Input
             label="Phone Number"

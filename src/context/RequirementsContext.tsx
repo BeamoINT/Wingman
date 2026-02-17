@@ -20,7 +20,9 @@ import React, {
     createContext, useCallback, useContext, useEffect, useMemo,
     useRef, useState
 } from 'react';
+import { COMPANION_AGREEMENT } from '../legal';
 import { supabase } from '../services/supabase';
+import { acceptWingmanAgreement as acceptWingmanAgreementApi } from '../services/api/wingmanOnboardingApi';
 import type { SubscriptionTier } from '../types';
 import { useAuth } from './AuthContext';
 import { useVerification } from './VerificationContext';
@@ -169,6 +171,7 @@ const FRIENDS_FEATURE_LIMITS: Record<SubscriptionTier, FriendsFeatureLimits> = {
 // Current legal document versions
 const CURRENT_TERMS_VERSION = '1.0';
 const CURRENT_PRIVACY_VERSION = '1.0';
+const CURRENT_COMPANION_AGREEMENT_VERSION = COMPANION_AGREEMENT.version;
 
 const defaultConsents: UserConsents = {
   termsAccepted: false,
@@ -380,7 +383,7 @@ export const RequirementsProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
       const { data: application, error: applicationError } = await supabase
         .from('companion_applications')
-        .select('companion_agreement_accepted')
+        .select('companion_agreement_accepted,companion_agreement_accepted_at,companion_agreement_version')
         .eq('user_id', user.id)
         .maybeSingle();
 
@@ -388,8 +391,17 @@ export const RequirementsProvider: React.FC<{ children: React.ReactNode }> = ({ 
         console.error('Error loading companion agreement state:', applicationError);
       }
 
+      const agreementData = application as {
+        companion_agreement_accepted?: boolean;
+        companion_agreement_accepted_at?: string | null;
+        companion_agreement_version?: string | null;
+      } | null;
+
       setCompanionAgreementAccepted(
-        (application as { companion_agreement_accepted?: boolean } | null)?.companion_agreement_accepted === true
+        agreementData?.companion_agreement_accepted === true
+          && typeof agreementData.companion_agreement_accepted_at === 'string'
+          && agreementData.companion_agreement_accepted_at.length > 0
+          && agreementData.companion_agreement_version === CURRENT_COMPANION_AGREEMENT_VERSION
       );
 
       await loadFriendsUsageFromSupabase(user.id);
@@ -523,64 +535,9 @@ export const RequirementsProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   const acceptCompanionAgreement = useCallback(async () => {
     if (!user?.id) return;
-    const now = new Date().toISOString();
-
-    const { data: existingApplication, error: existingApplicationError } = await supabase
-      .from('companion_applications')
-      .select('id, status, companion_agreement_accepted')
-      .eq('user_id', user.id)
-      .maybeSingle();
-
-    if (existingApplicationError && existingApplicationError.code !== 'PGRST116' && existingApplicationError.code !== '42P01') {
-      console.error('Error checking companion application:', existingApplicationError);
-      return;
-    }
-
-    const existing = existingApplication as {
-      id?: string;
-      status?: string;
-      companion_agreement_accepted?: boolean;
-    } | null;
-
-    if (existing?.id) {
-      if (existing.companion_agreement_accepted === true) {
-        setCompanionAgreementAccepted(true);
-        return;
-      }
-
-      if (existing.status && !['draft', 'rejected'].includes(existing.status)) {
-        console.error('Cannot update companion agreement for non-editable application status:', existing.status);
-        return;
-      }
-
-      const { error: updateError } = await supabase
-        .from('companion_applications')
-        .update({
-          companion_agreement_accepted: true,
-          companion_agreement_accepted_at: now,
-        })
-        .eq('id', existing.id);
-
-      if (updateError) {
-        console.error('Error updating companion agreement:', updateError);
-        return;
-      }
-
-      setCompanionAgreementAccepted(true);
-      return;
-    }
-
-    const { error: insertError } = await supabase
-      .from('companion_applications')
-      .insert({
-        user_id: user.id,
-        status: 'draft',
-        companion_agreement_accepted: true,
-        companion_agreement_accepted_at: now,
-      });
-
-    if (insertError && insertError.code !== '23505') {
-      console.error('Error creating companion application with agreement state:', insertError);
+    const { success, error } = await acceptWingmanAgreementApi(CURRENT_COMPANION_AGREEMENT_VERSION);
+    if (!success || error) {
+      console.error('Error accepting companion agreement:', error);
       return;
     }
 
@@ -870,15 +827,15 @@ export const RequirementsProvider: React.FC<{ children: React.ReactNode }> = ({ 
   ]);
 
   const checkCompanionRequirements = useCallback((): CompanionRequirements => {
-    const bookingReqs = checkBookingRequirements('entry');
+    const bookingReqs = checkBookingRequirements('finalize');
 
     return {
       ...bookingReqs,
       companionAgreementAccepted: {
         met: companionAgreementAccepted,
-        requirement: 'You must accept the Wingman Service Agreement',
+        requirement: `You must accept Wingman Agreement v${CURRENT_COMPANION_AGREEMENT_VERSION}`,
         action: 'View Agreement',
-        navigateTo: 'LegalDocument',
+        navigateTo: 'CompanionAgreement',
       },
       allMet: bookingReqs.allMet && companionAgreementAccepted,
       unmetRequirements: [
@@ -888,9 +845,9 @@ export const RequirementsProvider: React.FC<{ children: React.ReactNode }> = ({ 
           : [
               {
                 met: false,
-                requirement: 'You must accept the Wingman Agreement',
+                requirement: `You must accept Wingman Agreement v${CURRENT_COMPANION_AGREEMENT_VERSION}`,
                 action: 'View Agreement',
-                navigateTo: 'LegalDocument',
+                navigateTo: 'CompanionAgreement',
               },
             ]),
       ],

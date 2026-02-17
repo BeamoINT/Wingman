@@ -19,7 +19,7 @@ const Tab = createBottomTabNavigator<MainTabParamList>();
 
 export const MainTabNavigator: React.FC = () => {
   const { tokens } = useTheme();
-  const { colors, spacing, typography } = tokens;
+  const { colors, spacing } = tokens;
   const insets = useSafeAreaInsets();
 
   const tabBarBottomPadding = Math.max(insets.bottom, spacing.xs);
@@ -39,21 +39,16 @@ export const MainTabNavigator: React.FC = () => {
       paddingBottom: tabBarBottomPadding,
       backgroundColor: colors.surface.level1,
     },
-    tabBarLabel: {
-      ...typography.presets.caption,
-      fontSize: 11,
-      lineHeight: 13,
-      marginTop: 0,
-      marginBottom: 0,
-      fontFamily: typography.fontFamily.medium,
-      letterSpacing: 0.1,
+    tabBarItem: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 0,
     },
     activeIconContainer: {
       backgroundColor: colors.accent.soft,
       borderRadius: spacing.radius.md,
       paddingHorizontal: spacing.sm,
-      paddingVertical: 2,
-      marginTop: -2,
+      paddingVertical: 4,
       borderTopWidth: 2,
       borderTopColor: colors.accent.primary,
     },
@@ -63,11 +58,11 @@ export const MainTabNavigator: React.FC = () => {
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarShowLabel: true,
+        tabBarShowLabel: false,
         tabBarActiveTintColor: colors.accent.primary,
         tabBarInactiveTintColor: colors.text.tertiary,
         tabBarStyle: styles.tabBar,
-        tabBarLabelStyle: styles.tabBarLabel,
+        tabBarItemStyle: styles.tabBarItem,
         tabBarHideOnKeyboard: true,
         tabBarIcon: ({ focused, color }) => {
           let iconName: keyof typeof Ionicons.glyphMap;

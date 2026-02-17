@@ -35,7 +35,15 @@ export type MonitoringEventName =
   | 'live_location_share_stopped'
   | 'live_location_permission_denied'
   | 'live_location_cleanup_run'
-  | 'google_maps_runtime_unavailable';
+  | 'google_maps_runtime_unavailable'
+  | 'wingman_onboarding_step_viewed'
+  | 'wingman_onboarding_step_completed'
+  | 'wingman_onboarding_blocked'
+  | 'wingman_agreement_accept_success'
+  | 'wingman_agreement_accept_fail'
+  | 'wingman_profile_setup_save_success'
+  | 'wingman_profile_setup_save_fail'
+  | 'id_verification_retry_started';
 
 type EventPayload = Record<string, string | number | boolean | null | undefined>;
 

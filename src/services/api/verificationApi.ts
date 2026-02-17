@@ -507,6 +507,8 @@ export async function getVerificationStatus(userId: string): Promise<Verificatio
       'id_verified_at',
       'id_verification_status',
       'id_verification_expires_at',
+      'id_verification_failure_code',
+      'id_verification_failure_message',
     ];
 
     while (selectableColumns.length > 0) {
@@ -577,6 +579,12 @@ export async function getVerificationStatus(userId: string): Promise<Verificatio
         phoneVerified,
         idVerified,
         idVerificationStatus,
+        idVerificationFailureCode: typeof profile.id_verification_failure_code === 'string'
+          ? profile.id_verification_failure_code
+          : null,
+        idVerificationFailureMessage: typeof profile.id_verification_failure_message === 'string'
+          ? profile.id_verification_failure_message
+          : null,
         idVerificationExpiresAt,
         idVerifiedAt: typeof profile.id_verified_at === 'string' ? profile.id_verified_at : null,
         verificationLevel,
@@ -599,6 +607,8 @@ function getDefaultVerificationStatus(emailVerified = false): VerificationStatus
     phoneVerified: false,
     idVerified: false,
     idVerificationStatus: 'unverified',
+    idVerificationFailureCode: null,
+    idVerificationFailureMessage: null,
     idVerificationExpiresAt: null,
     idVerifiedAt: null,
     verificationLevel: 'basic',
@@ -620,6 +630,8 @@ export function subscribeToVerificationUpdates(
     phoneVerified?: boolean;
     idVerified?: boolean;
     idVerificationStatus?: IdVerificationStatus;
+    idVerificationFailureCode?: string | null;
+    idVerificationFailureMessage?: string | null;
     idVerificationExpiresAt?: string | null;
     idVerifiedAt?: string | null;
   }) => void
@@ -642,6 +654,12 @@ export function subscribeToVerificationUpdates(
           phoneVerified: typeof newData.phone_verified === 'boolean' ? newData.phone_verified : undefined,
           idVerified: typeof newData.id_verified === 'boolean' ? newData.id_verified : undefined,
           idVerificationStatus: normalizeIdVerificationStatus(newData.id_verification_status),
+          idVerificationFailureCode: typeof newData.id_verification_failure_code === 'string'
+            ? newData.id_verification_failure_code
+            : null,
+          idVerificationFailureMessage: typeof newData.id_verification_failure_message === 'string'
+            ? newData.id_verification_failure_message
+            : null,
           idVerificationExpiresAt: typeof newData.id_verification_expires_at === 'string'
             ? newData.id_verification_expires_at
             : null,

@@ -12,8 +12,9 @@ import { Avatar, Badge, Card } from '../components';
 import { useAuth } from '../context/AuthContext';
 import { useVerification } from '../context/VerificationContext';
 import { checkExistingCompanionProfile, getCompanionApplication } from '../services/api/companionApplicationApi';
+import { getWingmanOnboardingState } from '../services/api/wingmanOnboardingApi';
 import { createPaymentPortalSession } from '../services/api/payments';
-import type { CompanionApplicationStatus, RootStackParamList } from '../types';
+import type { CompanionApplicationStatus, RootStackParamList, WingmanOnboardingState } from '../types';
 import { haptics } from '../utils/haptics';
 import { useTheme } from '../context/ThemeContext';
 import type { ThemeTokens } from '../theme/tokens';
@@ -41,6 +42,7 @@ export const ProfileScreen: React.FC = () => {
   const { idVerificationStatus, idVerificationReminder } = useVerification();
 
   const [companionStatus, setCompanionStatus] = useState<CompanionApplicationStatus | 'active' | null>(null);
+  const [wingmanOnboardingState, setWingmanOnboardingState] = useState<WingmanOnboardingState | null>(null);
   const [isOpeningPaymentPortal, setIsOpeningPaymentPortal] = useState(false);
 
   // Load companion/application status on screen focus
@@ -51,6 +53,11 @@ export const ProfileScreen: React.FC = () => {
         // Check if already an active companion
         const { exists } = await checkExistingCompanionProfile();
         if (cancelled) return;
+        const { state: onboardingState } = await getWingmanOnboardingState();
+        if (!cancelled) {
+          setWingmanOnboardingState(onboardingState);
+        }
+
         if (exists) {
           setCompanionStatus('active');
           return;
@@ -293,15 +300,23 @@ export const ProfileScreen: React.FC = () => {
           activeOpacity={0.9}
           onPress={async () => {
             await haptics.medium();
-            if (companionStatus === 'active' || companionStatus === 'approved') {
-              navigation.navigate('CompanionDashboard');
-            } else if (companionStatus === 'pending_review' || companionStatus === 'under_review' || companionStatus === 'suspended') {
+            const onboardingIncomplete = Boolean(
+              wingmanOnboardingState
+              && (
+                !wingmanOnboardingState.idVerificationCompleted
+                || !wingmanOnboardingState.companionAgreementCompleted
+                || !wingmanOnboardingState.profileSetupCompleted
+              )
+            );
+
+            if (companionStatus === 'pending_review' || companionStatus === 'under_review' || companionStatus === 'suspended') {
               navigation.navigate('CompanionApplicationStatus');
-            } else if (companionStatus === 'draft') {
-              navigation.navigate('CompanionOnboarding');
+            } else if (onboardingIncomplete) {
+              navigation.navigate('CompanionOnboarding', { resumeStep: wingmanOnboardingState?.currentStep });
+            } else if (companionStatus === 'active' || companionStatus === 'approved') {
+              navigation.navigate('CompanionDashboard');
             } else {
-              // No application yet — start onboarding
-              navigation.navigate('CompanionOnboarding');
+              navigation.navigate('CompanionOnboarding', { resumeStep: wingmanOnboardingState?.currentStep });
             }
           }}
         >
@@ -314,10 +329,19 @@ export const ProfileScreen: React.FC = () => {
             <View style={styles.companionIcon}>
               <Ionicons
                 name={
-                  companionStatus === 'active' || companionStatus === 'approved'
-                    ? 'grid'
-                    : companionStatus === 'pending_review' || companionStatus === 'under_review'
+                  companionStatus === 'pending_review' || companionStatus === 'under_review'
                     ? 'time'
+                    : (
+                      wingmanOnboardingState
+                      && (
+                        !wingmanOnboardingState.idVerificationCompleted
+                        || !wingmanOnboardingState.companionAgreementCompleted
+                        || !wingmanOnboardingState.profileSetupCompleted
+                      )
+                    )
+                      ? 'shield-checkmark'
+                      : companionStatus === 'active' || companionStatus === 'approved'
+                    ? 'grid'
                     : 'people'
                 }
                 size={24}
@@ -326,22 +350,36 @@ export const ProfileScreen: React.FC = () => {
             </View>
             <View style={styles.companionContent}>
               <Text style={styles.companionTitle}>
-                {companionStatus === 'active' || companionStatus === 'approved'
-                  ? 'Wingman Dashboard'
-                  : companionStatus === 'pending_review' || companionStatus === 'under_review'
+                {companionStatus === 'pending_review' || companionStatus === 'under_review'
                   ? 'Application Under Review'
-                  : companionStatus === 'draft'
-                  ? 'Continue Application'
-                  : 'Become a Wingman'}
+                  : (
+                    wingmanOnboardingState
+                    && (
+                      !wingmanOnboardingState.idVerificationCompleted
+                      || !wingmanOnboardingState.companionAgreementCompleted
+                      || !wingmanOnboardingState.profileSetupCompleted
+                    )
+                  )
+                    ? `Continue Onboarding (Step ${wingmanOnboardingState.currentStep}/3)`
+                    : companionStatus === 'active' || companionStatus === 'approved'
+                      ? 'Wingman Dashboard'
+                      : 'Become a Wingman'}
               </Text>
               <Text style={styles.companionSubtitle}>
-                {companionStatus === 'active' || companionStatus === 'approved'
-                  ? 'Manage your Wingman profile'
-                  : companionStatus === 'pending_review' || companionStatus === 'under_review'
+                {companionStatus === 'pending_review' || companionStatus === 'under_review'
                   ? 'Check your application status'
-                  : companionStatus === 'draft'
-                  ? 'Pick up where you left off'
-                  : 'Earn money by being a great friend'}
+                  : (
+                    wingmanOnboardingState
+                    && (
+                      !wingmanOnboardingState.idVerificationCompleted
+                      || !wingmanOnboardingState.companionAgreementCompleted
+                      || !wingmanOnboardingState.profileSetupCompleted
+                    )
+                  )
+                    ? 'Complete ID verification, agreement acceptance, and profile setup in order'
+                    : companionStatus === 'active' || companionStatus === 'approved'
+                      ? 'Manage your Wingman profile'
+                      : 'Earn money by being a great friend'}
               </Text>
             </View>
             <Ionicons name="arrow-forward" size={20} color={colors.text.secondary} />

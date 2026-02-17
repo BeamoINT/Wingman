@@ -38,6 +38,9 @@ export interface ProfileData {
   id_verified_at?: string | null;
   id_verification_status?: 'unverified' | 'pending' | 'verified' | 'expired' | 'failed_name_mismatch' | 'failed' | string;
   id_verification_expires_at?: string | null;
+  id_verification_failure_code?: string | null;
+  id_verification_failure_message?: string | null;
+  id_verification_last_failed_at?: string | null;
   id_verification_provider?: string | null;
   id_verification_provider_ref?: string | null;
   verification_level: string;
