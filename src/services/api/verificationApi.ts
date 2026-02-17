@@ -409,28 +409,24 @@ export async function createIdVerificationSession(): Promise<{
   status: IdVerificationStatus | null;
   error: string | null;
 }> {
-  const invoke = async (accessToken: string | null) => {
+  const invoke = async (accessToken?: string | null) => {
     const headers = accessToken
       ? {
-        'x-session-token': accessToken,
         Authorization: `Bearer ${accessToken}`,
+        'x-session-token': accessToken,
       }
       : undefined;
     return supabase.functions.invoke<CreateIdVerificationSessionResponse>(
       'create-id-verification-session',
       {
-        body: accessToken ? { accessToken } : {},
+        body: accessToken ? { accessToken } : undefined,
         headers,
       }
     );
   };
 
-  let accessToken = await getCurrentAccessToken();
-  if (!accessToken) {
-    accessToken = await refreshAccessToken();
-  }
-
-  let { data, error } = await invoke(accessToken);
+  // First attempt: rely on Supabase client session propagation.
+  let { data, error } = await invoke();
 
   if (!error && data?.url && data?.sessionId) {
     return {
@@ -448,9 +444,13 @@ export async function createIdVerificationSession(): Promise<{
   let parsedError = await extractFunctionError(error as FunctionsErrorLike | null);
 
   if (parsedError.status === 401) {
-    const refreshedToken = await refreshAccessToken();
-    if (refreshedToken) {
-      const retryResult = await invoke(refreshedToken);
+    let accessToken = await getCurrentAccessToken();
+    if (!accessToken) {
+      accessToken = await refreshAccessToken();
+    }
+
+    if (accessToken) {
+      const retryResult = await invoke(accessToken);
       data = retryResult.data;
       error = retryResult.error;
 
@@ -468,6 +468,31 @@ export async function createIdVerificationSession(): Promise<{
       }
 
       parsedError = await extractFunctionError(error as FunctionsErrorLike | null);
+
+      // One final retry after forced refresh in case the first token was stale.
+      if (parsedError.status === 401) {
+        const refreshedToken = await refreshAccessToken();
+        if (refreshedToken) {
+          const finalRetry = await invoke(refreshedToken);
+          data = finalRetry.data;
+          error = finalRetry.error;
+
+          if (!error && data?.url && data?.sessionId) {
+            return {
+              sessionId: data.sessionId,
+              url: data.url,
+              status: normalizeIdVerificationStatus(data.status),
+              error: null,
+            };
+          }
+
+          if (data?.error) {
+            return { sessionId: null, url: null, status: null, error: data.error };
+          }
+
+          parsedError = await extractFunctionError(error as FunctionsErrorLike | null);
+        }
+      }
     }
   }
 
