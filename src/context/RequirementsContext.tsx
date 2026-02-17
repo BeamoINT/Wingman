@@ -381,14 +381,42 @@ export const RequirementsProvider: React.FC<{ children: React.ReactNode }> = ({ 
         await persistConsentsToSupabase(user.id, normalizedConsents);
       }
 
-      const { data: application, error: applicationError } = await supabase
-        .from('companion_applications')
-        .select('companion_agreement_accepted,companion_agreement_accepted_at,companion_agreement_version')
-        .eq('user_id', user.id)
-        .maybeSingle();
+      const agreementSelectableColumns = [
+        'companion_agreement_accepted',
+        'companion_agreement_accepted_at',
+        'companion_agreement_version',
+      ];
 
-      if (applicationError && applicationError.code !== 'PGRST116' && applicationError.code !== '42P01') {
+      let application: Record<string, unknown> | null = null;
+      while (agreementSelectableColumns.length > 0) {
+        const { data, error: applicationError } = await supabase
+          .from('companion_applications')
+          .select(agreementSelectableColumns.join(','))
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        if (!applicationError) {
+          application = (data || null) as Record<string, unknown> | null;
+          break;
+        }
+
+        if (applicationError.code === 'PGRST116' || applicationError.code === '42P01') {
+          break;
+        }
+
+        if (applicationError.code === '42703') {
+          const missingColumn = parseMissingColumn(String(applicationError.message || ''));
+          if (missingColumn) {
+            const index = agreementSelectableColumns.indexOf(missingColumn);
+            if (index !== -1) {
+              agreementSelectableColumns.splice(index, 1);
+              continue;
+            }
+          }
+        }
+
         console.error('Error loading companion agreement state:', applicationError);
+        break;
       }
 
       const agreementData = application as {
@@ -397,11 +425,23 @@ export const RequirementsProvider: React.FC<{ children: React.ReactNode }> = ({ 
         companion_agreement_version?: string | null;
       } | null;
 
+      const hasAgreementAcceptedAtColumn = agreementSelectableColumns.includes('companion_agreement_accepted_at');
+      const hasAgreementVersionColumn = agreementSelectableColumns.includes('companion_agreement_version');
+      const acceptedBase = agreementData?.companion_agreement_accepted === true
+        && (
+          !hasAgreementAcceptedAtColumn
+          || (
+            typeof agreementData.companion_agreement_accepted_at === 'string'
+            && agreementData.companion_agreement_accepted_at.length > 0
+          )
+        );
+
       setCompanionAgreementAccepted(
-        agreementData?.companion_agreement_accepted === true
-          && typeof agreementData.companion_agreement_accepted_at === 'string'
-          && agreementData.companion_agreement_accepted_at.length > 0
-          && agreementData.companion_agreement_version === CURRENT_COMPANION_AGREEMENT_VERSION
+        acceptedBase
+          && (
+            !hasAgreementVersionColumn
+            || agreementData?.companion_agreement_version === CURRENT_COMPANION_AGREEMENT_VERSION
+          )
       );
 
       await loadFriendsUsageFromSupabase(user.id);
