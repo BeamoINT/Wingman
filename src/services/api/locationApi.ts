@@ -7,6 +7,11 @@ import type { PlaceDetails, PlacePrediction } from '../../types/location';
 import { trackEvent } from '../monitoring/events';
 import { supabase } from '../supabase';
 
+type QueryError = {
+  code?: string | null;
+  message?: string | null;
+};
+
 /**
  * Search result from places autocomplete
  */
@@ -104,6 +109,314 @@ function toOptionalString(value: unknown): string | null {
 function toOptionalNumber(value: unknown): number | null {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isMissingRpc(error: unknown, rpcName: string): boolean {
+  const typedError = error as QueryError | null | undefined;
+  const code = String(typedError?.code || '').toUpperCase();
+  const message = String(typedError?.message || '').toLowerCase();
+  return (
+    (message.includes(rpcName.toLowerCase()) || message.includes(`function public.${rpcName}`))
+    && (
+      message.includes('could not find the function')
+      || message.includes('does not exist')
+      || message.includes('schema cache')
+      || code === '42883'
+      || code.startsWith('PGRST')
+    )
+  );
+}
+
+function isMissingColumnError(error: unknown): boolean {
+  const typedError = error as QueryError | null | undefined;
+  return String(typedError?.code || '') === '42703';
+}
+
+function extractMissingColumn(error: unknown): string | null {
+  const typedError = error as QueryError | null | undefined;
+  const message = String(typedError?.message || '');
+
+  const directMatch = message.match(/column\s+([a-zA-Z0-9_]+)\s+does not exist/i);
+  if (directMatch?.[1]) {
+    return directMatch[1];
+  }
+
+  const scopedMatch = message.match(/column\s+([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+)\s+does not exist/i);
+  if (scopedMatch?.[2]) {
+    return scopedMatch[2];
+  }
+
+  return null;
+}
+
+function normalizeMetroAreaRecord(record: Record<string, unknown>): MetroArea {
+  return {
+    id: String(record.id || ''),
+    metroAreaName: String(record.metro_area_name || record.display_city || record.metro_city || 'Unknown Metro'),
+    metroName: String(record.metro_name || record.metro_area_name || ''),
+    metroCity: String(record.metro_city || record.display_city || record.metro_area_name || ''),
+    metroState: String(record.metro_state || record.state_code || ''),
+    metroCountry: String(record.metro_country || record.country_code || ''),
+    latitude: toOptionalNumber(record.latitude),
+    longitude: toOptionalNumber(record.longitude),
+    population: toOptionalNumber(record.population),
+  };
+}
+
+const PROFILE_METRO_SELECT_COLUMNS = [
+  'metro_selection_mode',
+  'auto_metro_area_id',
+  'manual_metro_area_id',
+  'default_metro_area_id',
+  'metro_area_id',
+  'metro_area_name',
+  'metro_city',
+  'metro_state',
+  'metro_country',
+  'metro_selection_updated_at',
+  'updated_at',
+];
+
+function normalizeMetroPreferencesFromProfileRow(row: Record<string, unknown>): MetroPreferences {
+  const modeRaw = typeof row.metro_selection_mode === 'string' ? row.metro_selection_mode : 'auto';
+  const mode: MetroSelectionMode = (
+    modeRaw === 'manual' || modeRaw === 'default' ? modeRaw : 'auto'
+  );
+
+  return {
+    mode,
+    autoMetroAreaId: toOptionalString(row.auto_metro_area_id),
+    manualMetroAreaId: toOptionalString(row.manual_metro_area_id),
+    defaultMetroAreaId: toOptionalString(row.default_metro_area_id),
+    effectiveMetroAreaId: toOptionalString(row.metro_area_id),
+    effectiveMetroAreaName: toOptionalString(row.metro_area_name),
+    effectiveMetroCity: toOptionalString(row.metro_city),
+    effectiveMetroState: toOptionalString(row.metro_state),
+    effectiveMetroCountry: toOptionalString(row.metro_country),
+    updatedAt: toOptionalString(row.metro_selection_updated_at) || toOptionalString(row.updated_at),
+  };
+}
+
+async function getCurrentProfileMetroRow(): Promise<{
+  row: Record<string, unknown> | null;
+  error?: string;
+}> {
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user?.id) {
+    return { row: null, error: authError?.message || 'Not authenticated' };
+  }
+
+  const selectableColumns = [...PROFILE_METRO_SELECT_COLUMNS];
+
+  while (selectableColumns.length > 0) {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select(selectableColumns.join(','))
+      .eq('id', user.id)
+      .maybeSingle();
+
+    if (!error) {
+      return { row: (data as unknown as Record<string, unknown> | null) || null };
+    }
+
+    if (isMissingColumnError(error)) {
+      const missingColumn = extractMissingColumn(error);
+      if (missingColumn) {
+        const idx = selectableColumns.indexOf(missingColumn);
+        if (idx !== -1) {
+          selectableColumns.splice(idx, 1);
+          continue;
+        }
+      }
+    }
+
+    return { row: null, error: error.message || 'Unable to load metro preferences.' };
+  }
+
+  return { row: null, error: 'Unable to load metro preferences.' };
+}
+
+async function updateCurrentProfileMetroRow(updates: Record<string, unknown>): Promise<{
+  row: Record<string, unknown> | null;
+  error?: string;
+}> {
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user?.id) {
+    return { row: null, error: authError?.message || 'Not authenticated' };
+  }
+
+  const mutableUpdates = { ...updates };
+  const selectableColumns = [...PROFILE_METRO_SELECT_COLUMNS];
+
+  while (Object.keys(mutableUpdates).length > 0) {
+    const { data, error } = await supabase
+      .from('profiles')
+      .update(mutableUpdates)
+      .eq('id', user.id)
+      .select(selectableColumns.join(','))
+      .single();
+
+    if (!error) {
+      return { row: (data as unknown as Record<string, unknown> | null) || null };
+    }
+
+    if (isMissingColumnError(error)) {
+      const missingColumn = extractMissingColumn(error);
+      if (missingColumn) {
+        delete mutableUpdates[missingColumn];
+        const idx = selectableColumns.indexOf(missingColumn);
+        if (idx !== -1) {
+          selectableColumns.splice(idx, 1);
+        }
+        continue;
+      }
+    }
+
+    return { row: null, error: error.message || 'Unable to update metro preferences.' };
+  }
+
+  return { row: null, error: 'Unable to update metro preferences.' };
+}
+
+async function listMetroAreasFallback(input: {
+  query?: string;
+  countryCode?: string;
+  limit: number;
+  offset: number;
+}): Promise<{ metros: MetroArea[]; error?: string }> {
+  const normalizedCountry = input.countryCode?.trim().toUpperCase();
+  const queryText = input.query?.trim();
+
+  let baseQuery = supabase
+    .from('us_metro_areas')
+    .select('id,display_city,metro_name,state_code,country_code,latitude,longitude,population')
+    .eq('is_active', true);
+
+  if (normalizedCountry) {
+    baseQuery = baseQuery.eq('country_code', normalizedCountry);
+  }
+
+  if (queryText) {
+    baseQuery = baseQuery.ilike('display_city', `%${queryText}%`);
+  }
+
+  const { data, error } = await baseQuery
+    .order('population', { ascending: false })
+    .order('display_city', { ascending: true })
+    .range(input.offset, input.offset + input.limit - 1);
+
+  if (!error) {
+    const rows = Array.isArray(data) ? data : [];
+    return {
+      metros: rows
+        .map((row) => normalizeMetroAreaRecord(row as Record<string, unknown>))
+        .filter((metro) => metro.id.length > 0),
+    };
+  }
+
+  if (queryText) {
+    let metroNameQuery = supabase
+      .from('us_metro_areas')
+      .select('id,display_city,metro_name,state_code,country_code,latitude,longitude,population')
+      .eq('is_active', true);
+
+    if (normalizedCountry) {
+      metroNameQuery = metroNameQuery.eq('country_code', normalizedCountry);
+    }
+
+    const { data: byMetroNameData, error: byMetroNameError } = await metroNameQuery
+      .ilike('metro_name', `%${queryText}%`)
+      .order('population', { ascending: false })
+      .order('display_city', { ascending: true })
+      .range(input.offset, input.offset + input.limit - 1);
+
+    if (!byMetroNameError) {
+      const rows = Array.isArray(byMetroNameData) ? byMetroNameData : [];
+      return {
+        metros: rows
+          .map((row) => normalizeMetroAreaRecord(row as Record<string, unknown>))
+          .filter((metro) => metro.id.length > 0),
+      };
+    }
+  }
+
+  return { metros: [], error: error.message || 'Unable to load metro areas.' };
+}
+
+async function updateMetroPreferencesFallback(input: {
+  mode: MetroSelectionMode;
+  manualMetroAreaId?: string | null;
+  defaultMetroAreaId?: string | null;
+}): Promise<{ preferences: MetroPreferences | null; error?: string }> {
+  const { row: currentRow, error: currentRowError } = await getCurrentProfileMetroRow();
+  if (currentRowError) {
+    return { preferences: null, error: currentRowError };
+  }
+
+  const row = currentRow || {};
+  const nowIso = new Date().toISOString();
+  const currentAutoMetro = toOptionalString(row.auto_metro_area_id);
+  let nextManualMetro = toOptionalString(row.manual_metro_area_id);
+  let nextDefaultMetro = toOptionalString(row.default_metro_area_id);
+
+  if (input.manualMetroAreaId !== undefined) {
+    nextManualMetro = input.manualMetroAreaId;
+  }
+  if (input.defaultMetroAreaId !== undefined) {
+    nextDefaultMetro = input.defaultMetroAreaId;
+  }
+
+  if (input.mode === 'manual' && !nextManualMetro) {
+    return { preferences: null, error: 'Manual mode requires selecting a metro area first.' };
+  }
+  if (input.mode === 'default' && !nextDefaultMetro) {
+    return { preferences: null, error: 'Default mode requires selecting a metro area first.' };
+  }
+
+  const effectiveMetroAreaId = (() => {
+    if (input.mode === 'manual') return nextManualMetro;
+    if (input.mode === 'default') return nextDefaultMetro;
+    return currentAutoMetro || toOptionalString(row.metro_area_id);
+  })();
+
+  const updates: Record<string, unknown> = {
+    metro_selection_mode: input.mode,
+    metro_selection_updated_at: nowIso,
+    updated_at: nowIso,
+    manual_metro_area_id: nextManualMetro,
+    default_metro_area_id: nextDefaultMetro,
+  };
+
+  if (effectiveMetroAreaId) {
+    const { data: metroRow } = await supabase
+      .from('us_metro_areas')
+      .select('id,display_city,state_code,country_code')
+      .eq('id', effectiveMetroAreaId)
+      .maybeSingle();
+
+    const metroRecord = (metroRow || {}) as Record<string, unknown>;
+    updates.metro_area_id = effectiveMetroAreaId;
+    updates.metro_area_name = toOptionalString(metroRecord.display_city);
+    updates.metro_city = toOptionalString(metroRecord.display_city);
+    updates.metro_state = toOptionalString(metroRecord.state_code);
+    updates.metro_country = toOptionalString(metroRecord.country_code);
+  }
+
+  const { row: updatedRow, error: updateError } = await updateCurrentProfileMetroRow(updates);
+  if (updateError) {
+    return { preferences: null, error: updateError };
+  }
+
+  const normalized = normalizeMetroPreferencesFromProfileRow((updatedRow || row) as Record<string, unknown>);
+  return { preferences: normalized };
 }
 
 function normalizeMetroPreferences(payload: unknown): MetroPreferences | null {
@@ -321,36 +634,67 @@ export async function listMetroAreas(input: {
   const { query, countryCode, limit = 50, offset = 0 } = input;
 
   try {
-    const { data, error } = await supabase.rpc('list_metro_areas_v1', {
-      p_query: query ?? null,
-      p_country_code: countryCode ?? null,
-      p_limit: limit,
-      p_offset: offset,
-    });
+    const rpcVariants: Array<Record<string, unknown>> = [
+      {
+        p_query: query ?? null,
+        p_country_code: countryCode ?? null,
+        p_limit: limit,
+        p_offset: offset,
+      },
+      {
+        p_search_query: query ?? null,
+        p_country_code: countryCode ?? null,
+        p_limit: limit,
+        p_offset: offset,
+      },
+      {
+        p_query: query ?? null,
+        p_country: countryCode ?? null,
+        p_limit: limit,
+        p_offset: offset,
+      },
+    ];
 
-    if (error) {
-      return { metros: [], error: error.message || 'Unable to load metro areas.' };
+    let lastRpcError: QueryError | null = null;
+    for (const payload of rpcVariants) {
+      const { data, error } = await supabase.rpc('list_metro_areas_v1', payload);
+      if (!error) {
+        const rows = Array.isArray(data) ? data : [];
+        return {
+          metros: rows
+            .map((row) => normalizeMetroAreaRecord(row as Record<string, unknown>))
+            .filter((metro) => metro.id.length > 0),
+        };
+      }
+
+      lastRpcError = error;
+      if (!isMissingRpc(error, 'list_metro_areas_v1')) {
+        break;
+      }
     }
 
-    const rows = Array.isArray(data) ? data : [];
-    return {
-      metros: rows.map((row) => {
-        const record = row as Record<string, unknown>;
-        return {
-          id: String(record.id || ''),
-          metroAreaName: String(record.metro_area_name || record.metro_city || 'Unknown Metro'),
-          metroName: String(record.metro_name || record.metro_area_name || ''),
-          metroCity: String(record.metro_city || record.metro_area_name || ''),
-          metroState: String(record.metro_state || ''),
-          metroCountry: String(record.metro_country || ''),
-          latitude: toOptionalNumber(record.latitude),
-          longitude: toOptionalNumber(record.longitude),
-          population: toOptionalNumber(record.population),
-        } satisfies MetroArea;
-      }).filter((metro) => metro.id.length > 0),
-    };
+    const fallback = await listMetroAreasFallback({
+      query,
+      countryCode,
+      limit,
+      offset,
+    });
+    if (!fallback.error || fallback.metros.length > 0) {
+      return fallback;
+    }
+
+    return { metros: [], error: lastRpcError?.message || fallback.error || 'Unable to load metro areas.' };
   } catch (err) {
-    return { metros: [], error: 'Unable to load metro areas.' };
+    const fallback = await listMetroAreasFallback({
+      query,
+      countryCode,
+      limit,
+      offset,
+    });
+    if (!fallback.error || fallback.metros.length > 0) {
+      return fallback;
+    }
+    return { metros: [], error: fallback.error || 'Unable to load metro areas.' };
   }
 }
 
@@ -360,13 +704,33 @@ export async function getMetroPreferences(): Promise<{
 }> {
   try {
     const { data, error } = await supabase.rpc('get_current_metro_preferences_v1');
-    if (error) {
+    if (error && !isMissingRpc(error, 'get_current_metro_preferences_v1')) {
       return { preferences: null, error: error.message || 'Unable to load metro preferences.' };
     }
 
-    return { preferences: normalizeMetroPreferences(data) };
+    if (!error) {
+      return { preferences: normalizeMetroPreferences(data) };
+    }
+
+    const { row, error: fallbackError } = await getCurrentProfileMetroRow();
+    if (fallbackError) {
+      return { preferences: null, error: fallbackError };
+    }
+    if (!row) {
+      return { preferences: null };
+    }
+
+    return { preferences: normalizeMetroPreferencesFromProfileRow(row) };
   } catch (err) {
-    return { preferences: null, error: 'Unable to load metro preferences.' };
+    const { row, error: fallbackError } = await getCurrentProfileMetroRow();
+    if (fallbackError) {
+      return { preferences: null, error: fallbackError };
+    }
+    if (!row) {
+      return { preferences: null };
+    }
+
+    return { preferences: normalizeMetroPreferencesFromProfileRow(row) };
   }
 }
 
@@ -382,13 +746,17 @@ export async function updateMetroPreferences(input: {
       p_default_metro_area_id: input.defaultMetroAreaId ?? null,
     });
 
-    if (error) {
+    if (error && !isMissingRpc(error, 'update_metro_preferences_v1')) {
       return { preferences: null, error: error.message || 'Unable to update metro preferences.' };
     }
 
-    const preferences = normalizeMetroPreferences(data);
-    return { preferences };
+    if (!error) {
+      const preferences = normalizeMetroPreferences(data);
+      return { preferences };
+    }
+
+    return updateMetroPreferencesFallback(input);
   } catch (err) {
-    return { preferences: null, error: 'Unable to update metro preferences.' };
+    return updateMetroPreferencesFallback(input);
   }
 }
