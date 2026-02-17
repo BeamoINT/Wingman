@@ -410,7 +410,12 @@ export async function createIdVerificationSession(): Promise<{
   error: string | null;
 }> {
   const invoke = async (accessToken: string | null) => {
-    const headers = accessToken ? { 'x-session-token': accessToken } : undefined;
+    const headers = accessToken
+      ? {
+        'x-session-token': accessToken,
+        Authorization: `Bearer ${accessToken}`,
+      }
+      : undefined;
     return supabase.functions.invoke<CreateIdVerificationSessionResponse>(
       'create-id-verification-session',
       {
@@ -420,7 +425,11 @@ export async function createIdVerificationSession(): Promise<{
     );
   };
 
-  const accessToken = await getCurrentAccessToken();
+  let accessToken = await getCurrentAccessToken();
+  if (!accessToken) {
+    accessToken = await refreshAccessToken();
+  }
+
   let { data, error } = await invoke(accessToken);
 
   if (!error && data?.url && data?.sessionId) {
@@ -472,6 +481,20 @@ export async function createIdVerificationSession(): Promise<{
   }
 
   if (parsedError.status === 401) {
+    const parsedMessage = String(parsedError.message || '').toLowerCase();
+    if (
+      parsedMessage.includes('missing authorization header')
+      || parsedMessage.includes('invalid jwt')
+      || parsedMessage.includes('authentication required')
+    ) {
+      return {
+        sessionId: null,
+        url: null,
+        status: null,
+        error: 'Unable to authenticate verification request. Please wait a moment and try again.',
+      };
+    }
+
     return {
       sessionId: null,
       url: null,
