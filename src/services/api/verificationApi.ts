@@ -425,8 +425,21 @@ export async function createIdVerificationSession(): Promise<{
     );
   };
 
-  // First attempt: rely on Supabase client session propagation.
-  let { data, error } = await invoke();
+  let accessToken = await getCurrentAccessToken();
+  if (!accessToken) {
+    accessToken = await refreshAccessToken();
+  }
+
+  if (!accessToken) {
+    return {
+      sessionId: null,
+      url: null,
+      status: null,
+      error: 'Your session expired. Please sign in again and retry verification.',
+    };
+  }
+
+  let { data, error } = await invoke(accessToken);
 
   if (!error && data?.url && data?.sessionId) {
     return {
@@ -444,13 +457,9 @@ export async function createIdVerificationSession(): Promise<{
   let parsedError = await extractFunctionError(error as FunctionsErrorLike | null);
 
   if (parsedError.status === 401) {
-    let accessToken = await getCurrentAccessToken();
-    if (!accessToken) {
-      accessToken = await refreshAccessToken();
-    }
-
-    if (accessToken) {
-      const retryResult = await invoke(accessToken);
+    const refreshedToken = await refreshAccessToken();
+    if (refreshedToken) {
+      const retryResult = await invoke(refreshedToken);
       data = retryResult.data;
       error = retryResult.error;
 
@@ -468,31 +477,6 @@ export async function createIdVerificationSession(): Promise<{
       }
 
       parsedError = await extractFunctionError(error as FunctionsErrorLike | null);
-
-      // One final retry after forced refresh in case the first token was stale.
-      if (parsedError.status === 401) {
-        const refreshedToken = await refreshAccessToken();
-        if (refreshedToken) {
-          const finalRetry = await invoke(refreshedToken);
-          data = finalRetry.data;
-          error = finalRetry.error;
-
-          if (!error && data?.url && data?.sessionId) {
-            return {
-              sessionId: data.sessionId,
-              url: data.url,
-              status: normalizeIdVerificationStatus(data.status),
-              error: null,
-            };
-          }
-
-          if (data?.error) {
-            return { sessionId: null, url: null, status: null, error: data.error };
-          }
-
-          parsedError = await extractFunctionError(error as FunctionsErrorLike | null);
-        }
-      }
     }
   }
 
