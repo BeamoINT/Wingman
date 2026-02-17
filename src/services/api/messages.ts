@@ -464,6 +464,19 @@ function isMissingSchemaError(error: unknown, entity?: string): boolean {
   return message.includes(entity.toLowerCase());
 }
 
+function isConversationUnavailableError(error: unknown): boolean {
+  const typed = (error || {}) as QueryError;
+  const message = String(typed.message || '').toLowerCase();
+
+  return (
+    message.includes('conversation unavailable')
+    || message.includes('unable to open')
+    || message.includes('access denied')
+    || message.includes('blocked')
+    || message.includes('row-level security')
+  );
+}
+
 async function getCurrentUserId(): Promise<{ userId: string | null; error: Error | null }> {
   const {
     data: { user },
@@ -2080,6 +2093,23 @@ export async function getOrCreateConversation(
     const createByRpc = await supabase
       .rpc('get_or_create_direct_conversation_v2', { p_other_user_id: otherUserId });
 
+    if (createByRpc.error) {
+      if (isConversationUnavailableError(createByRpc.error)) {
+        return {
+          conversation: null,
+          error: new Error('Unable to open chat right now.'),
+        };
+      }
+
+      if (!isMissingSchemaError(createByRpc.error, 'get_or_create_direct_conversation_v2')) {
+        console.error('Error creating direct conversation via RPC:', createByRpc.error);
+        return {
+          conversation: null,
+          error: new Error(createByRpc.error.message || 'Unable to open chat right now.'),
+        };
+      }
+    }
+
     if (!createByRpc.error && createByRpc.data) {
       const rpcRow = Array.isArray(createByRpc.data)
         ? (createByRpc.data[0] as RawRecord | undefined)
@@ -2110,9 +2140,12 @@ export async function getOrCreateConversation(
 
     if (createError && createError.code !== '23505') {
       console.error('Error creating direct conversation:', createError);
+      const message = isConversationUnavailableError(createError)
+        ? 'Unable to open chat right now.'
+        : (createError.message || 'Failed to create conversation');
       return {
         conversation: null,
-        error: new Error(createError.message || 'Failed to create conversation'),
+        error: new Error(message),
       };
     }
 

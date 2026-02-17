@@ -327,7 +327,7 @@ export const BookingsScreen: React.FC = () => {
       const { conversation, error } = await getOrCreateConversation(companionUserId);
       if (error || !conversation?.id) {
         console.error('Error creating/opening conversation:', error);
-        Alert.alert('Message Failed', error?.message || 'Unable to open chat right now.');
+        Alert.alert('Message Failed', 'Unable to open chat right now.');
         return;
       }
 

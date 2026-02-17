@@ -21,6 +21,7 @@ import { TutorialScreen } from '../screens/tutorial/TutorialScreen';
 
 // Main App Screens
 import { BookingConfirmationScreen } from '../screens/BookingConfirmationScreen';
+import { BlockedUsersScreen } from '../screens/BlockedUsersScreen';
 import { BookingScreen } from '../screens/BookingScreen';
 import { ChatScreen } from '../screens/ChatScreen';
 import { CompanionProfileScreen } from '../screens/CompanionProfileScreen';
@@ -93,6 +94,7 @@ const ProtectedBookingScreen = withAuthGuard(BookingScreen, 'Booking');
 const ProtectedBookingConfirmationScreen = withAuthGuard(BookingConfirmationScreen, 'BookingConfirmation');
 const ProtectedChatScreen = withAuthGuard(ChatScreen, 'Chat');
 const ProtectedSettingsScreen = withAuthGuard(SettingsScreen, 'Settings');
+const ProtectedBlockedUsersScreen = withAuthGuard(BlockedUsersScreen, 'BlockedUsers');
 const ProtectedSubscriptionScreen = withAuthGuard(SubscriptionScreen, 'Subscription');
 const ProtectedSafetyScreen = withAuthGuard(SafetyScreen, 'Safety');
 const ProtectedVerificationScreen = withAuthGuard(VerificationScreen, 'Verification');
@@ -240,6 +242,7 @@ export const RootNavigator: React.FC = () => {
         <Stack.Screen name="Chat" component={ProtectedChatScreen} />
         <Stack.Screen name="EditProfile" component={ProtectedEditProfileScreen} />
         <Stack.Screen name="Settings" component={ProtectedSettingsScreen} />
+        <Stack.Screen name="BlockedUsers" component={ProtectedBlockedUsersScreen} />
         <Stack.Screen name="MetroPreferences" component={ProtectedMetroPreferencesScreen} />
         <Stack.Screen
           name="MetroMapPicker"

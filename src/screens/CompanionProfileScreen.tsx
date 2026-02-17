@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Badge, Button, Card, Header, Rating, SafetyBanner, ScreenScaffold, SectionHeader } from '../components';
 import { useFeatureGate } from '../components/RequirementsGate';
 import { useTheme } from '../context/ThemeContext';
+import { blockUser } from '../services/api/blocksApi';
 import type { CompanionData } from '../services/api/companions';
 import { fetchCompanionById, fetchCompanionReviews } from '../services/api/companions';
 import { getOrCreateConversation } from '../services/api/messages';
@@ -121,6 +122,7 @@ export const CompanionProfileScreen: React.FC = () => {
   const styles = useThemedStyles(createStyles);
   const { colors, spacing } = tokens;
   const [isFavorite, setIsFavorite] = useState(false);
+  const [isBlockingUser, setIsBlockingUser] = useState(false);
   const [companion, setCompanion] = useState<Companion | null>(null);
   const [reviews, setReviews] = useState<CompanionReview[]>([]);
   const [isLoadingCompanion, setIsLoadingCompanion] = useState(true);
@@ -236,7 +238,7 @@ export const CompanionProfileScreen: React.FC = () => {
     const { conversation, error } = await getOrCreateConversation(companion.user.id);
     if (error || !conversation?.id) {
       console.error('Error creating/opening conversation:', error);
-      Alert.alert('Message Failed', error?.message || 'Unable to open chat right now.');
+      Alert.alert('Message Failed', 'Unable to open chat right now.');
       return;
     }
 
@@ -248,6 +250,42 @@ export const CompanionProfileScreen: React.FC = () => {
     await haptics.selection();
     setIsFavorite(!isFavorite);
   };
+
+  const handleBlockUserPress = useCallback(() => {
+    if (!companion?.user.id || isBlockingUser) {
+      return;
+    }
+
+    const displayName = `${companion.user.firstName || 'this'} ${companion.user.lastName || 'user'}`.trim();
+
+    Alert.alert(
+      'Block User',
+      `Block ${displayName}? You will no longer see each other in Discover, bookings, messages, or search.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Block',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              setIsBlockingUser(true);
+              await haptics.warning();
+
+              const { success, error } = await blockUser(companion.user.id);
+              setIsBlockingUser(false);
+
+              if (!success || error) {
+                Alert.alert('Unable to Block', 'Unable to complete this action right now.');
+                return;
+              }
+
+              navigation.goBack();
+            })();
+          },
+        },
+      ],
+    );
+  }, [companion?.user.firstName, companion?.user.id, companion?.user.lastName, isBlockingUser, navigation]);
 
   const handleBackPress = async () => {
     await haptics.light();
@@ -317,6 +355,9 @@ export const CompanionProfileScreen: React.FC = () => {
           <View style={styles.headerRight}>
             <TouchableOpacity style={styles.headerButton} onPress={() => haptics.light()}>
               <Ionicons name="share-outline" size={20} color={colors.text.primary} />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.headerButton} onPress={handleBlockUserPress} disabled={isBlockingUser}>
+              <Ionicons name="ellipsis-vertical" size={20} color={colors.text.primary} />
             </TouchableOpacity>
             <TouchableOpacity style={styles.headerButton} onPress={handleFavoritePress}>
               <Ionicons

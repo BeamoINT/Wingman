@@ -402,6 +402,7 @@ export type RootStackParamList = {
   BookingConfirmation: { bookingId: string };
   Chat: { conversationId: string };
   Settings: undefined;
+  BlockedUsers: undefined;
   ChangePassword: undefined;
   ChangeEmail: undefined;
   EditProfile: undefined;

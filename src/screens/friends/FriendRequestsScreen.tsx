@@ -4,6 +4,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   RefreshControl,
   StyleSheet,
@@ -20,6 +21,7 @@ import {
   SectionHeader,
 } from '../../components';
 import { useTheme } from '../../context/ThemeContext';
+import { blockUser } from '../../services/api/blocksApi';
 import {
   fetchConnectionInbox,
   respondToConnectionRequest,
@@ -147,10 +149,47 @@ const FriendRequestsContent: React.FC = () => {
     await haptics.light();
     const { conversation, error: conversationError } = await getOrCreateConversation(otherUserId);
     if (conversationError || !conversation?.id) {
-      setError(conversationError?.message || 'Unable to open chat right now.');
+      setError('Unable to open chat right now.');
       return;
     }
     navigation.navigate('Chat', { conversationId: conversation.id });
+  };
+
+  const handleBlockConnection = async (connection: FriendConnection) => {
+    const otherUserId = connection.otherProfile?.userId || connection.otherProfile?.id;
+    if (!otherUserId || !connection.id) return;
+
+    const displayName = connection.otherProfile
+      ? `${connection.otherProfile.firstName} ${connection.otherProfile.lastName}`.trim()
+      : 'this user';
+
+    Alert.alert(
+      'Block User',
+      `Block ${displayName}? They will no longer appear in your requests, chats, or recommendations.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Block',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              setBusyConnectionId(connection.id);
+              await haptics.warning();
+
+              const { success, error: blockError } = await blockUser(otherUserId);
+              if (!success || blockError) {
+                setError(blockError?.message || 'Unable to complete this action right now.');
+                setBusyConnectionId(null);
+                return;
+              }
+
+              setBusyConnectionId(null);
+              await loadInbox(true);
+            })();
+          },
+        },
+      ],
+    );
   };
 
   const data = activeTab === 'incoming'
@@ -182,6 +221,15 @@ const FriendRequestsContent: React.FC = () => {
             <>
               <TouchableOpacity
                 style={styles.secondaryAction}
+                onPress={() => handleBlockConnection(item)}
+                disabled={busyConnectionId === item.id}
+              >
+                <Text style={styles.secondaryActionText}>
+                  {busyConnectionId === item.id ? 'Updating...' : 'Block'}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.secondaryAction}
                 onPress={() => handleDecline(item.id)}
                 disabled={busyConnectionId === item.id}
               >
@@ -200,19 +248,41 @@ const FriendRequestsContent: React.FC = () => {
               </TouchableOpacity>
             </>
           ) : activeTab === 'outgoing' ? (
-            <TouchableOpacity
-              style={styles.secondaryAction}
-              onPress={() => handleCancel(item.id)}
-              disabled={busyConnectionId === item.id}
-            >
-              <Text style={styles.secondaryActionText}>
-                {busyConnectionId === item.id ? 'Updating...' : 'Cancel Request'}
-              </Text>
-            </TouchableOpacity>
+            <>
+              <TouchableOpacity
+                style={styles.secondaryAction}
+                onPress={() => handleBlockConnection(item)}
+                disabled={busyConnectionId === item.id}
+              >
+                <Text style={styles.secondaryActionText}>
+                  {busyConnectionId === item.id ? 'Updating...' : 'Block'}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.secondaryAction}
+                onPress={() => handleCancel(item.id)}
+                disabled={busyConnectionId === item.id}
+              >
+                <Text style={styles.secondaryActionText}>
+                  {busyConnectionId === item.id ? 'Updating...' : 'Cancel Request'}
+                </Text>
+              </TouchableOpacity>
+            </>
           ) : (
-            <TouchableOpacity style={styles.primaryAction} onPress={() => handleOpenChat(item)}>
-              <Text style={styles.primaryActionText}>Open Chat</Text>
-            </TouchableOpacity>
+            <>
+              <TouchableOpacity
+                style={styles.secondaryAction}
+                onPress={() => handleBlockConnection(item)}
+                disabled={busyConnectionId === item.id}
+              >
+                <Text style={styles.secondaryActionText}>
+                  {busyConnectionId === item.id ? 'Updating...' : 'Block'}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.primaryAction} onPress={() => handleOpenChat(item)}>
+                <Text style={styles.primaryActionText}>Open Chat</Text>
+              </TouchableOpacity>
+            </>
           )}
         </View>
       </View>
@@ -346,6 +416,7 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
   requestActions: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
+    flexWrap: 'wrap',
     gap: spacing.sm,
   },
   primaryAction: {

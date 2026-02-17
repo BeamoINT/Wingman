@@ -14,6 +14,7 @@ import { supportsNativeMediaCompression } from '../config/runtime';
 import { useAuth } from '../context/AuthContext';
 import { useIsConnected } from '../context/NetworkContext';
 import { getMeetupPlaceDetails, searchMeetupPlaces } from '../services/api/locationApi';
+import { blockUser } from '../services/api/blocksApi';
 import type { ConversationData, MessageData } from '../services/api/messages';
 import {
     fetchConversationById,
@@ -266,6 +267,7 @@ const ChatScreenContent: React.FC = () => {
   } | null>(null);
   const [counterFromProposal, setCounterFromProposal] = useState<MeetupLocationProposal | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isBlockingParticipant, setIsBlockingParticipant] = useState(false);
 
   const conversationId = route.params.conversationId;
   const meetupEnabled = friendsFeatureFlags.meetupNegotiationEnabled;
@@ -411,6 +413,41 @@ const ChatScreenContent: React.FC = () => {
     await haptics.light();
     navigation.goBack();
   }, [navigation]);
+
+  const handleBlockParticipant = useCallback(() => {
+    if ((conversation?.kind || 'direct') !== 'direct' || !otherParticipant?.id || isBlockingParticipant) {
+      return;
+    }
+
+    const participantDisplayName = `${otherParticipant.firstName || 'this'} ${otherParticipant.lastName || 'user'}`.trim();
+    Alert.alert(
+      'Block User',
+      `Block ${participantDisplayName}? This chat and all other shared surfaces will become unavailable.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Block',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              setIsBlockingParticipant(true);
+              await haptics.warning();
+
+              const { success, error: blockError } = await blockUser(otherParticipant.id);
+              setIsBlockingParticipant(false);
+
+              if (!success || blockError) {
+                Alert.alert('Unable to Block', 'Unable to complete this action right now.');
+                return;
+              }
+
+              navigation.goBack();
+            })();
+          },
+        },
+      ],
+    );
+  }, [conversation?.kind, isBlockingParticipant, navigation, otherParticipant?.firstName, otherParticipant?.id, otherParticipant?.lastName]);
 
   const handleRefresh = useCallback(() => {
     loadChatData(true);
@@ -586,7 +623,7 @@ const ChatScreenContent: React.FC = () => {
       if (sendError || !message) {
         console.error('Error sending message:', sendError);
         setInputText(content);
-        Alert.alert('Message Failed', sendError?.message || 'Unable to send message right now.');
+        Alert.alert('Message Failed', 'Unable to send message right now.');
         return;
       }
 
@@ -638,7 +675,7 @@ const ChatScreenContent: React.FC = () => {
       });
 
       if (result.error || !result.message) {
-        Alert.alert('Image Failed', result.error?.message || 'Unable to send image right now.');
+        Alert.alert('Image Failed', 'Unable to send image right now.');
         return;
       }
 
@@ -697,7 +734,7 @@ const ChatScreenContent: React.FC = () => {
       });
 
       if (result.error || !result.message) {
-        Alert.alert('Video Failed', result.error?.message || 'Unable to send video right now.');
+        Alert.alert('Video Failed', 'Unable to send video right now.');
         return;
       }
 
@@ -964,6 +1001,16 @@ const ChatScreenContent: React.FC = () => {
             <Text style={styles.headerStatus}>{headerStatus}</Text>
           </View>
         </View>
+
+        {conversationKind === 'direct' ? (
+          <TouchableOpacity
+            style={styles.headerActionButton}
+            onPress={handleBlockParticipant}
+            disabled={isBlockingParticipant}
+          >
+            <Ionicons name="ellipsis-vertical" size={18} color={colors.text.primary} />
+          </TouchableOpacity>
+        ) : null}
       </View>
 
       <View style={styles.safetyTip}>
@@ -1250,6 +1297,16 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     ...typography.presets.caption,
     color: colors.text.tertiary,
     marginTop: 2,
+  },
+  headerActionButton: {
+    width: 36,
+    height: 36,
+    borderRadius: spacing.radius.round,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface.level1,
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
   },
   safetyTip: {
     flexDirection: 'row',

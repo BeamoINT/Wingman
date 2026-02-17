@@ -233,6 +233,7 @@ export const SettingsScreen: React.FC = () => {
           icon: 'ban-outline',
           label: 'Blocked Users',
           type: 'link',
+          onPress: () => navigation.navigate('BlockedUsers'),
         },
       ],
     },
