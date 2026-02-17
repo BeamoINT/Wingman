@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import React from 'react';
-import { Platform, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../context/ThemeContext';
 import type { MainTabParamList } from '../types';
 import { haptics } from '../utils/haptics';
@@ -19,23 +20,24 @@ const Tab = createBottomTabNavigator<MainTabParamList>();
 export const MainTabNavigator: React.FC = () => {
   const { tokens } = useTheme();
   const { colors, spacing, typography } = tokens;
+  const insets = useSafeAreaInsets();
+
+  const tabBarBottomPadding = Math.max(insets.bottom, spacing.xs);
+  const tabBarHeight = 52 + tabBarBottomPadding;
 
   const styles = StyleSheet.create({
     tabBar: {
-      position: 'absolute',
-      left: spacing.sm,
-      right: spacing.sm,
-      bottom: Platform.OS === 'ios' ? spacing.sm : spacing.xs,
-      borderRadius: spacing.radius.lg,
+      position: 'relative',
+      left: 0,
+      right: 0,
+      bottom: 0,
+      borderRadius: 0,
       borderTopWidth: 1,
-      borderWidth: 1,
       borderColor: colors.border.light,
-      height: Platform.OS === 'ios' ? 64 : 60,
+      height: tabBarHeight,
       paddingTop: spacing.xs,
-      paddingBottom: Platform.OS === 'ios' ? spacing.xs : spacing.xxs,
+      paddingBottom: tabBarBottomPadding,
       backgroundColor: colors.surface.level1,
-      ...spacing.elevation.md,
-      shadowColor: colors.shadow.medium,
     },
     tabBarLabel: {
       ...typography.presets.caption,
