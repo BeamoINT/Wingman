@@ -1,6 +1,6 @@
 /**
  * Supabase Edge Function: reverse-geocode
- * Proxies Google Geocoding API for reverse geocoding (coordinates to address)
+ * Proxies Google Geocoding API with validation and basic rate limiting.
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
@@ -27,33 +27,87 @@ interface LocationDetails {
   formattedAddress: string;
 }
 
+type RateLimitEntry = {
+  count: number;
+  resetAt: number;
+};
+
+const rateLimitStore = new Map<string, RateLimitEntry>();
+const WINDOW_MS = 60_000;
+const LIMIT_PER_WINDOW = 80;
+
+function jsonResponse(body: Record<string, unknown>, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
+
+function getClientIdentifier(req: Request): string {
+  const forwardedFor = req.headers.get('x-forwarded-for') || '';
+  const firstIp = forwardedFor.split(',')[0]?.trim();
+  if (firstIp) return `ip:${firstIp}`;
+
+  const realIp = req.headers.get('x-real-ip') || req.headers.get('cf-connecting-ip') || '';
+  if (realIp.trim()) return `ip:${realIp.trim()}`;
+
+  const authHeader = req.headers.get('authorization') || '';
+  return authHeader ? `auth:${authHeader.slice(-18)}` : 'anon';
+}
+
+function isRateLimited(clientId: string): boolean {
+  const now = Date.now();
+  const existing = rateLimitStore.get(clientId);
+
+  if (!existing || existing.resetAt <= now) {
+    rateLimitStore.set(clientId, { count: 1, resetAt: now + WINDOW_MS });
+    return false;
+  }
+
+  if (existing.count >= LIMIT_PER_WINDOW) {
+    return true;
+  }
+
+  existing.count += 1;
+  rateLimitStore.set(clientId, existing);
+  return false;
+}
+
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
-  try {
-    const { latitude, longitude }: ReverseGeocodeRequest = await req.json();
+  if (req.method !== 'POST') {
+    return jsonResponse({ error: 'Method not allowed' }, 405);
+  }
 
-    if (typeof latitude !== 'number' || typeof longitude !== 'number') {
-      return new Response(
-        JSON.stringify({ error: 'Valid latitude and longitude are required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+  try {
+    const { latitude, longitude }: ReverseGeocodeRequest = await req.json().catch(() => ({ latitude: NaN, longitude: NaN }));
+
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      return jsonResponse({ error: 'Valid latitude and longitude are required' }, 400);
     }
 
-    const apiKey = Deno.env.get('GOOGLE_PLACES_API_KEY');
+    if (Math.abs(latitude) > 90 || Math.abs(longitude) > 180) {
+      return jsonResponse({ error: 'Coordinates out of range' }, 400);
+    }
+
+    const clientId = getClientIdentifier(req);
+    if (isRateLimited(clientId)) {
+      return jsonResponse({
+        error: 'Too many requests. Please wait and try again.',
+        code: 'rate_limited',
+      }, 429);
+    }
+
+    const apiKey = Deno.env.get('GOOGLE_MAPS_SERVER_API_KEY') || Deno.env.get('GOOGLE_PLACES_API_KEY');
 
     if (!apiKey) {
-      console.error('Missing GOOGLE_PLACES_API_KEY');
-      return new Response(
-        JSON.stringify({ error: 'Server configuration error' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      console.error('reverse-geocode missing server key');
+      return jsonResponse({ error: 'Server configuration error' }, 500);
     }
 
-    // Build the Google Geocoding URL
     const params = new URLSearchParams({
       latlng: `${latitude},${longitude}`,
       result_type: 'locality|administrative_area_level_1|country',
@@ -66,24 +120,17 @@ serve(async (req) => {
     const data = await response.json();
 
     if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
-      console.error('Google Geocoding API error:', data.status, data.error_message);
-      return new Response(
-        JSON.stringify({
-          error: 'Reverse geocoding failed',
-          status: data.status
-        }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      console.error('reverse-geocode provider error', { status: data.status });
+      return jsonResponse({
+        error: 'Reverse geocoding failed',
+        status: data.status,
+      }, 500);
     }
 
     if (!data.results || data.results.length === 0) {
-      return new Response(
-        JSON.stringify({ error: 'No address found for this location' }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return jsonResponse({ error: 'No address found for this location' }, 404);
     }
 
-    // Get all address components from results
     const allComponents: any[] = [];
     for (const result of data.results) {
       if (result.address_components) {
@@ -91,12 +138,11 @@ serve(async (req) => {
       }
     }
 
-    // Extract address components (deduplicated by type)
     let city = '';
     let state = '';
     let country = '';
     let countryCode = '';
-    let formattedAddress = data.results[0]?.formatted_address || '';
+    const formattedAddress = data.results[0]?.formatted_address || '';
 
     for (const component of allComponents) {
       const types = component.types || [];
@@ -112,7 +158,6 @@ serve(async (req) => {
         countryCode = component.short_name;
       }
 
-      // Fallbacks for city
       if (!city && types.includes('sublocality_level_1')) {
         city = component.long_name;
       }
@@ -122,7 +167,7 @@ serve(async (req) => {
     }
 
     const details: LocationDetails = {
-      city: city || state, // Use state as fallback
+      city: city || state,
       state,
       country,
       countryCode,
@@ -133,16 +178,9 @@ serve(async (req) => {
       formattedAddress,
     };
 
-    return new Response(
-      JSON.stringify({ details }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-
-  } catch (error) {
-    console.error('Error in reverse-geocode:', error);
-    return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return jsonResponse({ details });
+  } catch {
+    console.error('reverse-geocode internal error');
+    return jsonResponse({ error: 'Internal server error' }, 500);
   }
 });

@@ -22,7 +22,13 @@ export type MonitoringEventName =
   | 'metro_resolve_success'
   | 'metro_resolve_failed'
   | 'location_data_blocked_read'
-  | 'location_policy_denied';
+  | 'location_policy_denied'
+  | 'meetup_proposal_sent'
+  | 'meetup_proposal_accepted'
+  | 'meetup_proposal_declined'
+  | 'meetup_proposal_countered'
+  | 'meetup_open_maps'
+  | 'google_maps_runtime_unavailable';
 
 type EventPayload = Record<string, string | number | boolean | null | undefined>;
 

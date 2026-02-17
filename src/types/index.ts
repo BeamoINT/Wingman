@@ -101,6 +101,7 @@ export interface Booking {
   id: string;
   companion: Companion;
   user: User;
+  conversationId?: string;
   status: BookingStatus;
   date: string;
   startTime: string;
@@ -110,6 +111,10 @@ export interface Booking {
   location: BookingLocation;
   activityType: CompanionSpecialty;
   notes?: string;
+  locationPlaceId?: string;
+  meetupStatus?: MeetupBookingStatus;
+  meetupProposalId?: string;
+  meetupAgreedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -125,11 +130,37 @@ export type BookingStatus =
 export interface BookingLocation {
   name: string;
   address: string;
+  placeId?: string;
   coordinates?: {
     latitude: number;
     longitude: number;
   };
   type: 'restaurant' | 'bar' | 'cafe' | 'venue' | 'public' | 'other';
+}
+
+export type MeetupBookingStatus = 'none' | 'proposed' | 'countered' | 'declined' | 'agreed';
+export type MeetupProposalStatus = 'pending' | 'accepted' | 'declined' | 'countered' | 'withdrawn';
+export type MeetupResponseAction = 'accept' | 'decline' | 'counter';
+
+export interface MeetupLocationProposal {
+  id: string;
+  conversationId: string;
+  bookingId?: string;
+  proposerUserId: string;
+  placeId?: string;
+  placeName: string;
+  placeAddress?: string;
+  latitude?: number;
+  longitude?: number;
+  note?: string;
+  status: MeetupProposalStatus;
+  responseByUserId?: string;
+  responseNote?: string;
+  respondedAt?: string;
+  supersedesProposalId?: string;
+  acceptedAt?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // Subscription Types
@@ -367,7 +398,7 @@ export type RootStackParamList = {
   Tutorial: undefined;
   Main: undefined;
   CompanionProfile: { companionId: string };
-  Booking: { companionId: string };
+  Booking: { companionId: string; conversationId?: string };
   BookingConfirmation: { bookingId: string };
   Chat: { conversationId: string };
   Settings: undefined;

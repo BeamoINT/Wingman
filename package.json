@@ -15,7 +15,8 @@
     "typecheck": "tsc --noEmit",
     "doctor": "npx expo-doctor",
     "check:legacy-theme-imports": "node ./scripts/check-legacy-theme-imports.js",
-    "preflight": "npm run check:legacy-theme-imports && npm run typecheck && npm run lint && npm run doctor",
+    "check:no-mapbox-references": "node ./scripts/check-mapbox-references.js",
+    "preflight": "npm run check:legacy-theme-imports && npm run check:no-mapbox-references && npm run typecheck && npm run lint && npm run doctor",
     "lint": "eslint .",
     "format": "prettier --write ."
   },
@@ -51,6 +52,7 @@
     "react-native": "0.81.5",
     "react-native-compressor": "^1.16.0",
     "react-native-gesture-handler": "~2.28.0",
+    "react-native-maps": "^1.20.1",
     "react-native-purchases": "^9.9.0",
     "react-native-reanimated": "~4.1.1",
     "react-native-safe-area-context": "~5.6.0",

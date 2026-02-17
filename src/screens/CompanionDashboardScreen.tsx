@@ -43,12 +43,14 @@ type TimeRange = 'week' | 'month' | 'year';
 interface Booking {
   id: string;
   clientId: string;
+  conversationId?: string;
   user: { name: string; avatar: string };
   date: string;
   time: string;
   duration: number;
   amount: number;
   status: 'upcoming' | 'completed' | 'pending';
+  meetupStatus?: 'none' | 'proposed' | 'countered' | 'declined' | 'agreed';
   activity: string;
 }
 
@@ -235,6 +237,7 @@ export const CompanionDashboardScreen: React.FC = () => {
       .map((booking) => ({
         id: booking.id,
         clientId: booking.client_id || '',
+        conversationId: booking.conversation_id || undefined,
         user: {
           name: `${booking.client?.first_name || 'Client'} ${booking.client?.last_name || ''}`.trim(),
           avatar: booking.client?.avatar_url || '',
@@ -244,6 +247,7 @@ export const CompanionDashboardScreen: React.FC = () => {
         duration: Math.max(0, Math.round(toNumber(booking.duration_hours, 0))),
         amount: Math.round(toNumber(booking.subtotal, 0) * 0.9),
         status: booking.status === 'pending' ? 'pending' : 'upcoming',
+        meetupStatus: booking.meetup_status || 'none',
         activity: booking.activity_type || 'Wingman booking',
       }))
   ), [bookings]);
@@ -271,9 +275,22 @@ export const CompanionDashboardScreen: React.FC = () => {
     await loadDashboardData(true);
   };
 
-  const handleAcceptBooking = useCallback(async (bookingId: string) => {
+  const handleAcceptBooking = useCallback(async (booking: Booking) => {
+    if (booking.meetupStatus !== 'agreed') {
+      setError('You can only accept this booking after meetup location is agreed in chat.');
+      if (booking.clientId) {
+        const { conversation, error: conversationError } = await getOrCreateConversation(booking.clientId);
+        if (conversation?.id && !conversationError) {
+          await haptics.light();
+          navigation.navigate('Chat', { conversationId: conversation.id });
+          return;
+        }
+      }
+      return;
+    }
+
     await haptics.success();
-    const { success, error: updateError } = await updateBookingStatus(bookingId, 'confirmed');
+    const { success, error: updateError } = await updateBookingStatus(booking.id, 'confirmed');
     if (!success || updateError) {
       console.error('Error accepting booking:', updateError);
       setError(updateError?.message || 'Unable to accept booking right now.');
@@ -281,7 +298,7 @@ export const CompanionDashboardScreen: React.FC = () => {
     }
 
     await loadDashboardData(true);
-  }, [loadDashboardData]);
+  }, [loadDashboardData, navigation]);
 
   const handleDeclineBooking = useCallback(async (bookingId: string) => {
     await haptics.light();
@@ -519,7 +536,7 @@ export const CompanionDashboardScreen: React.FC = () => {
                     title="Accept"
                     size="small"
                     variant="primary"
-                    onPress={() => handleAcceptBooking(booking.id)}
+                    onPress={() => handleAcceptBooking(booking)}
                   />
                 </View>
               ) : (
@@ -533,6 +550,14 @@ export const CompanionDashboardScreen: React.FC = () => {
                 />
               )}
             </View>
+            {booking.meetupStatus !== 'agreed' ? (
+              <View style={styles.meetupGuardRow}>
+                <Ionicons name="location-outline" size={14} color={colors.status.warning} />
+                <Text style={styles.meetupGuardText}>
+                  Meetup location must be agreed in chat before accepting this booking.
+                </Text>
+              </View>
+            ) : null}
           </Card>
         ))}
       </View>
@@ -736,6 +761,17 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
   bookingActions: {
     flexDirection: 'row',
     gap: spacing.xs,
+  },
+  meetupGuardRow: {
+    marginTop: spacing.xs,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  meetupGuardText: {
+    ...typography.presets.caption,
+    color: colors.status.warning,
+    flex: 1,
   },
   tipCard: {
     marginBottom: spacing.lg,

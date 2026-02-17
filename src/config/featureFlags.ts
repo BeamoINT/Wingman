@@ -13,7 +13,9 @@ export interface FriendsFeatureFlags {
   friendsConnectionRequestsEnabled: boolean;
   friendsMatchingV4Enabled: boolean;
   friendsGlobalMetroEnabled: boolean;
-  friendsMapboxPickerEnabled: boolean;
+  friendsGoogleMapPickerEnabled: boolean;
+  googleMapsCutoverEnabled: boolean;
+  meetupNegotiationEnabled: boolean;
 }
 
 function parseBool(value: unknown, fallback: boolean): boolean {
@@ -54,5 +56,7 @@ export const friendsFeatureFlags: FriendsFeatureFlags = {
   friendsConnectionRequestsEnabled: resolveFlag('friends_connection_requests_enabled', true),
   friendsMatchingV4Enabled: resolveFlag('friends_matching_v4_enabled', true),
   friendsGlobalMetroEnabled: resolveFlag('friends_global_metro_enabled', true),
-  friendsMapboxPickerEnabled: resolveFlag('friends_mapbox_picker_enabled', true),
+  friendsGoogleMapPickerEnabled: resolveFlag('friends_google_map_picker_enabled', true),
+  googleMapsCutoverEnabled: resolveFlag('google_maps_cutover_enabled', true),
+  meetupNegotiationEnabled: resolveFlag('meetup_negotiation_enabled', true),
 };

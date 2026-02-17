@@ -12,7 +12,9 @@ type EnvShape = {
   revenueCatEntitlementPro: string;
   revenueCatPackageProMonthly: string;
   revenueCatPackageProYearly: string;
-  mapboxAccessToken: string;
+  googleMapsApiKey: string;
+  googleMapsApiKeyIos: string;
+  googleMapsApiKeyAndroid: string;
   sentryDsn: string;
 };
 
@@ -55,7 +57,9 @@ function loadEnv(): EnvShape {
   const revenueCatEntitlementPro = readRawValue('rc_entitlement_pro') || 'pro';
   const revenueCatPackageProMonthly = readRawValue('rc_package_pro_monthly') || '$rc_monthly';
   const revenueCatPackageProYearly = readRawValue('rc_package_pro_yearly') || '$rc_annual';
-  const mapboxAccessToken = readRawValue('mapbox_access_token');
+  const googleMapsApiKey = readRawValue('google_maps_api_key');
+  const googleMapsApiKeyIos = readRawValue('google_maps_api_key_ios');
+  const googleMapsApiKeyAndroid = readRawValue('google_maps_api_key_android');
   const sentryDsn = readRawValue('sentry_dsn');
 
   if (!supabaseUrl) warnMissing('EXPO_PUBLIC_SUPABASE_URL');
@@ -71,7 +75,9 @@ function loadEnv(): EnvShape {
     revenueCatEntitlementPro,
     revenueCatPackageProMonthly,
     revenueCatPackageProYearly,
-    mapboxAccessToken,
+    googleMapsApiKey,
+    googleMapsApiKeyIos,
+    googleMapsApiKeyAndroid,
     sentryDsn,
   };
 }

@@ -24,6 +24,7 @@ export interface BookingData {
   id: string;
   client_id: string;
   companion_id: string;
+  conversation_id?: string;
   status: BookingStatusRaw;
   date: string;
   start_time: string;
@@ -35,6 +36,12 @@ export interface BookingData {
   total_price: number;
   location_name?: string;
   location_address?: string;
+  location_place_id?: string;
+  location_latitude?: number;
+  location_longitude?: number;
+  meetup_status?: 'none' | 'proposed' | 'countered' | 'declined' | 'agreed';
+  meetup_proposal_id?: string;
+  meetup_agreed_at?: string;
   activity_type?: string;
   notes?: string;
   created_at: string;
@@ -51,8 +58,17 @@ export interface CreateBookingInput {
   hourly_rate: number;
   location_name?: string;
   location_address?: string;
+  place_id?: string;
+  location_latitude?: number;
+  location_longitude?: number;
   activity_type?: string;
   notes?: string;
+  conversation_id?: string;
+  meetup_note?: string;
+}
+
+export interface CreateBookingWithMeetupInput extends CreateBookingInput {
+  location_name: string;
 }
 
 const BOOKING_SELECT_WITH_RELATIONS = `
@@ -84,6 +100,11 @@ function toNumber(value: unknown, fallback = 0): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function toOptionalNumber(value: unknown): number | undefined {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 function toStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.filter((entry): entry is string => typeof entry === 'string');
@@ -105,6 +126,22 @@ function normalizeStatus(value: unknown): BookingStatusRaw {
       return normalized;
     default:
       return 'pending';
+  }
+}
+
+function normalizeMeetupStatus(
+  value: unknown,
+): BookingData['meetup_status'] {
+  const normalized = String(value || 'none').trim().toLowerCase();
+  switch (normalized) {
+    case 'proposed':
+    case 'countered':
+    case 'declined':
+    case 'agreed':
+      return normalized;
+    case 'none':
+    default:
+      return 'none';
   }
 }
 
@@ -147,6 +184,21 @@ function isRelationshipError(error: unknown): boolean {
   return (
     String(typedError?.code || '').startsWith('PGRST') &&
     (message.includes('relationship') || message.includes('foreign key'))
+  );
+}
+
+function isMissingSchemaError(error: unknown, identifier: string): boolean {
+  const typedError = error as QueryError | null | undefined;
+  const code = String(typedError?.code || '');
+  const message = String(typedError?.message || '').toLowerCase();
+  return (
+    (code.startsWith('PGRST') || code === '42883')
+    && message.includes(identifier.toLowerCase())
+    && (
+      message.includes('does not exist')
+      || message.includes('could not find the function')
+      || message.includes('schema cache')
+    )
   );
 }
 
@@ -253,6 +305,7 @@ function normalizeBooking(rawBooking: unknown): BookingData {
     id: typeof booking.id === 'string' ? booking.id : '',
     client_id: clientId,
     companion_id: companionId,
+    conversation_id: typeof booking.conversation_id === 'string' ? booking.conversation_id : undefined,
     status: normalizeStatus(booking.status),
     date: typeof booking.date === 'string' ? booking.date : now.split('T')[0],
     start_time: typeof booking.start_time === 'string' ? booking.start_time : '00:00:00',
@@ -264,6 +317,12 @@ function normalizeBooking(rawBooking: unknown): BookingData {
     total_price: totalPrice,
     location_name: typeof booking.location_name === 'string' ? booking.location_name : undefined,
     location_address: typeof booking.location_address === 'string' ? booking.location_address : undefined,
+    location_place_id: typeof booking.location_place_id === 'string' ? booking.location_place_id : undefined,
+    location_latitude: toOptionalNumber(booking.location_latitude) ?? toOptionalNumber(booking.location_lat),
+    location_longitude: toOptionalNumber(booking.location_longitude) ?? toOptionalNumber(booking.location_lng),
+    meetup_status: normalizeMeetupStatus(booking.meetup_status),
+    meetup_proposal_id: typeof booking.meetup_proposal_id === 'string' ? booking.meetup_proposal_id : undefined,
+    meetup_agreed_at: typeof booking.meetup_agreed_at === 'string' ? booking.meetup_agreed_at : undefined,
     activity_type: typeof booking.activity_type === 'string' ? booking.activity_type : undefined,
     notes: typeof booking.notes === 'string' ? booking.notes : undefined,
     created_at: typeof booking.created_at === 'string' ? booking.created_at : now,
@@ -314,8 +373,43 @@ export async function createBooking(
       return { booking: null, error: new Error('Not authenticated') };
     }
 
+    if (input.location_name?.trim() || input.place_id?.trim()) {
+      const rpcResponse = await supabase
+        .rpc('create_booking_with_meetup_v1', {
+          p_companion_id: input.companion_id,
+          p_date: input.date,
+          p_start_time: input.start_time,
+          p_duration_hours: input.duration_hours,
+          p_hourly_rate: input.hourly_rate,
+          p_location_name: input.location_name || '',
+          p_location_address: input.location_address ?? null,
+          p_place_id: input.place_id ?? null,
+          p_location_latitude: input.location_latitude ?? null,
+          p_location_longitude: input.location_longitude ?? null,
+          p_activity_type: input.activity_type ?? null,
+          p_notes: input.notes ?? null,
+          p_conversation_id: input.conversation_id ?? null,
+          p_meetup_note: input.meetup_note ?? null,
+        });
+
+      if (!rpcResponse.error && rpcResponse.data) {
+        const row = Array.isArray(rpcResponse.data)
+          ? rpcResponse.data[0]
+          : rpcResponse.data;
+        return { booking: normalizeBooking(row), error: null };
+      }
+
+      if (rpcResponse.error && !isMissingSchemaError(rpcResponse.error, 'create_booking_with_meetup_v1')) {
+        console.error('Error creating booking with meetup RPC:', rpcResponse.error);
+        return {
+          booking: null,
+          error: new Error(rpcResponse.error.message || 'Failed to create booking'),
+        };
+      }
+    }
+
     const subtotal = input.hourly_rate * input.duration_hours;
-    const serviceFee = Math.round(subtotal * 0.1 * 100) / 100; // 10% service fee
+    const serviceFee = Math.round(subtotal * 0.1 * 100) / 100;
     const totalPrice = subtotal + serviceFee;
 
     for (const ownerColumn of BOOKING_OWNER_COLUMNS) {
@@ -332,9 +426,16 @@ export async function createBooking(
           total_price: totalPrice,
           location_name: input.location_name,
           location_address: input.location_address,
+          location_place_id: input.place_id,
+          location_latitude: input.location_latitude,
+          location_longitude: input.location_longitude,
+          location_lat: input.location_latitude,
+          location_lng: input.location_longitude,
           activity_type: input.activity_type,
           notes: input.notes,
           status: 'pending',
+          meetup_status: input.location_name?.trim() || input.place_id?.trim() ? 'proposed' : 'none',
+          conversation_id: input.conversation_id,
         };
 
         let attempts = 0;
@@ -379,6 +480,12 @@ export async function createBooking(
       error: err instanceof Error ? err : new Error('Failed to create booking'),
     };
   }
+}
+
+export async function createBookingWithMeetup(
+  input: CreateBookingWithMeetupInput,
+): Promise<{ booking: BookingData | null; error: Error | null }> {
+  return createBooking(input);
 }
 
 /**

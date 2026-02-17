@@ -23,6 +23,8 @@ export interface GetPlaceDetailsResult {
   error?: string;
 }
 
+export type PlaceSearchMode = 'city' | 'meetup';
+
 /**
  * Result from reverse geocoding
  */
@@ -135,15 +137,26 @@ function normalizeMetroPreferences(payload: unknown): MetroPreferences | null {
  */
 export async function searchPlaces(
   query: string,
-  countryCode?: string
+  countryCodeOrOptions?: string | { countryCode?: string; mode?: PlaceSearchMode }
 ): Promise<SearchPlacesResult> {
   try {
     if (!query || query.trim().length < 2) {
       return { predictions: [] };
     }
 
+    const options = typeof countryCodeOrOptions === 'string'
+      ? { countryCode: countryCodeOrOptions, mode: 'city' as const }
+      : {
+        countryCode: countryCodeOrOptions?.countryCode,
+        mode: countryCodeOrOptions?.mode || 'city',
+      };
+
     const { data, error } = await supabase.functions.invoke('places-autocomplete', {
-      body: { query, countryCode },
+      body: {
+        query,
+        countryCode: options.countryCode,
+        mode: options.mode,
+      },
     });
 
     if (error) {
@@ -166,13 +179,20 @@ export async function searchPlaces(
  * Get full details for a place by its ID
  */
 export async function getPlaceDetails(placeId: string): Promise<GetPlaceDetailsResult> {
+  return getPlaceDetailsWithMode(placeId, 'city');
+}
+
+export async function getPlaceDetailsWithMode(
+  placeId: string,
+  mode: PlaceSearchMode,
+): Promise<GetPlaceDetailsResult> {
   try {
     if (!placeId) {
       return { details: null, error: 'Place ID is required' };
     }
 
     const { data, error } = await supabase.functions.invoke('places-details', {
-      body: { placeId },
+      body: { placeId, mode },
     });
 
     if (error) {
@@ -221,6 +241,20 @@ export async function reverseGeocode(
     console.error('Error in reverseGeocode:', err);
     return { details: null, error: 'Failed to get location. Please try again.' };
   }
+}
+
+export async function searchMeetupPlaces(
+  query: string,
+  countryCode?: string,
+): Promise<SearchPlacesResult> {
+  return searchPlaces(query, {
+    countryCode,
+    mode: 'meetup',
+  });
+}
+
+export async function getMeetupPlaceDetails(placeId: string): Promise<GetPlaceDetailsResult> {
+  return getPlaceDetailsWithMode(placeId, 'meetup');
 }
 
 /**

@@ -34,6 +34,8 @@ export interface Country {
 export interface PlacePrediction {
   /** Unique place identifier for fetching details */
   placeId: string;
+  /** Result type category from Google Places */
+  placeType?: 'city' | 'meetup';
   /** Primary text (usually city name) */
   mainText: string;
   /** Secondary text (state, country) */
@@ -48,6 +50,8 @@ export interface PlacePrediction {
 export interface PlaceDetails {
   /** Unique place identifier */
   placeId: string;
+  /** Display place name (venue/city) */
+  name?: string;
   /** City/locality name */
   city: string;
   /** State/province/region name */

@@ -123,7 +123,7 @@ function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): nu
 async function geocodeLocation(
   body: ResolveRequest,
 ): Promise<{ latitude: number; longitude: number } | null> {
-  const apiKey = Deno.env.get('GOOGLE_PLACES_API_KEY');
+  const apiKey = Deno.env.get('GOOGLE_MAPS_SERVER_API_KEY') || Deno.env.get('GOOGLE_PLACES_API_KEY');
   if (!apiKey) return null;
 
   const segments = [body.city, body.state, body.country]

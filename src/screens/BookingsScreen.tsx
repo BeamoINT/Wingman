@@ -6,7 +6,7 @@ import {
     ActivityIndicator, Alert,
     FlatList,
     Linking,
-    Platform, RefreshControl, StyleSheet, Text, TouchableOpacity, View
+    RefreshControl, StyleSheet, Text, TouchableOpacity, View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar, Badge, Card, EmptyState, InlineBanner } from '../components';
@@ -104,6 +104,7 @@ function transformBookingData(data: BookingData): Booking {
       isPremium: false,
       createdAt: data.created_at,
     },
+    conversationId: data.conversation_id || undefined,
     status,
     date: data.date,
     startTime: data.start_time,
@@ -113,8 +114,20 @@ function transformBookingData(data: BookingData): Booking {
     location: {
       name: data.location_name || 'Location TBD',
       address: data.location_address || '',
+      placeId: data.location_place_id || undefined,
+      coordinates: (
+        typeof data.location_latitude === 'number'
+        && typeof data.location_longitude === 'number'
+      ) ? {
+        latitude: data.location_latitude,
+        longitude: data.location_longitude,
+      } : undefined,
       type: 'other',
     },
+    locationPlaceId: data.location_place_id || undefined,
+    meetupStatus: data.meetup_status || 'none',
+    meetupProposalId: data.meetup_proposal_id || undefined,
+    meetupAgreedAt: data.meetup_agreed_at || undefined,
     activityType: (data.activity_type || 'social-events') as CompanionSpecialty,
     notes: data.notes,
     createdAt: data.created_at,
@@ -164,12 +177,34 @@ function mapBookingStatusToBadge(status: BookingStatus): 'success' | 'warning' |
 }
 
 function buildMapUrl(query: string): string {
-  const encoded = encodeURIComponent(query);
-  if (Platform.OS === 'ios') {
-    return `http://maps.apple.com/?q=${encoded}`;
-  }
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+}
 
-  return `geo:0,0?q=${encoded}`;
+function meetupStatusLabel(status?: Booking['meetupStatus']): string {
+  switch (status) {
+    case 'agreed':
+      return 'Meetup agreed';
+    case 'proposed':
+      return 'Meetup proposed';
+    case 'countered':
+      return 'Meetup update needed';
+    case 'declined':
+      return 'Meetup declined';
+    case 'none':
+    default:
+      return 'Meetup required';
+  }
+}
+
+function meetupStatusVariant(status?: Booking['meetupStatus']): 'success' | 'warning' | 'error' {
+  switch (status) {
+    case 'agreed':
+      return 'success';
+    case 'declined':
+      return 'error';
+    default:
+      return 'warning';
+  }
 }
 
 export const BookingsScreen: React.FC = () => {
@@ -266,12 +301,8 @@ export const BookingsScreen: React.FC = () => {
     }
 
     const mapUrl = buildMapUrl(query);
-    const fallbackUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
-
     try {
-      const canOpenMapUrl = await Linking.canOpenURL(mapUrl);
-      const targetUrl = canOpenMapUrl ? mapUrl : fallbackUrl;
-      await Linking.openURL(targetUrl);
+      await Linking.openURL(mapUrl);
     } catch (error) {
       console.error('Error opening map:', error);
       Alert.alert('Unable to Open Maps', 'Please check your maps application and try again.');
@@ -279,6 +310,12 @@ export const BookingsScreen: React.FC = () => {
   }, []);
 
   const handleMessageCompanion = useCallback(async (booking: Booking) => {
+    if (booking.conversationId) {
+      await haptics.light();
+      navigation.navigate('Chat', { conversationId: booking.conversationId });
+      return;
+    }
+
     const companionUserId = booking.companion.user.id;
     if (!companionUserId) {
       Alert.alert('Unavailable', 'Wingman messaging is unavailable for this booking.');
@@ -451,6 +488,11 @@ export const BookingsScreen: React.FC = () => {
               <Badge
                 label={statusLabel}
                 variant={mapBookingStatusToBadge(item.status)}
+                size="small"
+              />
+              <Badge
+                label={meetupStatusLabel(item.meetupStatus)}
+                variant={meetupStatusVariant(item.meetupStatus)}
                 size="small"
               />
             </View>

@@ -8,6 +8,7 @@ export { Badge } from './Badge';
 export { BottomSheet } from './BottomSheet';
 export { Button } from './Button';
 export { Card } from './Card';
+export { MeetupLocationCard } from './chat';
 // Feature Components
 export { CompanionCard } from './CompanionCard';
 export {
@@ -52,7 +53,6 @@ export {
     VerificationStatusCard,
     VerificationStepItem
 } from './verification';
-
 
 
 

@@ -8,10 +8,12 @@ import {
     TouchableOpacity, View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Avatar, EmptyChat, EmptyState, InlineBanner, RequirementsGate } from '../components';
+import { Avatar, EmptyChat, EmptyState, InlineBanner, MeetupLocationCard, RequirementsGate } from '../components';
+import { friendsFeatureFlags } from '../config/featureFlags';
 import { supportsNativeMediaCompression } from '../config/runtime';
 import { useAuth } from '../context/AuthContext';
 import { useIsConnected } from '../context/NetworkContext';
+import { getMeetupPlaceDetails, searchMeetupPlaces } from '../services/api/locationApi';
 import type { ConversationData, MessageData } from '../services/api/messages';
 import {
     fetchConversationById,
@@ -23,8 +25,23 @@ import {
     sendVideoMessageV2,
     subscribeToMessages
 } from '../services/api/messages';
+import {
+  listMeetupProposals,
+  proposeMeetupLocation,
+  respondToMeetupProposal,
+  subscribeToMeetupProposals,
+} from '../services/api/meetupApi';
 import { MediaPickerError, pickImageForMessaging, pickVideoForMessaging } from '../services/media/picker';
-import type { Conversation, Message, RootStackParamList, User } from '../types';
+import { trackEvent } from '../services/monitoring/events';
+import type { PlacePrediction } from '../types/location';
+import type {
+    Conversation,
+    MeetupLocationProposal,
+    MeetupResponseAction,
+    Message,
+    RootStackParamList,
+    User,
+} from '../types';
 import { haptics } from '../utils/haptics';
 import { useTheme } from '../context/ThemeContext';
 import type { ThemeTokens } from '../theme/tokens';
@@ -191,6 +208,22 @@ function sortMessagesByTime(messages: Message[]): Message[] {
   );
 }
 
+type ChatTimelineItem =
+  | {
+    kind: 'message';
+    key: string;
+    createdAt: string;
+    message: Message;
+  }
+  | {
+    kind: 'meetup';
+    key: string;
+    createdAt: string;
+    proposal: MeetupLocationProposal;
+  };
+
+const MEETUP_SEARCH_DEBOUNCE_MS = 220;
+
 /**
  * Inner content component for the Chat screen
  */
@@ -204,7 +237,7 @@ const ChatScreenContent: React.FC = () => {
   const { user } = useAuth();
   const isConnected = useIsConnected();
 
-  const flatListRef = useRef<FlatList<Message>>(null);
+  const flatListRef = useRef<FlatList<ChatTimelineItem>>(null);
 
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -215,9 +248,27 @@ const ChatScreenContent: React.FC = () => {
   const [isSendingMedia, setIsSendingMedia] = useState(false);
   const [mediaProgressText, setMediaProgressText] = useState<string | null>(null);
   const [resolvingAttachmentPath, setResolvingAttachmentPath] = useState<string | null>(null);
+  const [meetupProposals, setMeetupProposals] = useState<MeetupLocationProposal[]>([]);
+  const [isMeetupLoading, setIsMeetupLoading] = useState(false);
+  const [isMeetupSubmitting, setIsMeetupSubmitting] = useState(false);
+  const [showMeetupComposer, setShowMeetupComposer] = useState(false);
+  const [meetupQuery, setMeetupQuery] = useState('');
+  const [meetupPredictions, setMeetupPredictions] = useState<PlacePrediction[]>([]);
+  const [isSearchingMeetup, setIsSearchingMeetup] = useState(false);
+  const [meetupComposerError, setMeetupComposerError] = useState<string | null>(null);
+  const [meetupNote, setMeetupNote] = useState('');
+  const [selectedMeetupPlace, setSelectedMeetupPlace] = useState<{
+    placeId: string;
+    name: string;
+    address?: string;
+    latitude?: number;
+    longitude?: number;
+  } | null>(null);
+  const [counterFromProposal, setCounterFromProposal] = useState<MeetupLocationProposal | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const conversationId = route.params.conversationId;
+  const meetupEnabled = friendsFeatureFlags.meetupNegotiationEnabled;
 
   const otherParticipant = useMemo(() => {
     if (!conversation) return null;
@@ -236,12 +287,18 @@ const ChatScreenContent: React.FC = () => {
     } else {
       setIsLoading(true);
     }
+    setIsMeetupLoading(true);
     setError(null);
 
     try {
-      const [conversationResult, messagesResult] = await Promise.all([
+      const meetupPromise = meetupEnabled
+        ? listMeetupProposals({ conversationId })
+        : Promise.resolve({ proposals: [], error: null });
+
+      const [conversationResult, messagesResult, meetupResult] = await Promise.all([
         fetchConversationById(conversationId),
         fetchMessages(conversationId),
+        meetupPromise,
       ]);
 
       if (conversationResult.error || !conversationResult.conversation) {
@@ -268,6 +325,12 @@ const ChatScreenContent: React.FC = () => {
       );
       setMessages(sortMessagesByTime(transformedMessages));
 
+      if (!meetupEnabled || meetupResult.error) {
+        setMeetupProposals([]);
+      } else {
+        setMeetupProposals(meetupResult.proposals);
+      }
+
       await markMessagesAsRead(conversationId);
       scrollToBottom(false);
     } catch (err) {
@@ -278,8 +341,9 @@ const ChatScreenContent: React.FC = () => {
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
+      setIsMeetupLoading(false);
     }
-  }, [conversationId, scrollToBottom, user?.id]);
+  }, [conversationId, meetupEnabled, scrollToBottom, user?.id]);
 
   useEffect(() => {
     loadChatData();
@@ -325,6 +389,24 @@ const ChatScreenContent: React.FC = () => {
     return unsubscribe;
   }, [conversationId, otherParticipant, scrollToBottom, user?.id]);
 
+  useEffect(() => {
+    if (!meetupEnabled) {
+      setMeetupProposals([]);
+      return () => {};
+    }
+
+    const unsubscribe = subscribeToMeetupProposals(conversationId, () => {
+      void listMeetupProposals({ conversationId }).then((result) => {
+        if (!result.error) {
+          setMeetupProposals(result.proposals);
+          scrollToBottom(false);
+        }
+      });
+    });
+
+    return unsubscribe;
+  }, [conversationId, meetupEnabled, scrollToBottom]);
+
   const handleBackPress = useCallback(async () => {
     await haptics.light();
     navigation.goBack();
@@ -333,6 +415,162 @@ const ChatScreenContent: React.FC = () => {
   const handleRefresh = useCallback(() => {
     loadChatData(true);
   }, [loadChatData]);
+
+  useEffect(() => {
+    const query = meetupQuery.trim();
+    if (!showMeetupComposer || query.length < 2) {
+      setMeetupPredictions([]);
+      setIsSearchingMeetup(false);
+      return;
+    }
+
+    if (selectedMeetupPlace && query === selectedMeetupPlace.name) {
+      setMeetupPredictions([]);
+      setIsSearchingMeetup(false);
+      return;
+    }
+
+    setIsSearchingMeetup(true);
+    const timeout = setTimeout(async () => {
+      const { predictions, error: searchError } = await searchMeetupPlaces(query);
+      if (searchError) {
+        setMeetupComposerError(searchError);
+        setMeetupPredictions([]);
+      } else {
+        setMeetupPredictions(predictions);
+      }
+      setIsSearchingMeetup(false);
+    }, MEETUP_SEARCH_DEBOUNCE_MS);
+
+    return () => clearTimeout(timeout);
+  }, [meetupQuery, selectedMeetupPlace, showMeetupComposer]);
+
+  const resetMeetupComposer = useCallback(() => {
+    setMeetupQuery('');
+    setMeetupPredictions([]);
+    setMeetupComposerError(null);
+    setSelectedMeetupPlace(null);
+    setMeetupNote('');
+    setCounterFromProposal(null);
+    setShowMeetupComposer(false);
+  }, []);
+
+  const handleSelectMeetupPrediction = useCallback(async (prediction: PlacePrediction) => {
+    await haptics.selection();
+    setIsMeetupSubmitting(true);
+    const { details, error: detailsError } = await getMeetupPlaceDetails(prediction.placeId);
+    setIsMeetupSubmitting(false);
+
+    if (detailsError || !details) {
+      setMeetupComposerError(detailsError || 'Unable to load location details.');
+      return;
+    }
+
+    const placeName = details.name || prediction.mainText || prediction.description;
+    setSelectedMeetupPlace({
+      placeId: details.placeId,
+      name: placeName,
+      address: details.formattedAddress || prediction.description,
+      latitude: details.coordinates?.latitude,
+      longitude: details.coordinates?.longitude,
+    });
+    setMeetupQuery(placeName);
+    setMeetupPredictions([]);
+    setMeetupComposerError(null);
+  }, []);
+
+  const handleOpenMeetupComposer = useCallback(async (proposal?: MeetupLocationProposal) => {
+    await haptics.light();
+    if (proposal) {
+      setCounterFromProposal(proposal);
+      setMeetupQuery('');
+      setSelectedMeetupPlace(null);
+      setMeetupPredictions([]);
+      setMeetupComposerError(null);
+      setMeetupNote('');
+    } else {
+      setCounterFromProposal(null);
+    }
+    setShowMeetupComposer(true);
+  }, []);
+
+  const handleSubmitMeetupProposal = useCallback(async () => {
+    if (!selectedMeetupPlace?.name) {
+      setMeetupComposerError('Select a meetup location before sending.');
+      return;
+    }
+
+    setIsMeetupSubmitting(true);
+    const { proposal, error: proposeError } = await proposeMeetupLocation({
+      conversationId,
+      bookingId: counterFromProposal?.bookingId,
+      placeId: selectedMeetupPlace.placeId,
+      placeName: selectedMeetupPlace.name,
+      placeAddress: selectedMeetupPlace.address,
+      latitude: selectedMeetupPlace.latitude,
+      longitude: selectedMeetupPlace.longitude,
+      note: meetupNote.trim() || undefined,
+      supersedesProposalId: counterFromProposal?.id,
+    });
+    setIsMeetupSubmitting(false);
+
+    if (proposeError || !proposal) {
+      setMeetupComposerError(proposeError?.message || 'Unable to send meetup proposal right now.');
+      return;
+    }
+
+    trackEvent('meetup_proposal_sent', { hasBookingId: !!proposal.bookingId });
+    setMeetupProposals((previous) => {
+      const withoutExisting = previous.filter((entry) => entry.id !== proposal.id);
+      return [...withoutExisting, proposal].sort(
+        (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+      );
+    });
+    resetMeetupComposer();
+    scrollToBottom();
+  }, [conversationId, counterFromProposal?.bookingId, counterFromProposal?.id, meetupNote, resetMeetupComposer, scrollToBottom, selectedMeetupPlace]);
+
+  const handleRespondToMeetup = useCallback(async (
+    proposal: MeetupLocationProposal,
+    action: MeetupResponseAction,
+  ) => {
+    setIsMeetupSubmitting(true);
+    const { success, error: responseError } = await respondToMeetupProposal({
+      proposalId: proposal.id,
+      action,
+    });
+    setIsMeetupSubmitting(false);
+
+    if (!success || responseError) {
+      Alert.alert('Meetup update failed', responseError?.message || 'Unable to update meetup proposal right now.');
+      return;
+    }
+
+    if (action === 'accept') trackEvent('meetup_proposal_accepted');
+    if (action === 'decline') trackEvent('meetup_proposal_declined');
+    if (action === 'counter') trackEvent('meetup_proposal_countered');
+
+    const latest = await listMeetupProposals({ conversationId });
+    if (!latest.error) {
+      setMeetupProposals(latest.proposals);
+      scrollToBottom(false);
+    }
+  }, [conversationId, scrollToBottom]);
+
+  const handleOpenMeetupInMaps = useCallback(async (proposal: MeetupLocationProposal) => {
+    const query = proposal.placeAddress || proposal.placeName;
+    if (!query.trim()) {
+      return;
+    }
+
+    try {
+      const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+      await Linking.openURL(mapsUrl);
+      trackEvent('meetup_open_maps');
+    } catch {
+      Alert.alert('Unable to open maps', 'Please try again in a moment.');
+    }
+  }, []);
 
   const handleSend = useCallback(async () => {
     const content = inputText.trim();
@@ -547,23 +785,19 @@ const ChatScreenContent: React.FC = () => {
     }
   }, [messages]);
 
-  const renderMessage = ({ item, index }: { item: Message; index: number }) => {
+  const renderMessageBubble = (item: Message) => {
     const isMe = item.sender.id === (user?.id || '');
-    const previous = index > 0 ? messages[index - 1] : null;
-    const showAvatar = !isMe && (!previous || previous.sender.id !== item.sender.id);
-    const showSenderName = !isMe && conversation?.kind !== 'direct' && (!previous || previous.sender.id !== item.sender.id);
+    const showSenderName = !isMe && conversation?.kind !== 'direct';
 
     return (
       <View style={[styles.messageRow, isMe && styles.messageRowMe]}>
         {!isMe && (
           <View style={styles.avatarSpace}>
-            {showAvatar && (
-              <Avatar
-                source={item.sender.avatar}
-                name={`${item.sender.firstName} ${item.sender.lastName}`.trim()}
-                size="small"
-              />
-            )}
+            <Avatar
+              source={item.sender.avatar}
+              name={`${item.sender.firstName} ${item.sender.lastName}`.trim()}
+              size="small"
+            />
           </View>
         )}
 
@@ -619,6 +853,59 @@ const ChatScreenContent: React.FC = () => {
     );
   };
 
+  const timelineItems = useMemo<ChatTimelineItem[]>(() => {
+    const messageItems = messages.map((message) => ({
+      kind: 'message' as const,
+      key: `message:${message.id}`,
+      createdAt: message.createdAt,
+      message,
+    }));
+
+    const meetupItems = meetupEnabled ? meetupProposals.map((proposal) => ({
+      kind: 'meetup' as const,
+      key: `meetup:${proposal.id}`,
+      createdAt: proposal.createdAt,
+      proposal,
+    })) : [];
+
+    return [...messageItems, ...meetupItems].sort(
+      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+    );
+  }, [meetupEnabled, messages, meetupProposals]);
+
+  const renderTimelineItem = ({ item }: { item: ChatTimelineItem }) => {
+    if (item.kind === 'message') {
+      return renderMessageBubble(item.message);
+    }
+
+    const proposal = item.proposal;
+    const isCurrentUserProposer = proposal.proposerUserId === (user?.id || '');
+
+    return (
+      <View style={[styles.meetupRow, isCurrentUserProposer && styles.meetupRowMe]}>
+        <View style={styles.meetupCardWrap}>
+          <MeetupLocationCard
+            proposal={proposal}
+            isCurrentUserProposer={isCurrentUserProposer}
+            isBusy={isMeetupSubmitting}
+            onOpenMaps={() => {
+              void handleOpenMeetupInMaps(proposal);
+            }}
+            onAccept={() => {
+              void handleRespondToMeetup(proposal, 'accept');
+            }}
+            onDecline={() => {
+              void handleRespondToMeetup(proposal, 'decline');
+            }}
+            onSuggestAlternative={() => {
+              void handleOpenMeetupComposer(proposal);
+            }}
+          />
+        </View>
+      </View>
+    );
+  };
+
   if (isLoading && !isRefreshing) {
     return (
       <View style={styles.stateScreen}>
@@ -651,7 +938,7 @@ const ChatScreenContent: React.FC = () => {
   const headerStatus = conversationKind === 'direct'
     ? (otherParticipant?.isVerified ? 'ID & photo verified' : 'In-app conversation')
     : `${conversation.memberCount || 0} members - ${conversationKind === 'group' ? 'Group' : 'Event'} chat`;
-  const isComposerBusy = isSending || isSendingMedia;
+  const isComposerBusy = isSending || isSendingMedia || isMeetupSubmitting;
 
   return (
     <KeyboardAvoidingView
@@ -698,12 +985,12 @@ const ChatScreenContent: React.FC = () => {
 
       <FlatList
         ref={flatListRef}
-        data={messages}
-        keyExtractor={(item) => item.id}
-        renderItem={renderMessage}
+        data={timelineItems}
+        keyExtractor={(item) => item.key}
+        renderItem={renderTimelineItem}
         contentContainerStyle={[
           styles.messagesList,
-          messages.length === 0 && styles.emptyMessagesList,
+          timelineItems.length === 0 && styles.emptyMessagesList,
         ]}
         ListEmptyComponent={<EmptyChat companionName={otherParticipant?.firstName || 'Wingman'} />}
         refreshControl={(
@@ -714,7 +1001,7 @@ const ChatScreenContent: React.FC = () => {
           />
         )}
         onContentSizeChange={() => {
-          if (messages.length > 0) {
+          if (timelineItems.length > 0) {
             scrollToBottom(false);
           }
         }}
@@ -722,7 +1009,116 @@ const ChatScreenContent: React.FC = () => {
       />
 
       <View style={[styles.inputContainer, { paddingBottom: insets.bottom + spacing.sm }]}>
+        {meetupEnabled && showMeetupComposer ? (
+          <View style={styles.meetupComposer}>
+            <View style={styles.meetupComposerHeader}>
+              <Text style={styles.meetupComposerTitle}>
+                {counterFromProposal ? 'Suggest alternative meetup' : 'Propose meetup location'}
+              </Text>
+              <TouchableOpacity
+                style={styles.meetupComposerClose}
+                onPress={resetMeetupComposer}
+                disabled={isMeetupSubmitting}
+              >
+                <Ionicons name="close" size={16} color={colors.text.secondary} />
+              </TouchableOpacity>
+            </View>
+
+            <TextInput
+              style={styles.meetupComposerInput}
+              placeholder="Search a place"
+              placeholderTextColor={colors.text.tertiary}
+              value={meetupQuery}
+              onChangeText={(value) => {
+                setMeetupQuery(value);
+                setSelectedMeetupPlace(null);
+              }}
+              editable={!isMeetupSubmitting}
+            />
+
+            {isSearchingMeetup ? (
+              <View style={styles.meetupComposerLoading}>
+                <ActivityIndicator size="small" color={colors.accent.primary} />
+                <Text style={styles.meetupComposerHint}>Searching places...</Text>
+              </View>
+            ) : null}
+
+            {meetupPredictions.length > 0 ? (
+              <View style={styles.meetupPredictionList}>
+                {meetupPredictions.slice(0, 4).map((prediction) => (
+                  <TouchableOpacity
+                    key={prediction.placeId}
+                    style={styles.meetupPredictionRow}
+                    onPress={() => {
+                      void handleSelectMeetupPrediction(prediction);
+                    }}
+                    disabled={isMeetupSubmitting}
+                  >
+                    <Ionicons name="location-outline" size={15} color={colors.text.tertiary} />
+                    <View style={styles.meetupPredictionTextWrap}>
+                      <Text style={styles.meetupPredictionTitle}>{prediction.mainText}</Text>
+                      <Text style={styles.meetupPredictionSubtitle}>{prediction.description}</Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            ) : null}
+
+            {selectedMeetupPlace ? (
+              <Text style={styles.meetupComposerHint}>
+                Selected: {selectedMeetupPlace.name}
+                {selectedMeetupPlace.address ? ` - ${selectedMeetupPlace.address}` : ''}
+              </Text>
+            ) : null}
+
+            <TextInput
+              style={styles.meetupComposerInput}
+              placeholder="Optional note"
+              placeholderTextColor={colors.text.tertiary}
+              value={meetupNote}
+              onChangeText={setMeetupNote}
+              editable={!isMeetupSubmitting}
+              maxLength={240}
+            />
+
+            {meetupComposerError ? (
+              <Text style={styles.meetupComposerError}>{meetupComposerError}</Text>
+            ) : null}
+
+            <TouchableOpacity
+              style={[styles.meetupComposerSubmit, isMeetupSubmitting && styles.meetupComposerSubmitDisabled]}
+              onPress={() => {
+                void handleSubmitMeetupProposal();
+              }}
+              disabled={isMeetupSubmitting}
+            >
+              {isMeetupSubmitting ? (
+                <ActivityIndicator size="small" color={colors.text.onAccent} />
+              ) : (
+                <>
+                  <Ionicons name="send" size={14} color={colors.text.onAccent} />
+                  <Text style={styles.meetupComposerSubmitText}>
+                    {counterFromProposal ? 'Send Alternative' : 'Send Proposal'}
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
         <View style={styles.inputRow}>
+          {meetupEnabled ? (
+            <TouchableOpacity
+              style={styles.composeActionButton}
+              onPress={() => {
+                void handleOpenMeetupComposer();
+              }}
+              disabled={isComposerBusy}
+            >
+              <Ionicons name="location-outline" size={20} color={isComposerBusy ? colors.text.tertiary : colors.text.primary} />
+            </TouchableOpacity>
+          ) : null}
+
           <TouchableOpacity
             style={styles.composeActionButton}
             onPress={handleSendImage}
@@ -778,6 +1174,9 @@ const ChatScreenContent: React.FC = () => {
 
         {mediaProgressText ? (
           <Text style={styles.mediaProgressText}>{mediaProgressText}</Text>
+        ) : null}
+        {meetupEnabled && isMeetupLoading ? (
+          <Text style={styles.mediaProgressText}>Syncing meetup proposals...</Text>
         ) : null}
       </View>
     </KeyboardAvoidingView>
@@ -874,6 +1273,18 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     padding: spacing.screenPadding,
     gap: spacing.sm,
   },
+  meetupRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+    marginBottom: spacing.xs,
+  },
+  meetupRowMe: {
+    justifyContent: 'flex-end',
+  },
+  meetupCardWrap: {
+    maxWidth: '86%',
+    flex: 1,
+  },
   emptyMessagesList: {
     flex: 1,
     justifyContent: 'center',
@@ -964,6 +1375,98 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     borderTopWidth: 1,
     borderTopColor: colors.border.light,
     backgroundColor: colors.background.primary,
+  },
+  meetupComposer: {
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
+    borderRadius: spacing.radius.lg,
+    backgroundColor: colors.surface.level1,
+    padding: spacing.sm,
+    gap: spacing.xs,
+  },
+  meetupComposerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  meetupComposerTitle: {
+    ...typography.presets.bodySmall,
+    color: colors.text.primary,
+  },
+  meetupComposerClose: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface.level2,
+  },
+  meetupComposerInput: {
+    minHeight: 40,
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
+    borderRadius: spacing.radius.md,
+    backgroundColor: colors.surface.level0,
+    paddingHorizontal: spacing.sm,
+    ...typography.presets.bodySmall,
+    color: colors.text.primary,
+  },
+  meetupComposerLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  meetupComposerHint: {
+    ...typography.presets.caption,
+    color: colors.text.secondary,
+  },
+  meetupComposerError: {
+    ...typography.presets.caption,
+    color: colors.status.error,
+  },
+  meetupComposerSubmit: {
+    minHeight: 36,
+    borderRadius: spacing.radius.full,
+    backgroundColor: colors.accent.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+  },
+  meetupComposerSubmitDisabled: {
+    opacity: 0.7,
+  },
+  meetupComposerSubmitText: {
+    ...typography.presets.caption,
+    color: colors.text.onAccent,
+  },
+  meetupPredictionList: {
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
+    borderRadius: spacing.radius.md,
+    overflow: 'hidden',
+  },
+  meetupPredictionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border.subtle,
+    backgroundColor: colors.surface.level0,
+  },
+  meetupPredictionTextWrap: {
+    flex: 1,
+    gap: spacing.xxs,
+  },
+  meetupPredictionTitle: {
+    ...typography.presets.bodySmall,
+    color: colors.text.primary,
+  },
+  meetupPredictionSubtitle: {
+    ...typography.presets.caption,
+    color: colors.text.secondary,
   },
   inputRow: {
     flexDirection: 'row',

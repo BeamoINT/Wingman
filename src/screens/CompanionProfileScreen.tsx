@@ -505,9 +505,10 @@ export const CompanionProfileScreen: React.FC = () => {
         <View style={styles.actionButtons}>
           <TouchableOpacity style={styles.messageButton} onPress={handleMessagePress}>
             <Ionicons name="chatbubble-outline" size={22} color={colors.accent.primary} />
+            <Text style={styles.messageButtonText}>Chat first</Text>
           </TouchableOpacity>
           <Button
-            title="Book Now"
+            title="Request Booking"
             onPress={handleBookPress}
             variant="primary"
             size="large"
@@ -828,14 +829,20 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     gap: spacing.md,
   },
   messageButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    minHeight: 48,
+    borderRadius: spacing.radius.full,
     backgroundColor: colors.surface.level1,
     alignItems: 'center',
     justifyContent: 'center',
+    flexDirection: 'row',
+    paddingHorizontal: spacing.md,
+    gap: spacing.xs,
     borderWidth: 1,
     borderColor: colors.border.subtle,
+  },
+  messageButtonText: {
+    ...typography.presets.caption,
+    color: colors.text.secondary,
   },
   bookButton: {
     paddingHorizontal: spacing.xxl,

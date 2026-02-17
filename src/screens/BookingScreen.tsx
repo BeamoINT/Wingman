@@ -11,10 +11,12 @@ import { Avatar, Badge, Button, Card, EmptyState, Input } from '../components';
 import { RequirementsGate } from '../components/RequirementsGate';
 import { useRequirements } from '../context/RequirementsContext';
 import { useVerification } from '../context/VerificationContext';
-import { createBooking } from '../services/api/bookingsApi';
+import { getMeetupPlaceDetails, searchMeetupPlaces } from '../services/api/locationApi';
+import { createBookingWithMeetupProposal } from '../services/api/meetupApi';
 import { trackEvent } from '../services/monitoring/events';
 import type { CompanionData } from '../services/api/companions';
 import { fetchCompanionById } from '../services/api/companions';
+import type { PlacePrediction } from '../types/location';
 import type { CompanionSpecialty, RootStackParamList, VerificationLevel } from '../types';
 import { haptics } from '../utils/haptics';
 import { useTheme } from '../context/ThemeContext';
@@ -49,6 +51,8 @@ const activities: { id: CompanionSpecialty; label: string; icon: string }[] = [
   { id: 'shopping', label: 'Shopping', icon: 'bag' },
   { id: 'safety-companion', label: 'Safety', icon: 'shield' },
 ];
+
+const LOCATION_SEARCH_DEBOUNCE_MS = 220;
 
 interface CompanionPreview {
   id: string;
@@ -197,8 +201,16 @@ const BookingScreenContent: React.FC = () => {
   const [selectedTime, setSelectedTime] = useState<string>('7:00 PM');
   const [selectedDuration, setSelectedDuration] = useState<number>(2);
   const [selectedActivity, setSelectedActivity] = useState<CompanionSpecialty>('dining');
+  const [locationQuery, setLocationQuery] = useState('');
   const [locationName, setLocationName] = useState('');
   const [locationAddress, setLocationAddress] = useState('');
+  const [locationPlaceId, setLocationPlaceId] = useState<string | null>(null);
+  const [locationLatitude, setLocationLatitude] = useState<number | null>(null);
+  const [locationLongitude, setLocationLongitude] = useState<number | null>(null);
+  const [locationPredictions, setLocationPredictions] = useState<PlacePrediction[]>([]);
+  const [isSearchingLocation, setIsSearchingLocation] = useState(false);
+  const [isResolvingPlace, setIsResolvingPlace] = useState(false);
+  const [locationSearchError, setLocationSearchError] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -232,6 +244,61 @@ const BookingScreenContent: React.FC = () => {
   useEffect(() => {
     loadCompanion();
   }, [loadCompanion]);
+
+  useEffect(() => {
+    const normalizedQuery = locationQuery.trim();
+
+    if (!normalizedQuery || normalizedQuery.length < 2) {
+      setLocationPredictions([]);
+      setIsSearchingLocation(false);
+      setLocationSearchError(null);
+      return;
+    }
+
+    if (locationPlaceId && normalizedQuery === locationName.trim()) {
+      setLocationPredictions([]);
+      setIsSearchingLocation(false);
+      setLocationSearchError(null);
+      return;
+    }
+
+    setIsSearchingLocation(true);
+    const timeout = setTimeout(async () => {
+      const { predictions, error } = await searchMeetupPlaces(normalizedQuery);
+      if (error) {
+        setLocationSearchError(error);
+        setLocationPredictions([]);
+      } else {
+        setLocationSearchError(null);
+        setLocationPredictions(predictions);
+      }
+      setIsSearchingLocation(false);
+    }, LOCATION_SEARCH_DEBOUNCE_MS);
+
+    return () => clearTimeout(timeout);
+  }, [locationName, locationPlaceId, locationQuery]);
+
+  const handleSelectLocationPrediction = useCallback(async (prediction: PlacePrediction) => {
+    await haptics.selection();
+    setIsResolvingPlace(true);
+    const { details, error } = await getMeetupPlaceDetails(prediction.placeId);
+    setIsResolvingPlace(false);
+
+    if (error || !details) {
+      setLocationSearchError(error || 'Unable to load location details.');
+      return;
+    }
+
+    const resolvedName = details.name || prediction.mainText || prediction.description;
+    setLocationQuery(resolvedName);
+    setLocationName(resolvedName);
+    setLocationAddress(details.formattedAddress || prediction.description || '');
+    setLocationPlaceId(details.placeId);
+    setLocationLatitude(details.coordinates?.latitude ?? null);
+    setLocationLongitude(details.coordinates?.longitude ?? null);
+    setLocationPredictions([]);
+    setLocationSearchError(null);
+  }, []);
 
   const hourlyRate = companion?.hourlyRate || 0;
   const totalPrice = hourlyRate * selectedDuration;
@@ -384,7 +451,7 @@ const BookingScreenContent: React.FC = () => {
     setIsProcessing(true);
 
     try {
-      const { booking, error } = await createBooking({
+      const { booking, error } = await createBookingWithMeetupProposal({
         companion_id: companion.id,
         date: selectedDateValue.full,
         start_time: startTime,
@@ -392,8 +459,13 @@ const BookingScreenContent: React.FC = () => {
         hourly_rate: companion.hourlyRate,
         location_name: locationName.trim(),
         location_address: locationAddress.trim() || undefined,
+        place_id: locationPlaceId || undefined,
+        location_latitude: locationLatitude ?? undefined,
+        location_longitude: locationLongitude ?? undefined,
         activity_type: selectedActivity,
         notes: notes.trim() || undefined,
+        conversation_id: route.params.conversationId,
+        meetup_note: notes.trim() || undefined,
       });
 
       if (error || !booking?.id) {
@@ -608,21 +680,60 @@ const BookingScreenContent: React.FC = () => {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Meeting Location</Text>
+          <Text style={styles.sectionTitle}>Proposed Meetup Location</Text>
           <Input
-            label="Location Name"
-            placeholder="Venue, restaurant, or meeting point"
-            value={locationName}
-            onChangeText={setLocationName}
+            label="Search place"
+            placeholder="Search cafes, bars, restaurants, or landmarks"
+            value={locationQuery}
+            onChangeText={(value) => {
+              setLocationQuery(value);
+              setLocationName(value.trim());
+              setLocationPlaceId(null);
+              setLocationLatitude(null);
+              setLocationLongitude(null);
+            }}
             leftIcon="location-outline"
           />
+          {isSearchingLocation || isResolvingPlace ? (
+            <View style={styles.locationSearchState}>
+              <ActivityIndicator size="small" color={colors.accent.primary} />
+              <Text style={styles.locationSearchStateText}>
+                {isResolvingPlace ? 'Loading location details...' : 'Searching places...'}
+              </Text>
+            </View>
+          ) : null}
+          {locationPredictions.length > 0 ? (
+            <View style={styles.locationPredictionList}>
+              {locationPredictions.slice(0, 5).map((prediction) => (
+                <TouchableOpacity
+                  key={prediction.placeId}
+                  style={styles.locationPredictionRow}
+                  onPress={() => {
+                    void handleSelectLocationPrediction(prediction);
+                  }}
+                >
+                  <Ionicons name="location-outline" size={16} color={colors.text.tertiary} />
+                  <View style={styles.locationPredictionTextWrap}>
+                    <Text style={styles.locationPredictionTitle}>{prediction.mainText}</Text>
+                    <Text style={styles.locationPredictionSubtitle}>{prediction.description}</Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : null}
           <Input
-            label="Address (Optional)"
-            placeholder="Street address for directions"
+            label="Address"
+            placeholder="Selected address will appear here"
             value={locationAddress}
             onChangeText={setLocationAddress}
             leftIcon="map-outline"
           />
+          {locationPlaceId ? (
+            <Text style={styles.locationSelectedHint}>Place selected. Your wingman can accept, decline, or suggest an alternative in chat.</Text>
+          ) : null}
+          {locationSearchError ? (
+            <Text style={styles.locationErrorText}>{locationSearchError}</Text>
+          ) : null}
         </View>
 
         <View style={styles.section}>
@@ -691,7 +802,7 @@ const BookingScreenContent: React.FC = () => {
         </Card>
 
         <Button
-          title={companion.isAvailable ? 'Confirm Booking' : 'Wingman Unavailable'}
+          title={companion.isAvailable ? 'Request Booking' : 'Wingman Unavailable'}
           onPress={handleBookPress}
           variant="primary"
           size="large"
@@ -909,6 +1020,55 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
   },
   activityTextSelected: {
     color: colors.text.primary,
+  },
+  locationSearchState: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginBottom: spacing.sm,
+  },
+  locationSearchStateText: {
+    ...typography.presets.caption,
+    color: colors.text.secondary,
+  },
+  locationPredictionList: {
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
+    borderRadius: spacing.radius.md,
+    backgroundColor: colors.surface.level1,
+    marginBottom: spacing.sm,
+    overflow: 'hidden',
+  },
+  locationPredictionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border.subtle,
+  },
+  locationPredictionTextWrap: {
+    flex: 1,
+    gap: spacing.xxs,
+  },
+  locationPredictionTitle: {
+    ...typography.presets.bodySmall,
+    color: colors.text.primary,
+  },
+  locationPredictionSubtitle: {
+    ...typography.presets.caption,
+    color: colors.text.secondary,
+  },
+  locationSelectedHint: {
+    ...typography.presets.caption,
+    color: colors.text.secondary,
+    marginTop: spacing.xs,
+  },
+  locationErrorText: {
+    ...typography.presets.caption,
+    color: colors.status.error,
+    marginTop: spacing.xs,
   },
   safetyReminder: {
     flexDirection: 'row',

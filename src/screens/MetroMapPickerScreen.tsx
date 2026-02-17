@@ -5,6 +5,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Platform,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -17,9 +18,9 @@ import {
   ScreenScaffold,
   SectionHeader,
 } from '../components';
-import { friendsFeatureFlags } from '../config/featureFlags';
 import { runtimeEnv } from '../config/env';
-import { supportsNativeMapboxMaps } from '../config/runtime';
+import { friendsFeatureFlags } from '../config/featureFlags';
+import { supportsNativeGoogleMaps } from '../config/runtime';
 import { useTheme } from '../context/ThemeContext';
 import {
   listMetroAreas,
@@ -33,8 +34,28 @@ import type { RootStackParamList } from '../types';
 import { haptics } from '../utils/haptics';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+type MapModule = {
+  MapView: React.ComponentType<any>;
+  Marker: React.ComponentType<any>;
+};
 
 const SEARCH_DEBOUNCE_MS = 220;
+
+function loadNativeMapModule(): MapModule | null {
+  if (Platform.OS === 'web') {
+    return null;
+  }
+
+  try {
+    const maps = require('react-native-maps');
+    return {
+      MapView: maps.default,
+      Marker: maps.Marker,
+    };
+  } catch {
+    return null;
+  }
+}
 
 export const MetroMapPickerScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
@@ -44,26 +65,43 @@ export const MetroMapPickerScreen: React.FC = () => {
 
   const [query, setQuery] = useState('');
   const [metros, setMetros] = useState<MetroArea[]>([]);
+  const [selectedMetroId, setSelectedMetroId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const isMapboxTokenConfigured = runtimeEnv.mapboxAccessToken.trim().length > 0;
+  const mapModule = useMemo(loadNativeMapModule, []);
+  const hasGoogleMapsKey = (
+    runtimeEnv.googleMapsApiKey.trim().length > 0
+    || runtimeEnv.googleMapsApiKeyIos.trim().length > 0
+    || runtimeEnv.googleMapsApiKeyAndroid.trim().length > 0
+  );
+
+  const isGoogleMapAvailable = (
+    friendsFeatureFlags.friendsGoogleMapPickerEnabled
+    && supportsNativeGoogleMaps
+    && hasGoogleMapsKey
+    && !!mapModule
+  );
 
   const loadMetros = useCallback(async (searchQuery: string) => {
     setIsLoading(true);
     setError(null);
     const { metros: rows, error: loadError } = await listMetroAreas({
       query: searchQuery.trim() || undefined,
-      limit: 120,
+      limit: 160,
       offset: 0,
     });
+
     if (loadError) {
       setError(loadError);
       setMetros([]);
+      setSelectedMetroId(null);
     } else {
       setMetros(rows);
+      setSelectedMetroId((previous) => previous || rows[0]?.id || null);
     }
+
     setIsLoading(false);
   }, []);
 
@@ -115,32 +153,65 @@ export const MetroMapPickerScreen: React.FC = () => {
   };
 
   const mapBanner = useMemo(() => {
-    if (!friendsFeatureFlags.friendsMapboxPickerEnabled) {
+    if (!friendsFeatureFlags.friendsGoogleMapPickerEnabled) {
       return {
         title: 'Map selection disabled',
-        message: 'Mapbox picker is disabled by feature flag. Use the metro list below.',
+        message: 'Google map marker selection is disabled by feature flag. Metro list selection is still available.',
       };
     }
 
-    if (!supportsNativeMapboxMaps) {
+    if (!supportsNativeGoogleMaps) {
       return {
         title: 'List fallback in this runtime',
-        message: 'Map marker rendering needs a Wingman native build. Metro list selection remains fully available.',
+        message: 'Google map marker selection needs a Wingman native build. Metro list selection remains fully available.',
       };
     }
 
-    if (!isMapboxTokenConfigured) {
+    if (!hasGoogleMapsKey) {
       return {
-        title: 'Mapbox token not configured',
-        message: 'Metro list fallback is active. Add EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN to enable map markers in native builds.',
+        title: 'Google Maps key not configured',
+        message: 'Metro list fallback is active. Add EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_IOS and EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_ANDROID to enable map markers.',
+      };
+    }
+
+    if (!mapModule) {
+      return {
+        title: 'Map module unavailable',
+        message: 'Metro list fallback is active because native map rendering is unavailable on this platform.',
       };
     }
 
     return {
       title: 'Map marker mode',
-      message: 'Mapbox marker rendering is available in native builds. List selection is always available as a reliable fallback.',
+      message: 'Google map marker selection is active. List selection remains available as a reliable fallback.',
     };
-  }, [isMapboxTokenConfigured]);
+  }, [hasGoogleMapsKey, mapModule]);
+
+  const selectedMetro = useMemo(
+    () => metros.find((metro) => metro.id === selectedMetroId) || null,
+    [metros, selectedMetroId],
+  );
+  const MapViewComponent = mapModule?.MapView;
+  const MarkerComponent = mapModule?.Marker;
+
+  const markerMetros = useMemo(
+    () => metros.filter((metro) => metro.latitude != null && metro.longitude != null).slice(0, 500),
+    [metros],
+  );
+
+  const mapRegion = useMemo(() => {
+    const baseMetro = selectedMetro || markerMetros[0] || null;
+    if (!baseMetro || baseMetro.latitude == null || baseMetro.longitude == null) {
+      return null;
+    }
+
+    return {
+      latitude: baseMetro.latitude,
+      longitude: baseMetro.longitude,
+      latitudeDelta: 12,
+      longitudeDelta: 12,
+    };
+  }, [markerMetros, selectedMetro]);
 
   return (
     <ScreenScaffold scrollable={false} withBottomPadding={false} style={styles.container}>
@@ -160,6 +231,34 @@ export const MetroMapPickerScreen: React.FC = () => {
           leftIcon="search"
         />
 
+        {isGoogleMapAvailable && mapRegion && MapViewComponent && MarkerComponent ? (
+          <View style={styles.mapWrap}>
+            <MapViewComponent
+              style={styles.map}
+              initialRegion={mapRegion}
+              region={mapRegion}
+              moveOnMarkerPress
+              showsCompass={false}
+              showsUserLocation={false}
+              toolbarEnabled={false}
+            >
+              {markerMetros.map((metro) => (
+                <MarkerComponent
+                  key={`marker-${metro.id}`}
+                  coordinate={{
+                    latitude: metro.latitude as number,
+                    longitude: metro.longitude as number,
+                  }}
+                  title={metro.metroAreaName}
+                  description={[metro.metroState, metro.metroCountry].filter(Boolean).join(', ')}
+                  pinColor={selectedMetroId === metro.id ? colors.accent.primary : colors.text.secondary}
+                  onPress={() => setSelectedMetroId(metro.id)}
+                />
+              ))}
+            </MapViewComponent>
+          </View>
+        ) : null}
+
         {isLoading ? (
           <View style={styles.loadingWrap}>
             <ActivityIndicator size="small" color={colors.accent.primary} />
@@ -176,18 +275,17 @@ export const MetroMapPickerScreen: React.FC = () => {
               const subtitle = [item.metroState, item.metroCountry].filter(Boolean).join(', ');
               const isManualSaving = isSaving === `manual-${item.id}`;
               const isDefaultSaving = isSaving === `default-${item.id}`;
+              const isSelected = selectedMetroId === item.id;
 
               return (
-                <View style={styles.metroCard}>
+                <View style={[styles.metroCard, isSelected && styles.metroCardSelected]}>
                   <View style={styles.metroHeader}>
                     <View style={styles.markerIconWrap}>
                       <Ionicons name="location" size={15} color={colors.accent.primary} />
                     </View>
                     <View style={styles.metroTextWrap}>
                       <Text style={styles.metroTitle}>{item.metroAreaName}</Text>
-                      <Text style={styles.metroSubtitle}>
-                        {subtitle || 'Global metro'}
-                      </Text>
+                      <Text style={styles.metroSubtitle}>{subtitle || 'Global metro'}</Text>
                     </View>
                   </View>
 
@@ -259,29 +357,44 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     paddingBottom: spacing.xl,
     gap: spacing.sm,
   },
+  mapWrap: {
+    overflow: 'hidden',
+    borderRadius: spacing.radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
+    backgroundColor: colors.surface.level1,
+    height: 220,
+  },
+  map: {
+    width: '100%',
+    height: '100%',
+  },
   loadingWrap: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
-    paddingVertical: spacing.sm,
+    justifyContent: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.lg,
   },
   loadingText: {
     ...typography.presets.bodySmall,
     color: colors.text.secondary,
   },
   listContent: {
-    paddingBottom: spacing.xxl,
+    paddingBottom: spacing.lg,
   },
   separator: {
     height: spacing.sm,
   },
   metroCard: {
-    backgroundColor: colors.surface.level1,
+    borderRadius: spacing.radius.lg,
     borderWidth: 1,
     borderColor: colors.border.subtle,
-    borderRadius: spacing.radius.xl,
+    backgroundColor: colors.surface.level1,
     padding: spacing.md,
     gap: spacing.sm,
+  },
+  metroCardSelected: {
+    borderColor: colors.accent.primary,
   },
   metroHeader: {
     flexDirection: 'row',
@@ -289,10 +402,10 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     gap: spacing.sm,
   },
   markerIconWrap: {
-    width: 28,
-    height: 28,
+    width: 30,
+    height: 30,
     borderRadius: spacing.radius.round,
-    backgroundColor: colors.accent.soft,
+    backgroundColor: colors.surface.level2,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -301,7 +414,7 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     gap: spacing.xxs,
   },
   metroTitle: {
-    ...typography.presets.h4,
+    ...typography.presets.bodyMedium,
     color: colors.text.primary,
   },
   metroSubtitle: {
@@ -316,11 +429,11 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     flex: 1,
     minHeight: 40,
     borderRadius: spacing.radius.full,
+    paddingHorizontal: spacing.sm,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    flexDirection: 'row',
     gap: spacing.xs,
-    paddingHorizontal: spacing.sm,
   },
   primaryAction: {
     backgroundColor: colors.accent.primary,
@@ -331,18 +444,18 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     backgroundColor: colors.surface.level2,
   },
   primaryActionText: {
-    ...typography.presets.buttonSmall,
+    ...typography.presets.caption,
     color: colors.text.onAccent,
   },
   secondaryActionText: {
-    ...typography.presets.buttonSmall,
+    ...typography.presets.caption,
     color: colors.text.secondary,
   },
   emptyState: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: spacing.xl,
     gap: spacing.xs,
+    paddingVertical: spacing.lg,
   },
   emptyTitle: {
     ...typography.presets.h4,

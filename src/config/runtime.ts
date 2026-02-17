@@ -29,4 +29,4 @@ export const requiresNativeBuild = isNativeMobile && isExpoGo;
 export const supportsNativeMediaCompression = isNativeMobile && !isExpoGo;
 export const supportsSecureMessagingIdentity = isNativeMobile && !isExpoGo;
 export const supportsRevenueCatPurchases = isNativeMobile && !isExpoGo;
-export const supportsNativeMapboxMaps = isNativeMobile && !isExpoGo;
+export const supportsNativeGoogleMaps = isNativeMobile && !isExpoGo;

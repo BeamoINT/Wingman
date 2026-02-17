@@ -7,7 +7,7 @@ import {
     ActivityIndicator,
     Alert,
     Linking,
-    Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View
+    ScrollView, StyleSheet, Text, TouchableOpacity, View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar, Badge, Button, Card, EmptyState } from '../components';
@@ -99,6 +99,7 @@ function transformBookingData(data: BookingData): Booking {
       isPremium: false,
       createdAt: data.created_at,
     },
+    conversationId: data.conversation_id || undefined,
     status: normalizeBookingStatus(data.status),
     date: data.date,
     startTime: data.start_time,
@@ -108,8 +109,20 @@ function transformBookingData(data: BookingData): Booking {
     location: {
       name: data.location_name || 'Location TBD',
       address: data.location_address || '',
+      placeId: data.location_place_id || undefined,
+      coordinates: (
+        typeof data.location_latitude === 'number'
+        && typeof data.location_longitude === 'number'
+      ) ? {
+        latitude: data.location_latitude,
+        longitude: data.location_longitude,
+      } : undefined,
       type: 'other',
     },
+    locationPlaceId: data.location_place_id || undefined,
+    meetupStatus: data.meetup_status || 'none',
+    meetupProposalId: data.meetup_proposal_id || undefined,
+    meetupAgreedAt: data.meetup_agreed_at || undefined,
     activityType: (data.activity_type || 'social-events') as CompanionSpecialty,
     notes: data.notes,
     createdAt: data.created_at,
@@ -140,12 +153,7 @@ function formatTime(time: string): string {
 }
 
 function buildMapUrl(query: string): string {
-  const encoded = encodeURIComponent(query);
-  if (Platform.OS === 'ios') {
-    return `http://maps.apple.com/?q=${encoded}`;
-  }
-
-  return `geo:0,0?q=${encoded}`;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
 }
 
 function statusVariant(status: BookingStatus): 'success' | 'warning' | 'info' | 'error' {
@@ -163,6 +171,22 @@ function statusVariant(status: BookingStatus): 'success' | 'warning' | 'info' | 
       return 'error';
     default:
       return 'info';
+  }
+}
+
+function meetupStatusLabel(status?: Booking['meetupStatus']): string {
+  switch (status) {
+    case 'agreed':
+      return 'Meetup agreed';
+    case 'proposed':
+      return 'Meetup proposal pending';
+    case 'countered':
+      return 'Meetup counter proposal pending';
+    case 'declined':
+      return 'Meetup proposal declined';
+    case 'none':
+    default:
+      return 'Meetup location required';
   }
 }
 
@@ -211,6 +235,12 @@ export const BookingConfirmationScreen: React.FC = () => {
   }, [navigation]);
 
   const handleMessageCompanion = useCallback(async () => {
+    if (booking?.conversationId) {
+      await haptics.light();
+      navigation.navigate('Chat', { conversationId: booking.conversationId });
+      return;
+    }
+
     if (!booking?.companion.user.id) {
       Alert.alert('Unavailable', 'Wingman messaging is unavailable for this booking.');
       return;
@@ -241,11 +271,9 @@ export const BookingConfirmationScreen: React.FC = () => {
     }
 
     const mapUrl = buildMapUrl(query);
-    const fallbackUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
 
     try {
-      const canOpenMapUrl = await Linking.canOpenURL(mapUrl);
-      await Linking.openURL(canOpenMapUrl ? mapUrl : fallbackUrl);
+      await Linking.openURL(mapUrl);
     } catch (error) {
       console.error('Error opening map:', error);
       Alert.alert('Unable to Open Maps', 'Please check your maps application and try again.');
@@ -387,6 +415,7 @@ export const BookingConfirmationScreen: React.FC = () => {
               {!!booking.location.address && (
                 <Text style={styles.detailSubValue}>{booking.location.address}</Text>
               )}
+              <Text style={styles.detailSubValue}>{meetupStatusLabel(booking.meetupStatus)}</Text>
             </View>
           </View>
 
@@ -398,6 +427,25 @@ export const BookingConfirmationScreen: React.FC = () => {
             </>
           )}
         </Card>
+
+        {booking.meetupStatus !== 'agreed' ? (
+          <Card variant="outlined" style={styles.meetupNoticeCard}>
+            <View style={styles.meetupNoticeHeader}>
+              <Ionicons name="chatbubbles-outline" size={18} color={colors.status.warning} />
+              <Text style={styles.meetupNoticeTitle}>Meetup confirmation required</Text>
+            </View>
+            <Text style={styles.meetupNoticeBody}>
+              This booking stays pending until both sides agree on a meetup location in chat.
+            </Text>
+            <Button
+              title={isOpeningChat ? 'Opening chat...' : 'Review Meetup in Chat'}
+              variant="primary"
+              onPress={handleMessageCompanion}
+              loading={isOpeningChat}
+              disabled={isOpeningChat}
+            />
+          </Card>
+        ) : null}
 
         <View style={styles.safetyTip}>
           <Ionicons name="shield-checkmark" size={18} color={colors.primary.blue} />
@@ -541,6 +589,23 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     ...typography.presets.bodySmall,
     color: colors.text.secondary,
     marginTop: spacing.xs,
+    lineHeight: 20,
+  },
+  meetupNoticeCard: {
+    gap: spacing.sm,
+  },
+  meetupNoticeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  meetupNoticeTitle: {
+    ...typography.presets.h4,
+    color: colors.text.primary,
+  },
+  meetupNoticeBody: {
+    ...typography.presets.bodySmall,
+    color: colors.text.secondary,
     lineHeight: 20,
   },
   safetyTip: {
