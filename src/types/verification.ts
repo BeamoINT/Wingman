@@ -18,6 +18,12 @@ export type VerificationEventType =
   | 'phone_verified'
   | 'id_verified'
   | 'id_verification_failed'
+  | 'id_verification_started'
+  | 'id_verification_processing'
+  | 'id_verification_expired'
+  | 'id_verification_reminder_sent'
+  | 'id_verification_invalidated_name_change'
+  | 'id_verification_status_update'
   | 'verification_level_upgraded';
 
 /**
@@ -70,8 +76,25 @@ export interface VerificationStep {
 export type OverallVerificationStatus =
   | 'not_started'       // No verification completed
   | 'in_progress'       // Some verification in progress
+  | 'expired'           // Previously verified but currently expired
   | 'verified'          // ID verified
   | 'premium_verified'; // Premium verified
+
+export type IdVerificationStatus =
+  | 'unverified'
+  | 'pending'
+  | 'verified'
+  | 'expired'
+  | 'failed_name_mismatch'
+  | 'failed';
+
+export type IdVerificationReminderStage = 90 | 30 | 7 | 1 | 'expired' | null;
+
+export interface IdVerificationReminder {
+  stage: IdVerificationReminderStage;
+  daysUntilExpiry: number | null;
+  expiresAt: string | null;
+}
 
 /**
  * Verification level (matches database enum)
@@ -91,6 +114,10 @@ export interface VerificationState {
   emailVerified: boolean;
   phoneVerified: boolean;
   idVerified: boolean;
+  idVerificationStatus: IdVerificationStatus;
+  idVerificationExpiresAt: string | null;
+  idVerifiedAt: string | null;
+  idVerificationReminder: IdVerificationReminder;
   verificationLevel: VerificationLevel;
   overallStatus: OverallVerificationStatus;
   history: VerificationEvent[];
@@ -104,6 +131,14 @@ export const defaultVerificationState: VerificationState = {
   emailVerified: false,
   phoneVerified: false,
   idVerified: false,
+  idVerificationStatus: 'unverified',
+  idVerificationExpiresAt: null,
+  idVerifiedAt: null,
+  idVerificationReminder: {
+    stage: null,
+    daysUntilExpiry: null,
+    expiresAt: null,
+  },
   verificationLevel: 'basic',
   overallStatus: 'not_started',
   history: [],
@@ -120,5 +155,8 @@ export interface VerificationStatusResponse {
   emailVerified: boolean;
   phoneVerified: boolean;
   idVerified: boolean;
+  idVerificationStatus: IdVerificationStatus;
+  idVerificationExpiresAt: string | null;
+  idVerifiedAt: string | null;
   verificationLevel: VerificationLevel;
 }

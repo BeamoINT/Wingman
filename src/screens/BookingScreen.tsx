@@ -22,6 +22,10 @@ import { haptics } from '../utils/haptics';
 import { useTheme } from '../context/ThemeContext';
 import type { ThemeTokens } from '../theme/tokens';
 import { useThemedStyles } from '../theme/useThemedStyles';
+import {
+  formatIdVerificationDate,
+  isIdVerificationActive,
+} from '../utils/idVerification';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Booking'>;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -122,7 +126,11 @@ function transformCompanionData(data: CompanionData): CompanionPreview {
   const firstName = data.user?.first_name?.trim() || 'Wingman';
   const lastName = data.user?.last_name?.trim() || '';
   const lastInitial = lastName ? `${lastName.charAt(0)}.` : '';
-  const hasIdVerification = !!data.user?.id_verified;
+  const hasActiveIdVerification = isIdVerificationActive({
+    id_verified: data.user?.id_verified,
+    id_verification_status: data.user?.id_verification_status,
+    id_verification_expires_at: data.user?.id_verification_expires_at,
+  });
   const normalizedLevel = normalizeVerificationLevel(data.user?.verification_level);
 
   return {
@@ -134,9 +142,9 @@ function transformCompanionData(data: CompanionData): CompanionPreview {
     rating: Math.max(0, toNumber(data.rating, 0)),
     reviewCount: Math.max(0, Math.round(toNumber(data.review_count, 0))),
     responseTime: data.response_time || 'Usually responds within 1 hour',
-    verificationLevel: normalizedLevel === 'premium'
+    verificationLevel: hasActiveIdVerification && normalizedLevel === 'premium'
       ? 'premium'
-      : (normalizedLevel === 'verified' || hasIdVerification ? 'verified' : 'basic'),
+      : (hasActiveIdVerification ? 'verified' : 'basic'),
     isAvailable: typeof data.is_available === 'boolean' ? data.is_available : true,
   };
 }
@@ -150,7 +158,14 @@ const BookingScreenContent: React.FC = () => {
   const route = useRoute<Props['route']>();
   const insets = useSafeAreaInsets();
   const { checkBookingRequirements } = useRequirements();
-  const { idVerified, emailVerified, phoneVerified } = useVerification();
+  const {
+    idVerified,
+    emailVerified,
+    phoneVerified,
+    idVerificationStatus,
+    idVerificationReminder,
+    idVerificationExpiresAt,
+  } = useVerification();
   const bookingRequirements = useMemo(
     () => checkBookingRequirements('finalize'),
     [checkBookingRequirements]
@@ -161,7 +176,13 @@ const BookingScreenContent: React.FC = () => {
     const missing: string[] = [];
     if (!emailVerified) missing.push('email');
     if (!phoneVerified) missing.push('phone');
-    if (!idVerified) missing.push('ID');
+    if (!idVerified) {
+      if (idVerificationStatus === 'expired' || idVerificationReminder.stage === 'expired') {
+        missing.push('re-verifying your expired ID');
+      } else {
+        missing.push('ID');
+      }
+    }
     if (!photoVerified) missing.push('profile photo');
     if (!bookingRequirements.photoIdMatchAttested.met) missing.push('photo-ID match confirmation');
 
@@ -180,7 +201,15 @@ const BookingScreenContent: React.FC = () => {
     const missingLast = missing[missing.length - 1];
     const missingPrefix = missing.slice(0, -1).join(', ');
     return `Complete ${missingPrefix}, and ${missingLast} verification to book.`;
-  }, [bookingRequirements.photoIdMatchAttested.met, emailVerified, phoneVerified, idVerified, photoVerified]);
+  }, [
+    bookingRequirements.photoIdMatchAttested.met,
+    emailVerified,
+    phoneVerified,
+    idVerified,
+    photoVerified,
+    idVerificationStatus,
+    idVerificationReminder.stage,
+  ]);
 
   const dates = useMemo(() => {
     return Array.from({ length: 14 }, (_, index) => {
@@ -333,6 +362,9 @@ const BookingScreenContent: React.FC = () => {
     }
 
     if (!requirements.idVerified.met) {
+      if (idVerificationStatus === 'expired' || idVerificationReminder.stage === 'expired') {
+        return { valid: false, message: 'Your ID verification expired. Re-verify before booking.' };
+      }
       return { valid: false, message: 'You must verify your identity before booking.' };
     }
 
@@ -377,7 +409,16 @@ const BookingScreenContent: React.FC = () => {
     }
 
     return { valid: true };
-  }, [checkBookingRequirements, companion, locationName, dates, selectedDate, selectedTime]);
+  }, [
+    checkBookingRequirements,
+    companion,
+    locationName,
+    dates,
+    selectedDate,
+    selectedTime,
+    idVerificationStatus,
+    idVerificationReminder.stage,
+  ]);
 
   const handleBookPress = async () => {
     const validation = validateBeforeBooking();
@@ -388,6 +429,9 @@ const BookingScreenContent: React.FC = () => {
 
       const needsEmailOrIdVerification =
         !bookingRequirements.emailVerified.met || !bookingRequirements.idVerified.met;
+      const needsExpiredIdVerification =
+        !bookingRequirements.idVerified.met
+        && (idVerificationStatus === 'expired' || idVerificationReminder.stage === 'expired');
       const needsPhoneVerification = !bookingRequirements.phoneVerified.met;
       const needsProfilePhoto = !bookingRequirements.photoVerified.met;
       const needsPhotoIdMatch = !bookingRequirements.photoIdMatchAttested.met;
@@ -404,7 +448,9 @@ const BookingScreenContent: React.FC = () => {
             {
               text: needsPhoneVerification
                 ? 'Verify Phone'
-                : (needsEmailOrIdVerification ? 'Complete Verification' : 'Update Profile'),
+                : (needsEmailOrIdVerification
+                  ? (needsExpiredIdVerification ? 'Re-verify ID' : 'Complete Verification')
+                  : 'Update Profile'),
               onPress: () => {
                 if (needsPhoneVerification) {
                   navigation.navigate('VerifyPhone', { source: 'booking' });
@@ -755,6 +801,30 @@ const BookingScreenContent: React.FC = () => {
             Keep payment and communication in-app for support and protection. Everyone on Wingman is ID and photo verified before booking.
           </Text>
         </View>
+
+        {idVerificationReminder.stage && idVerificationReminder.stage !== 'expired' && (
+          <View style={styles.verificationWarning}>
+            <Ionicons name="time" size={20} color={colors.status.warning} />
+            <View style={styles.verificationWarningContent}>
+              <Text style={styles.verificationWarningTitle}>ID Verification Renewal</Text>
+              <Text style={styles.verificationWarningText}>
+                Your ID verification expires in {idVerificationReminder.stage} day{idVerificationReminder.stage === 1 ? '' : 's'} ({formatIdVerificationDate(idVerificationExpiresAt)}). Re-verify now to prevent booking interruptions.
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {(idVerificationStatus === 'expired' || idVerificationReminder.stage === 'expired') && (
+          <View style={styles.verificationWarning}>
+            <Ionicons name="alert-circle" size={20} color={colors.status.error} />
+            <View style={styles.verificationWarningContent}>
+              <Text style={styles.verificationWarningTitle}>ID Verification Expired</Text>
+              <Text style={styles.verificationWarningText}>
+                Re-verify your ID before placing a booking request.
+              </Text>
+            </View>
+          </View>
+        )}
 
         {(!idVerified || !emailVerified || !phoneVerified || !photoVerified) && (
           <View style={styles.verificationWarning}>

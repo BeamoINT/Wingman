@@ -20,6 +20,9 @@ export interface User {
   proStatus?: ProStatus;
   profilePhotoIdMatchAttested?: boolean;
   profilePhotoIdMatchAttestedAt?: string | null;
+  idVerificationStatus?: 'unverified' | 'pending' | 'verified' | 'expired' | 'failed_name_mismatch' | 'failed';
+  idVerificationExpiresAt?: string | null;
+  idVerifiedAt?: string | null;
   createdAt: string;
   lastActive?: string;
 }

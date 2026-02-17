@@ -15,6 +15,7 @@ import { haptics } from '../utils/haptics';
 import { useTheme } from '../context/ThemeContext';
 import type { ThemeTokens } from '../theme/tokens';
 import { useThemedStyles } from '../theme/useThemedStyles';
+import { isIdVerificationActive, normalizeIdVerificationStatus } from '../utils/idVerification';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 type SpecialtyFilter = 'all' | CompanionSpecialty;
@@ -60,10 +61,17 @@ function toStringArray(value: unknown): string[] {
  * Transform API companion data to app Companion type
  */
 function transformCompanionData(data: CompanionData): Companion {
-  const hasIdVerification = !!data.user?.id_verified;
-  const verificationLevel: VerificationLevel = data.user?.verification_level === 'premium'
+  const hasActiveIdVerification = isIdVerificationActive({
+    id_verified: data.user?.id_verified,
+    id_verification_status: data.user?.id_verification_status,
+    id_verification_expires_at: data.user?.id_verification_expires_at,
+  });
+  const verificationLevel: VerificationLevel = (
+    hasActiveIdVerification
+    && data.user?.verification_level === 'premium'
+  )
     ? 'premium'
-    : data.user?.verification_level === 'verified' || hasIdVerification
+    : hasActiveIdVerification
       ? 'verified'
       : 'basic';
 
@@ -78,9 +86,15 @@ function transformCompanionData(data: CompanionData): Companion {
       isVerified: (
         verificationLevel === 'verified'
         || verificationLevel === 'premium'
-        || !!data.user?.id_verified
       ),
       isPremium: (data.user?.subscription_tier || 'free') !== 'free',
+      idVerificationStatus: normalizeIdVerificationStatus(data.user?.id_verification_status),
+      idVerificationExpiresAt: typeof data.user?.id_verification_expires_at === 'string'
+        ? data.user.id_verification_expires_at
+        : null,
+      idVerifiedAt: typeof data.user?.id_verified_at === 'string'
+        ? data.user.id_verified_at
+        : null,
       createdAt: data.user?.created_at || data.created_at,
       location: data.user?.city ? {
         city: data.user.city,

@@ -8,14 +8,33 @@
  */
 
 import type {
+    IdVerificationStatus,
     VerificationEvent,
-    VerificationLevel, VerificationStatusResponse
+    VerificationLevel,
+    VerificationStatusResponse
 } from '../../types/verification';
 import { supabase } from '../supabase';
+import {
+  getDaysUntilIdVerificationExpiry,
+  isIdVerificationActive,
+  normalizeIdVerificationStatus,
+} from '../../utils/idVerification';
 
 type QueryError = {
   code?: string | null;
   message?: string | null;
+};
+
+type FunctionsErrorLike = {
+  message?: string;
+  context?: Response;
+};
+
+type CreateIdVerificationSessionResponse = {
+  sessionId?: string;
+  url?: string;
+  status?: string;
+  error?: string;
 };
 
 type DerivedVerificationSnapshot = {
@@ -66,6 +85,70 @@ function createDefaultDerivedVerificationSnapshot(): DerivedVerificationSnapshot
 
 function isMissingProfileColumnError(error: QueryError | null | undefined): boolean {
   return String(error?.code || '') === '42703';
+}
+
+function extractMissingProfileColumn(error: QueryError | null | undefined): string | null {
+  const message = String(error?.message || '');
+
+  const directColumnMatch = message.match(/column\s+([a-zA-Z0-9_]+)\s+does not exist/i);
+  if (directColumnMatch?.[1]) {
+    return directColumnMatch[1];
+  }
+
+  const scopedColumnMatch = message.match(/column\s+([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+)\s+does not exist/i);
+  if (scopedColumnMatch?.[2]) {
+    return scopedColumnMatch[2];
+  }
+
+  return null;
+}
+
+async function extractFunctionError(
+  error: FunctionsErrorLike | null
+): Promise<{ status: number | null; message: string | null }> {
+  if (!error) {
+    return { status: null, message: null };
+  }
+
+  const response = error.context;
+  if (!response) {
+    return { status: null, message: error.message || null };
+  }
+
+  const status = typeof response.status === 'number' ? response.status : null;
+
+  try {
+    const payload = await response.clone().json() as Record<string, unknown>;
+    const payloadMessage = typeof payload.message === 'string'
+      ? payload.message
+      : typeof payload.error === 'string'
+        ? payload.error
+        : null;
+    return { status, message: payloadMessage || error.message || null };
+  } catch {
+    return { status, message: error.message || null };
+  }
+}
+
+async function getCurrentAccessToken(): Promise<string | null> {
+  try {
+    const { data } = await supabase.auth.getSession();
+    return data.session?.access_token || null;
+  } catch {
+    return null;
+  }
+}
+
+async function refreshAccessToken(): Promise<string | null> {
+  try {
+    const { data, error } = await supabase.auth.refreshSession();
+    if (error) {
+      return null;
+    }
+    return data.session?.access_token || null;
+  } catch {
+    return null;
+  }
 }
 
 async function getAuthEmailConfirmedAt(userId: string): Promise<string | null> {
@@ -320,6 +403,91 @@ export async function logVerificationEvent(
   return transformVerificationEvent(data);
 }
 
+export async function createIdVerificationSession(): Promise<{
+  sessionId: string | null;
+  url: string | null;
+  status: IdVerificationStatus | null;
+  error: string | null;
+}> {
+  const invoke = async (accessToken: string | null) => {
+    const headers = accessToken ? { 'x-session-token': accessToken } : undefined;
+    return supabase.functions.invoke<CreateIdVerificationSessionResponse>(
+      'create-id-verification-session',
+      {
+        body: accessToken ? { accessToken } : {},
+        headers,
+      }
+    );
+  };
+
+  const accessToken = await getCurrentAccessToken();
+  let { data, error } = await invoke(accessToken);
+
+  if (!error && data?.url && data?.sessionId) {
+    return {
+      sessionId: data.sessionId,
+      url: data.url,
+      status: normalizeIdVerificationStatus(data.status),
+      error: null,
+    };
+  }
+
+  if (data?.error) {
+    return { sessionId: null, url: null, status: null, error: data.error };
+  }
+
+  let parsedError = await extractFunctionError(error as FunctionsErrorLike | null);
+
+  if (parsedError.status === 401) {
+    const refreshedToken = await refreshAccessToken();
+    if (refreshedToken) {
+      const retryResult = await invoke(refreshedToken);
+      data = retryResult.data;
+      error = retryResult.error;
+
+      if (!error && data?.url && data?.sessionId) {
+        return {
+          sessionId: data.sessionId,
+          url: data.url,
+          status: normalizeIdVerificationStatus(data.status),
+          error: null,
+        };
+      }
+
+      if (data?.error) {
+        return { sessionId: null, url: null, status: null, error: data.error };
+      }
+
+      parsedError = await extractFunctionError(error as FunctionsErrorLike | null);
+    }
+  }
+
+  if (parsedError.status === 404) {
+    return {
+      sessionId: null,
+      url: null,
+      status: null,
+      error: 'ID verification service is not deployed yet. Please deploy create-id-verification-session.',
+    };
+  }
+
+  if (parsedError.status === 401) {
+    return {
+      sessionId: null,
+      url: null,
+      status: null,
+      error: 'Your session expired. Please sign in again and retry verification.',
+    };
+  }
+
+  return {
+    sessionId: null,
+    url: null,
+    status: null,
+    error: parsedError.message || 'Unable to start ID verification right now.',
+  };
+}
+
 // ===========================================
 // Profile Verification Status
 // ===========================================
@@ -331,30 +499,37 @@ export async function logVerificationEvent(
 export async function getVerificationStatus(userId: string): Promise<VerificationStatusResponse | null> {
   try {
     const authEmailVerified = !!(await getAuthEmailConfirmedAt(userId));
-
-    const selectCandidates = [
-      'verification_level,email_verified,phone_verified,id_verified',
-      'verification_level,phone_verified,id_verified',
-      'verification_level,email_verified,id_verified',
-      'verification_level,email_verified,phone_verified',
-      'verification_level,id_verified',
+    const selectableColumns = [
       'verification_level',
+      'email_verified',
+      'phone_verified',
+      'id_verified',
+      'id_verified_at',
+      'id_verification_status',
+      'id_verification_expires_at',
     ];
 
-    for (const columns of selectCandidates) {
+    while (selectableColumns.length > 0) {
       const { data, error } = await supabase
         .from('profiles')
-        .select(columns)
+        .select(selectableColumns.join(','))
         .eq('id', userId)
         .single();
 
       if (error) {
-        if (error.code === '42703') {
-          continue;
-        }
-
         if (error.code === '42P01' || error.code === 'PGRST116') {
           return getDefaultVerificationStatus(authEmailVerified);
+        }
+
+        if (isMissingProfileColumnError(error)) {
+          const missingColumn = extractMissingProfileColumn(error);
+          if (missingColumn) {
+            const index = selectableColumns.indexOf(missingColumn);
+            if (index !== -1) {
+              selectableColumns.splice(index, 1);
+              continue;
+            }
+          }
         }
 
         console.error('Error fetching verification status:', error);
@@ -365,7 +540,33 @@ export async function getVerificationStatus(userId: string): Promise<Verificatio
       const storedLevel = (profile.verification_level as VerificationLevel) || 'basic';
       const emailVerified = authEmailVerified || profile.email_verified === true;
       const phoneVerified = profile.phone_verified === true;
-      const idVerified = profile.id_verified === true;
+      const profileIdVerified = profile.id_verified === true;
+      const hasExpiryColumn = Object.prototype.hasOwnProperty.call(profile, 'id_verification_expires_at');
+      const idVerificationExpiresAt = typeof profile.id_verification_expires_at === 'string'
+        ? profile.id_verification_expires_at
+        : null;
+      const daysUntilExpiry = getDaysUntilIdVerificationExpiry(idVerificationExpiresAt);
+
+      const normalizedStatus = normalizeIdVerificationStatus(
+        profile.id_verification_status || (profileIdVerified ? 'verified' : 'unverified')
+      );
+
+      const idVerified = hasExpiryColumn
+        ? isIdVerificationActive({
+          id_verified: profileIdVerified,
+          id_verification_status: normalizedStatus,
+          id_verification_expires_at: idVerificationExpiresAt,
+        })
+        : profileIdVerified;
+
+      const idVerificationStatus: IdVerificationStatus = (
+        !idVerified
+        && normalizedStatus === 'verified'
+        && typeof daysUntilExpiry === 'number'
+        && daysUntilExpiry < 0
+      )
+        ? 'expired'
+        : normalizedStatus;
 
       const verificationLevel: VerificationLevel = idVerified
         ? (storedLevel === 'premium' ? 'premium' : 'verified')
@@ -375,6 +576,9 @@ export async function getVerificationStatus(userId: string): Promise<Verificatio
         emailVerified,
         phoneVerified,
         idVerified,
+        idVerificationStatus,
+        idVerificationExpiresAt,
+        idVerifiedAt: typeof profile.id_verified_at === 'string' ? profile.id_verified_at : null,
         verificationLevel,
       };
     }
@@ -394,6 +598,9 @@ function getDefaultVerificationStatus(emailVerified = false): VerificationStatus
     emailVerified,
     phoneVerified: false,
     idVerified: false,
+    idVerificationStatus: 'unverified',
+    idVerificationExpiresAt: null,
+    idVerifiedAt: null,
     verificationLevel: 'basic',
   };
 }
@@ -412,6 +619,9 @@ export function subscribeToVerificationUpdates(
     emailVerified?: boolean;
     phoneVerified?: boolean;
     idVerified?: boolean;
+    idVerificationStatus?: IdVerificationStatus;
+    idVerificationExpiresAt?: string | null;
+    idVerifiedAt?: string | null;
   }) => void
 ) {
   const channel = supabase
@@ -431,6 +641,11 @@ export function subscribeToVerificationUpdates(
           emailVerified: typeof newData.email_verified === 'boolean' ? newData.email_verified : undefined,
           phoneVerified: typeof newData.phone_verified === 'boolean' ? newData.phone_verified : undefined,
           idVerified: typeof newData.id_verified === 'boolean' ? newData.id_verified : undefined,
+          idVerificationStatus: normalizeIdVerificationStatus(newData.id_verification_status),
+          idVerificationExpiresAt: typeof newData.id_verification_expires_at === 'string'
+            ? newData.id_verification_expires_at
+            : null,
+          idVerifiedAt: typeof newData.id_verified_at === 'string' ? newData.id_verified_at : null,
         });
       }
     )

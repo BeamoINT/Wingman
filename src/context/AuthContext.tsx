@@ -15,6 +15,7 @@ import { initRevenueCat } from '../services/subscription/revenueCat';
 import { supabase } from '../services/supabase';
 import type { SignupData, User } from '../types';
 import { defaultSignupData } from '../types';
+import { isIdVerificationActive, normalizeIdVerificationStatus } from '../utils/idVerification';
 import { safeLog } from '../utils/sanitize';
 
 // Storage keys
@@ -93,6 +94,12 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 function transformSupabaseUser(supabaseUser: SupabaseUser, profile?: any): User {
   const metadata = supabaseUser.user_metadata || {};
   const normalizedSubscriptionTier = profile?.subscription_tier === 'pro' ? 'pro' : 'free';
+  const normalizedIdVerificationStatus = normalizeIdVerificationStatus(profile?.id_verification_status);
+  const hasActiveIdVerification = isIdVerificationActive({
+    id_verified: profile?.id_verified === true,
+    id_verification_status: normalizedIdVerificationStatus,
+    id_verification_expires_at: profile?.id_verification_expires_at,
+  });
   const normalizedProStatus = (() => {
     const raw = String(profile?.pro_status || '').trim();
     switch (raw) {
@@ -131,12 +138,15 @@ function transformSupabaseUser(supabaseUser: SupabaseUser, profile?: any): User 
       defaultMetroAreaId: profile.default_metro_area_id || undefined,
       metroSelectionMode: profile.metro_selection_mode || 'auto',
     } : undefined,
-    isVerified: profile?.id_verified === true,
+    isVerified: hasActiveIdVerification,
     isPremium: normalizedSubscriptionTier === 'pro',
     subscriptionTier: normalizedSubscriptionTier,
     proStatus: normalizedProStatus,
     profilePhotoIdMatchAttested: profile?.profile_photo_id_match_attested === true,
     profilePhotoIdMatchAttestedAt: profile?.profile_photo_id_match_attested_at || null,
+    idVerificationStatus: normalizedIdVerificationStatus,
+    idVerificationExpiresAt: profile?.id_verification_expires_at || null,
+    idVerifiedAt: profile?.id_verified_at || null,
     createdAt: supabaseUser.created_at || new Date().toISOString(),
     lastActive: new Date().toISOString(),
   };

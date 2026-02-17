@@ -3,7 +3,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-    ActivityIndicator, Alert, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View
+    ActivityIndicator, Alert, Image, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Badge, Button, Card, Header, Rating, SafetyBanner, ScreenScaffold, SectionHeader } from '../components';
@@ -17,6 +17,12 @@ import type { ThemeTokens } from '../theme/tokens';
 import { useThemedStyles } from '../theme/useThemedStyles';
 import type { Companion, LegalDocumentType, RootStackParamList, VerificationLevel } from '../types';
 import { haptics } from '../utils/haptics';
+import {
+  formatIdVerificationDate,
+  formatIdVerifiedDuration,
+  isIdVerificationActive,
+  normalizeIdVerificationStatus,
+} from '../utils/idVerification';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CompanionProfile'>;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -52,10 +58,17 @@ function toStringArray(value: unknown): string[] {
 }
 
 function transformCompanionData(data: CompanionData): Companion {
-  const hasIdVerification = !!data.user?.id_verified;
-  const verificationLevel: VerificationLevel = data.user?.verification_level === 'premium'
+  const hasActiveIdVerification = isIdVerificationActive({
+    id_verified: data.user?.id_verified,
+    id_verification_status: data.user?.id_verification_status,
+    id_verification_expires_at: data.user?.id_verification_expires_at,
+  });
+  const verificationLevel: VerificationLevel = (
+    hasActiveIdVerification
+    && data.user?.verification_level === 'premium'
+  )
     ? 'premium'
-    : data.user?.verification_level === 'verified' || hasIdVerification
+    : hasActiveIdVerification
       ? 'verified'
       : 'basic';
 
@@ -71,9 +84,15 @@ function transformCompanionData(data: CompanionData): Companion {
       isVerified: (
         verificationLevel === 'verified'
         || verificationLevel === 'premium'
-        || !!data.user?.id_verified
       ),
       isPremium: (data.user?.subscription_tier || 'free') !== 'free',
+      idVerificationStatus: normalizeIdVerificationStatus(data.user?.id_verification_status),
+      idVerificationExpiresAt: typeof data.user?.id_verification_expires_at === 'string'
+        ? data.user.id_verification_expires_at
+        : null,
+      idVerifiedAt: typeof data.user?.id_verified_at === 'string'
+        ? data.user.id_verified_at
+        : null,
       createdAt: data.user?.created_at || data.created_at,
       location: data.user?.city ? {
         city: data.user.city,
@@ -127,6 +146,7 @@ export const CompanionProfileScreen: React.FC = () => {
   const [reviews, setReviews] = useState<CompanionReview[]>([]);
   const [isLoadingCompanion, setIsLoadingCompanion] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [showVerificationDetails, setShowVerificationDetails] = useState(false);
   const { checkBooking } = useFeatureGate();
 
   const loadCompanion = useCallback(async () => {
@@ -292,6 +312,20 @@ export const CompanionProfileScreen: React.FC = () => {
     navigation.goBack();
   };
 
+  const handleVerificationBadgePress = useCallback(async () => {
+    if (!companion?.user.isVerified) {
+      return;
+    }
+
+    await haptics.light();
+    setShowVerificationDetails(true);
+  }, [companion?.user.isVerified]);
+
+  const handleCloseVerificationDetails = useCallback(async () => {
+    await haptics.light();
+    setShowVerificationDetails(false);
+  }, []);
+
   const getSpecialtyLabel = (specialty: string): string => {
     const labels: Record<string, string> = {
       'social-events': 'Social Events',
@@ -427,13 +461,26 @@ export const CompanionProfileScreen: React.FC = () => {
 
           {/* Verification Badges */}
           <View style={styles.verificationRow}>
-            <Badge label="ID Verified" variant="verified" icon="checkmark-circle" />
-            <Badge label="Photo Verified" variant="verified" icon="camera" />
+            {companion.user.isVerified ? (
+              <TouchableOpacity
+                onPress={handleVerificationBadgePress}
+                activeOpacity={0.8}
+                style={styles.verificationBadgePressable}
+              >
+                <Badge label="ID Verified" variant="verified" icon="checkmark-circle" />
+              </TouchableOpacity>
+            ) : (
+              <Badge label="Not ID Verified" variant="warning" icon="alert-circle" />
+            )}
             {companion.verificationLevel === 'premium' && (
               <Badge label="Premium" variant="premium" icon="star" />
             )}
           </View>
-          <Text style={styles.verificationNote}>Wingman verifies identity and profile photos before bookings.</Text>
+          <Text style={styles.verificationNote}>
+            {companion.user.isVerified
+              ? 'Tap the ID Verified badge to view verification tenure and renewal window.'
+              : 'This user has not completed an active ID verification cycle.'}
+          </Text>
 
           {/* Specialties */}
           {companion.specialties.length > 0 && (
@@ -535,6 +582,43 @@ export const CompanionProfileScreen: React.FC = () => {
           </View>
         </View>
       </ScrollView>
+
+      <Modal
+        visible={showVerificationDetails}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          void handleCloseVerificationDetails();
+        }}
+      >
+        <View style={styles.verificationModalOverlay}>
+          <View style={styles.verificationModalCard}>
+            <Text style={styles.verificationModalTitle}>ID Verification</Text>
+            <Text style={styles.verificationModalValue}>
+              Verified for {formatIdVerifiedDuration(companion.user.idVerifiedAt)}
+            </Text>
+            <Text style={styles.verificationModalLabel}>
+              Verified since: {formatIdVerificationDate(companion.user.idVerifiedAt)}
+            </Text>
+            <Text style={styles.verificationModalLabel}>
+              Current cycle expires: {formatIdVerificationDate(companion.user.idVerificationExpiresAt)}
+            </Text>
+            <Text style={styles.verificationModalFootnote}>
+              Wingman requires re-verification every 3 years for safety.
+            </Text>
+
+            <TouchableOpacity
+              style={styles.verificationModalClose}
+              activeOpacity={0.85}
+              onPress={() => {
+                void handleCloseVerificationDetails();
+              }}
+            >
+              <Text style={styles.verificationModalCloseLabel}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* Bottom Action Bar */}
       <View style={[styles.bottomBar, { paddingBottom: insets.bottom + spacing.md }]}>
@@ -698,10 +782,57 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     gap: spacing.sm,
     marginBottom: spacing.sm,
   },
+  verificationBadgePressable: {
+    borderRadius: spacing.radius.round,
+  },
   verificationNote: {
     ...typography.presets.bodySmall,
-    color: colors.status.success,
+    color: colors.text.secondary,
     marginBottom: spacing.xl,
+  },
+  verificationModalOverlay: {
+    flex: 1,
+    backgroundColor: colors.surface.overlay,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.screenPadding,
+  },
+  verificationModalCard: {
+    backgroundColor: colors.background.primary,
+    borderRadius: spacing.radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
+    padding: spacing.lg,
+    gap: spacing.sm,
+  },
+  verificationModalTitle: {
+    ...typography.presets.h4,
+    color: colors.text.primary,
+  },
+  verificationModalValue: {
+    ...typography.presets.h3,
+    color: colors.accent.primary,
+  },
+  verificationModalLabel: {
+    ...typography.presets.bodySmall,
+    color: colors.text.secondary,
+  },
+  verificationModalFootnote: {
+    ...typography.presets.caption,
+    color: colors.text.tertiary,
+  },
+  verificationModalClose: {
+    alignSelf: 'flex-end',
+    marginTop: spacing.sm,
+    borderRadius: spacing.radius.round,
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
+    backgroundColor: colors.surface.level1,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  verificationModalCloseLabel: {
+    ...typography.presets.buttonSmall,
+    color: colors.accent.primary,
   },
   section: {
     marginBottom: spacing.xl,

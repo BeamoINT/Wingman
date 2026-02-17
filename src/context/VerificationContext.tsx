@@ -12,15 +12,19 @@ import React, {
     createContext, useCallback, useContext, useEffect, useMemo, useState
 } from 'react';
 import {
+    createIdVerificationSession,
     getVerificationEvents,
     getVerificationStatus,
     logVerificationEvent,
     subscribeToVerificationUpdates
 } from '../services/api/verificationApi';
 import type {
+    IdVerificationReminder,
+    IdVerificationStatus,
     OverallVerificationStatus, VerificationEvent,
     VerificationLevel, VerificationState, VerificationStatusResponse, VerificationStep
 } from '../types/verification';
+import { getIdVerificationReminder } from '../utils/idVerification';
 import { useAuth } from './AuthContext';
 
 // ===========================================
@@ -31,6 +35,7 @@ interface VerificationContextType extends VerificationState {
   // Actions
   refreshStatus: () => Promise<void>;
   loadHistory: () => Promise<void>;
+  startIdVerification: () => Promise<{ success: boolean; url?: string; sessionId?: string; error?: string }>;
 
   // Computed
   getVerificationSteps: () => VerificationStep[];
@@ -52,6 +57,9 @@ export const VerificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const [emailVerified, setEmailVerified] = useState(false);
   const [phoneVerified, setPhoneVerified] = useState(false);
   const [idVerified, setIdVerified] = useState(false);
+  const [idVerificationStatus, setIdVerificationStatus] = useState<IdVerificationStatus>('unverified');
+  const [idVerificationExpiresAt, setIdVerificationExpiresAt] = useState<string | null>(null);
+  const [idVerifiedAt, setIdVerifiedAt] = useState<string | null>(null);
   const [verificationLevel, setVerificationLevel] = useState<VerificationLevel>('basic');
   const [history, setHistory] = useState<VerificationEvent[]>([]);
 
@@ -116,6 +124,9 @@ export const VerificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         setEmailVerified(status.emailVerified);
         setPhoneVerified(status.phoneVerified);
         setIdVerified(status.idVerified);
+        setIdVerificationStatus(status.idVerificationStatus);
+        setIdVerificationExpiresAt(status.idVerificationExpiresAt);
+        setIdVerifiedAt(status.idVerifiedAt);
         setVerificationLevel(status.verificationLevel);
 
         const existingEvents = await getVerificationEvents(user.id);
@@ -154,14 +165,68 @@ export const VerificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   // Computed Values
   // ===========================================
 
+  const idVerificationReminder = useMemo<IdVerificationReminder>(() => (
+    idVerificationStatus === 'verified' || idVerificationStatus === 'expired'
+      ? getIdVerificationReminder(idVerificationExpiresAt)
+      : {
+        stage: null,
+        daysUntilExpiry: null,
+        expiresAt: idVerificationExpiresAt,
+      }
+  ), [idVerificationExpiresAt, idVerificationStatus]);
+
   const overallStatus = useMemo((): OverallVerificationStatus => {
     if (idVerified && verificationLevel === 'premium') return 'premium_verified';
     if (idVerified) return 'verified';
+    if (idVerificationStatus === 'expired' || idVerificationReminder.stage === 'expired') return 'expired';
     if (emailVerified || phoneVerified) return 'in_progress';
+    if (idVerificationStatus === 'pending') return 'in_progress';
     return 'not_started';
-  }, [verificationLevel, idVerified, emailVerified, phoneVerified]);
+  }, [
+    verificationLevel,
+    idVerified,
+    emailVerified,
+    phoneVerified,
+    idVerificationStatus,
+    idVerificationReminder.stage,
+  ]);
 
   const getVerificationSteps = useCallback((): VerificationStep[] => {
+    const idStepStatus: VerificationStep['status'] = (() => {
+      if (idVerified) return 'completed';
+      if (idVerificationStatus === 'pending') return 'in_progress';
+      if (idVerificationStatus === 'failed_name_mismatch' || idVerificationStatus === 'failed') return 'failed';
+      if (idVerificationStatus === 'expired') return 'failed';
+      return 'pending';
+    })();
+
+    const idStepDescription = (() => {
+      if (idVerified && idVerificationExpiresAt) {
+        return `Active until ${new Date(idVerificationExpiresAt).toLocaleDateString('en-US')}`;
+      }
+      if (idVerificationStatus === 'pending') {
+        return 'Complete your in-progress ID verification session';
+      }
+      if (idVerificationStatus === 'failed_name_mismatch') {
+        return 'Your profile legal name must exactly match your government photo ID';
+      }
+      if (idVerificationStatus === 'expired') {
+        return 'Your ID verification expired. Re-verify to keep booking access';
+      }
+      if (idVerificationStatus === 'failed') {
+        return 'Verification failed. Retry with a clear government-issued photo ID';
+      }
+      return 'Verify your identity with a government ID';
+    })();
+
+    const idStepActionLabel = (() => {
+      if (idVerified) return undefined;
+      if (idVerificationStatus === 'pending') return 'Resume';
+      if (idVerificationStatus === 'expired') return 'Re-verify';
+      if (idVerificationStatus === 'failed_name_mismatch' || idVerificationStatus === 'failed') return 'Retry';
+      return 'Verify Now';
+    })();
+
     const steps: VerificationStep[] = [
       {
         id: 'email',
@@ -183,15 +248,51 @@ export const VerificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       {
         id: 'id',
         title: 'ID Verified',
-        description: 'Verify your identity with a government ID',
+        description: idStepDescription,
         icon: 'card',
-        status: idVerified ? 'completed' : 'pending',
-        completedAt: idVerified ? new Date().toISOString() : undefined,
+        status: idStepStatus,
+        actionLabel: idStepActionLabel,
+        completedAt: idVerified ? (idVerifiedAt || new Date().toISOString()) : undefined,
       },
     ];
 
     return steps;
-  }, [emailVerified, phoneVerified, idVerified]);
+  }, [
+    emailVerified,
+    phoneVerified,
+    idVerified,
+    idVerificationStatus,
+    idVerificationExpiresAt,
+    idVerifiedAt,
+  ]);
+
+  const startIdVerification = useCallback(async (): Promise<{
+    success: boolean;
+    url?: string;
+    sessionId?: string;
+    error?: string;
+  }> => {
+    const { url, error, sessionId, status } = await createIdVerificationSession();
+
+    if (!url || error) {
+      return {
+        success: false,
+        error: error || 'Unable to start ID verification right now.',
+      };
+    }
+
+    if (status) {
+      setIdVerificationStatus(status);
+    } else {
+      setIdVerificationStatus('pending');
+    }
+
+    return {
+      success: true,
+      url,
+      sessionId: sessionId || undefined,
+    };
+  }, []);
 
   const completedStepsCount = useMemo(() => {
     return getVerificationSteps().filter((step) => step.status === 'completed').length;
@@ -213,6 +314,9 @@ export const VerificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       setEmailVerified(false);
       setPhoneVerified(false);
       setIdVerified(false);
+      setIdVerificationStatus('unverified');
+      setIdVerificationExpiresAt(null);
+      setIdVerifiedAt(null);
       setVerificationLevel('basic');
       setHistory([]);
     }
@@ -225,31 +329,15 @@ export const VerificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     // Subscribe to profile verification updates
     const unsubscribeVerification = subscribeToVerificationUpdates(
       user.id,
-      (data) => {
-        if (typeof data.emailVerified === 'boolean') {
-          setEmailVerified(data.emailVerified);
-        }
-        if (typeof data.phoneVerified === 'boolean') {
-          setPhoneVerified(data.phoneVerified);
-        }
-        if (typeof data.idVerified === 'boolean') {
-          setIdVerified(data.idVerified);
-          setVerificationLevel(
-            data.idVerified
-              ? (data.verificationLevel === 'premium' ? 'premium' : 'verified')
-              : 'basic'
-          );
-          return;
-        }
-
-        // Ignore verification_level-only updates to prevent false ID-complete states.
+      () => {
+        void refreshStatus();
       }
     );
 
     return () => {
       unsubscribeVerification();
     };
-  }, [user?.id, isAuthenticated]);
+  }, [user?.id, isAuthenticated, refreshStatus]);
 
   // ===========================================
   // Context Value
@@ -261,6 +349,10 @@ export const VerificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     emailVerified,
     phoneVerified,
     idVerified,
+    idVerificationStatus,
+    idVerificationExpiresAt,
+    idVerifiedAt,
+    idVerificationReminder,
     verificationLevel,
     overallStatus,
     history,
@@ -268,6 +360,7 @@ export const VerificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     // Actions
     refreshStatus,
     loadHistory,
+    startIdVerification,
 
     // Computed
     getVerificationSteps,

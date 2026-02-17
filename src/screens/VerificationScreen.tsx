@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import * as WebBrowser from 'expo-web-browser';
 import React, { useMemo } from 'react';
 import {
   Alert,
@@ -24,6 +25,7 @@ import type { ThemeTokens } from '../theme/tokens';
 import { useThemedStyles } from '../theme/useThemedStyles';
 import type { RootStackParamList } from '../types';
 import { haptics } from '../utils/haptics';
+import { formatIdVerificationDate } from '../utils/idVerification';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 type VerificationRouteProp = RouteProp<RootStackParamList, 'Verification'>;
@@ -33,7 +35,7 @@ interface VerificationStep {
   title: string;
   description: string;
   icon: keyof typeof Ionicons.glyphMap;
-  status: 'completed' | 'in_progress' | 'pending';
+  status: 'completed' | 'in_progress' | 'pending' | 'failed';
   action?: string;
 }
 
@@ -43,7 +45,18 @@ export const VerificationScreen: React.FC = () => {
   const { tokens } = useTheme();
   const styles = useThemedStyles(createStyles);
   const { user } = useAuth();
-  const { emailVerified, phoneVerified, idVerified } = useVerification();
+  const {
+    emailVerified,
+    phoneVerified,
+    idVerified,
+    idVerificationStatus,
+    idVerificationExpiresAt,
+    idVerifiedAt,
+    idVerificationReminder,
+    refreshStatus,
+    startIdVerification,
+  } = useVerification();
+  const [isStartingIdVerification, setIsStartingIdVerification] = React.useState(false);
 
   const verificationSource = route.params?.source || 'profile';
   const openedFromFinalBookingStep = verificationSource === 'booking_final_step';
@@ -79,13 +92,53 @@ export const VerificationScreen: React.FC = () => {
       {
         id: 'id',
         title: 'ID Verification',
-        description: 'Upload a government-issued ID',
+        description: (() => {
+          if (idVerified && idVerificationExpiresAt) {
+            return `Verified until ${new Date(idVerificationExpiresAt).toLocaleDateString('en-US')}`;
+          }
+          if (idVerificationStatus === 'pending') {
+            return 'Continue your in-progress ID verification';
+          }
+          if (idVerificationStatus === 'failed_name_mismatch') {
+            return 'Your legal profile name must exactly match your government ID';
+          }
+          if (idVerificationStatus === 'expired') {
+            return 'Verification expired. Re-verify to continue booking';
+          }
+          if (idVerificationStatus === 'failed') {
+            return 'Verification failed. Retry with a clear government-issued ID';
+          }
+          return 'Upload a government-issued ID';
+        })(),
         icon: 'card',
-        status: idVerified ? 'completed' : openedFromFinalBookingStep ? 'in_progress' : 'pending',
-        action: !idVerified && openedFromFinalBookingStep ? 'Start ID Verification' : undefined,
+        status: idVerified
+          ? 'completed'
+          : idVerificationStatus === 'pending'
+            ? 'in_progress'
+            : (idVerificationStatus === 'failed_name_mismatch' || idVerificationStatus === 'failed' || idVerificationStatus === 'expired')
+              ? 'failed'
+              : (openedFromFinalBookingStep ? 'in_progress' : 'pending'),
+        action: !idVerified
+          ? (
+            idVerificationStatus === 'expired'
+              ? 'Re-verify ID'
+              : idVerificationStatus === 'failed_name_mismatch' || idVerificationStatus === 'failed'
+                ? 'Retry ID Verification'
+                : 'Start ID Verification'
+          )
+          : undefined,
       },
     ],
-    [emailVerified, phoneVerified, hasProfilePhoto, photoIdMatchAttested, idVerified, openedFromFinalBookingStep],
+    [
+      emailVerified,
+      phoneVerified,
+      hasProfilePhoto,
+      photoIdMatchAttested,
+      idVerified,
+      idVerificationStatus,
+      idVerificationExpiresAt,
+      openedFromFinalBookingStep,
+    ],
   );
 
   const completedSteps = verificationSteps.filter((step) => step.status === 'completed').length;
@@ -99,12 +152,14 @@ export const VerificationScreen: React.FC = () => {
   const getStatusColor = (status: VerificationStep['status']) => {
     if (status === 'completed') return tokens.colors.status.success;
     if (status === 'in_progress') return tokens.colors.accent.primary;
+    if (status === 'failed') return tokens.colors.status.error;
     return tokens.colors.text.tertiary;
   };
 
   const getStatusIcon = (status: VerificationStep['status']): keyof typeof Ionicons.glyphMap => {
     if (status === 'completed') return 'checkmark-circle';
     if (status === 'in_progress') return 'time';
+    if (status === 'failed') return 'alert-circle';
     return 'ellipse-outline';
   };
 
@@ -117,18 +172,37 @@ export const VerificationScreen: React.FC = () => {
     }
 
     if (step.id === 'id') {
-      if (!openedFromFinalBookingStep) {
-        Alert.alert(
-          'ID Verification Happens at Checkout',
-          'To control verification costs, ID checks only unlock at the final booking step right before payment.',
-        );
+      if (isStartingIdVerification) {
         return;
       }
 
-      Alert.alert(
-        'Complete Verification',
-        'Finish ID verification now, then return to complete your booking.',
-      );
+      setIsStartingIdVerification(true);
+      try {
+        const result = await startIdVerification();
+        if (!result.success || !result.url) {
+          Alert.alert('Verification Unavailable', result.error || 'Unable to start ID verification right now.');
+          return;
+        }
+
+        await WebBrowser.openBrowserAsync(result.url, {
+          presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN,
+          showTitle: true,
+        });
+
+        await refreshStatus();
+
+        if (openedFromFinalBookingStep) {
+          Alert.alert(
+            'Return to Booking',
+            'ID verification session opened. Return to booking once verification is complete.',
+          );
+        }
+      } catch (error) {
+        console.error('Failed to start ID verification:', error);
+        Alert.alert('Verification Unavailable', 'Unable to start ID verification right now.');
+      } finally {
+        setIsStartingIdVerification(false);
+      }
       return;
     }
 
@@ -170,10 +244,53 @@ export const VerificationScreen: React.FC = () => {
         </View>
       </Card>
 
+      <Card variant="outlined" style={styles.verificationMetaCard}>
+        <View style={styles.verificationMetaRow}>
+          <Text style={styles.verificationMetaLabel}>ID status</Text>
+          <Text style={styles.verificationMetaValue}>{idVerificationStatus.replace(/_/g, ' ')}</Text>
+        </View>
+        <View style={styles.verificationMetaRow}>
+          <Text style={styles.verificationMetaLabel}>Verified since</Text>
+          <Text style={styles.verificationMetaValue}>
+            {idVerifiedAt ? formatIdVerificationDate(idVerifiedAt) : 'Not verified'}
+          </Text>
+        </View>
+        <View style={styles.verificationMetaRow}>
+          <Text style={styles.verificationMetaLabel}>Verified until</Text>
+          <Text style={styles.verificationMetaValue}>
+            {idVerificationExpiresAt ? formatIdVerificationDate(idVerificationExpiresAt) : 'Not set'}
+          </Text>
+        </View>
+      </Card>
+
+      {idVerificationReminder.stage && idVerificationReminder.stage !== 'expired' ? (
+        <InlineBanner
+          title="Re-verification reminder"
+          message={`Your ID verification expires in ${idVerificationReminder.stage} day${idVerificationReminder.stage === 1 ? '' : 's'}. Re-verify now to avoid booking interruptions.`}
+          variant="warning"
+        />
+      ) : null}
+
+      {(idVerificationReminder.stage === 'expired' || idVerificationStatus === 'expired') ? (
+        <InlineBanner
+          title="Verification expired"
+          message="Your ID verification has expired. Re-verify before continuing with bookings."
+          variant="error"
+        />
+      ) : null}
+
+      {idVerificationStatus === 'failed_name_mismatch' ? (
+        <InlineBanner
+          title="Name mismatch"
+          message="Your profile legal name must match your government photo ID exactly. Update your profile name or retry with matching ID."
+          variant="error"
+        />
+      ) : null}
+
       {!openedFromFinalBookingStep && (!idVerified || !hasProfilePhoto) ? (
         <InlineBanner
           title="Final-step verification"
-          message="ID checks unlock right before checkout, and your profile photo must clearly match your photo ID."
+          message="Your legal profile name and profile photo must exactly match your government photo ID."
           variant="info"
         />
       ) : null}
@@ -186,9 +303,10 @@ export const VerificationScreen: React.FC = () => {
         <Card variant="outlined" style={styles.benefitsCard}>
           {[
             'All users must complete ID verification before booking',
+            'Profile legal name must exactly match submitted photo ID name',
             'Profile photos must clearly match the submitted photo ID',
             'Phone verification adds account recovery protection',
-            'Verification state is reviewed before final checkout',
+            'ID verification must be renewed every 3 years',
           ].map((line) => (
             <View key={line} style={styles.benefitRow}>
               <Ionicons name="checkmark-circle" size={16} color={tokens.colors.status.success} />
@@ -224,7 +342,7 @@ export const VerificationScreen: React.FC = () => {
                     <Button
                       title={step.action}
                       onPress={() => handleStepAction(step)}
-                      variant={step.status === 'in_progress' ? 'primary' : 'outline'}
+                      variant={(step.status === 'in_progress' || step.status === 'failed') ? 'primary' : 'outline'}
                       size="small"
                       style={styles.stepAction}
                     />
@@ -238,7 +356,7 @@ export const VerificationScreen: React.FC = () => {
 
       <InlineBanner
         title="Privacy"
-        message="Verification documents are encrypted and used only for platform safety workflows."
+        message="Verification documents are encrypted and used only for safety workflows. Name matching is required for every ID verification."
         variant="success"
       />
     </ScreenScaffold>
@@ -292,6 +410,27 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     height: '100%',
     backgroundColor: colors.accent.primary,
     borderRadius: spacing.radius.round,
+  },
+  verificationMetaCard: {
+    gap: spacing.sm,
+  },
+  verificationMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  verificationMetaLabel: {
+    ...typography.presets.caption,
+    color: colors.text.tertiary,
+    textTransform: 'capitalize',
+  },
+  verificationMetaValue: {
+    ...typography.presets.bodySmall,
+    color: colors.text.primary,
+    textTransform: 'capitalize',
+    flex: 1,
+    textAlign: 'right',
   },
   section: {
     gap: spacing.sm,

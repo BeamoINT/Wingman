@@ -53,6 +53,36 @@ const getEventConfig = (
     label: 'ID Verification Failed',
     color: tokens.colors.status.error,
   },
+  id_verification_started: {
+    icon: 'play-circle',
+    label: 'ID Verification Started',
+    color: tokens.colors.status.warning,
+  },
+  id_verification_processing: {
+    icon: 'time',
+    label: 'ID Verification Processing',
+    color: tokens.colors.status.warning,
+  },
+  id_verification_expired: {
+    icon: 'alert-circle',
+    label: 'ID Verification Expired',
+    color: tokens.colors.status.error,
+  },
+  id_verification_reminder_sent: {
+    icon: 'notifications',
+    label: 'Expiry Reminder Sent',
+    color: tokens.colors.accent.primary,
+  },
+  id_verification_invalidated_name_change: {
+    icon: 'person-circle',
+    label: 'Verification Reset (Name Change)',
+    color: tokens.colors.status.warning,
+  },
+  id_verification_status_update: {
+    icon: 'swap-horizontal',
+    label: 'Verification Status Updated',
+    color: tokens.colors.accent.primary,
+  },
   verification_level_upgraded: {
     icon: 'trending-up',
     label: 'Verification Level Upgraded',

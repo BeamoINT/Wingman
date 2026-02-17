@@ -10,6 +10,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar, Badge, Card } from '../components';
 import { useAuth } from '../context/AuthContext';
+import { useVerification } from '../context/VerificationContext';
 import { checkExistingCompanionProfile, getCompanionApplication } from '../services/api/companionApplicationApi';
 import { createPaymentPortalSession } from '../services/api/payments';
 import type { CompanionApplicationStatus, RootStackParamList } from '../types';
@@ -37,6 +38,7 @@ export const ProfileScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
   const { user, signOut } = useAuth();
+  const { idVerificationStatus, idVerificationReminder } = useVerification();
 
   const [companionStatus, setCompanionStatus] = useState<CompanionApplicationStatus | 'active' | null>(null);
   const [isOpeningPaymentPortal, setIsOpeningPaymentPortal] = useState(false);
@@ -64,6 +66,43 @@ export const ProfileScreen: React.FC = () => {
 
   const fullName = user ? `${user.firstName} ${user.lastName}`.trim() : 'User';
   const isProSubscriber = user?.subscriptionTier === 'pro';
+  const verificationSubtitle = (() => {
+    if (idVerificationStatus === 'verified') {
+      if (idVerificationReminder.stage && idVerificationReminder.stage !== 'expired') {
+        return `Re-verify in ${idVerificationReminder.stage}d`;
+      }
+      return 'ID verified';
+    }
+    if (idVerificationStatus === 'expired' || idVerificationReminder.stage === 'expired') {
+      return 'ID verification expired';
+    }
+    if (idVerificationStatus === 'pending') {
+      return 'ID verification in progress';
+    }
+    if (idVerificationStatus === 'failed_name_mismatch') {
+      return 'Name mismatch - retry required';
+    }
+    if (idVerificationStatus === 'failed') {
+      return 'Verification failed - retry';
+    }
+    return 'Complete your profile';
+  })();
+
+  const verificationBadge = (() => {
+    if (idVerificationStatus === 'verified') {
+      if (idVerificationReminder.stage && idVerificationReminder.stage !== 'expired') {
+        return `${idVerificationReminder.stage}d`;
+      }
+      return 'Verified';
+    }
+    if (idVerificationStatus === 'expired' || idVerificationReminder.stage === 'expired') {
+      return 'Expired';
+    }
+    if (idVerificationStatus === 'pending') {
+      return 'In Progress';
+    }
+    return 'Required';
+  })();
 
   const handleMenuPress = async (item: MenuItem) => {
     await haptics.light();
@@ -148,8 +187,8 @@ export const ProfileScreen: React.FC = () => {
       id: 'verification',
       icon: 'shield-checkmark',
       label: 'Verification Status',
-      subtitle: 'Complete your profile',
-      badge: '2/4',
+      subtitle: verificationSubtitle,
+      badge: verificationBadge,
       badgeVariant: 'info',
       onPress: () => navigation.navigate('Verification', { source: 'profile' }),
     },
@@ -246,7 +285,7 @@ export const ProfileScreen: React.FC = () => {
           </Card>
         </TouchableOpacity>
         <Text style={styles.profileHint}>
-          Your profile photo must clearly match your government photo ID before booking.
+          Your legal profile name and profile photo must exactly match your government photo ID before booking.
         </Text>
 
         {/* Become a Wingman / Wingman Status Banner */}

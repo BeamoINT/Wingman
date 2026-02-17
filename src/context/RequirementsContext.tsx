@@ -198,7 +198,13 @@ const RequirementsContext = createContext<RequirementsContextType | undefined>(u
 
 export const RequirementsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, isAuthenticated, isNewUser, signupConsents } = useAuth();
-  const { emailVerified, phoneVerified, idVerified } = useVerification();
+  const {
+    emailVerified,
+    phoneVerified,
+    idVerified,
+    idVerificationStatus,
+    idVerificationReminder,
+  } = useVerification();
 
   const [isLoading, setIsLoading] = useState(true);
   const [consents, setConsents] = useState<UserConsents>(defaultConsents);
@@ -727,6 +733,32 @@ export const RequirementsProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   const checkBookingRequirements = useCallback((mode: BookingRequirementMode = 'entry'): BookingRequirements => {
     const hasProfilePhoto = !!user?.avatar?.trim();
+    const isIdVerificationExpired = (
+      idVerificationStatus === 'expired'
+      || idVerificationReminder.stage === 'expired'
+    );
+    const idRequirementText = (() => {
+      if (isIdVerificationExpired) {
+        return 'Your ID verification expired. Re-verify to continue booking.';
+      }
+      if (idVerificationStatus === 'failed_name_mismatch') {
+        return 'Your profile legal name must exactly match your government photo ID.';
+      }
+      if (idVerificationStatus === 'failed') {
+        return 'ID verification failed. Retry with a clear government-issued photo ID.';
+      }
+      if (idVerificationStatus === 'pending') {
+        return 'Finish your in-progress ID verification to continue booking.';
+      }
+      return 'You must verify your identity';
+    })();
+
+    const idActionText = (() => {
+      if (isIdVerificationExpired) return 'Re-verify';
+      if (idVerificationStatus === 'pending') return 'Continue Verification';
+      if (idVerificationStatus === 'failed_name_mismatch' || idVerificationStatus === 'failed') return 'Retry Verification';
+      return 'Verify ID';
+    })();
 
     const checks: BookingRequirements = {
       isAuthenticated: {
@@ -765,9 +797,9 @@ export const RequirementsProvider: React.FC<{ children: React.ReactNode }> = ({ 
         navigateTo: 'VerifyPhone',
       },
       idVerified: {
-        met: idVerified,
-        requirement: 'You must verify your identity',
-        action: 'Verify ID',
+        met: idVerified && idVerificationStatus === 'verified',
+        requirement: idRequirementText,
+        action: idActionText,
         navigateTo: 'Verification',
       },
       photoVerified: {
@@ -831,6 +863,8 @@ export const RequirementsProvider: React.FC<{ children: React.ReactNode }> = ({ 
     emailVerified,
     phoneVerified,
     idVerified,
+    idVerificationStatus,
+    idVerificationReminder.stage,
     user?.avatar,
     profileCompletionData,
   ]);
@@ -878,14 +912,25 @@ export const RequirementsProvider: React.FC<{ children: React.ReactNode }> = ({ 
           return { met: true, requirement: '' };
 
         case 'book_companion':
+          {
+            const bookingReqs = checkBookingRequirements('finalize');
+            if (!bookingReqs.allMet) {
+              const firstUnmet = bookingReqs.unmetRequirements[0];
+              return firstUnmet || { met: false, requirement: 'Requirements not met' };
+            }
+            return { met: true, requirement: '' };
+          }
+
         case 'send_message':
         case 'leave_review':
-          const bookingReqs = checkBookingRequirements('entry');
-          if (!bookingReqs.allMet) {
-            const firstUnmet = bookingReqs.unmetRequirements[0];
-            return firstUnmet || { met: false, requirement: 'Requirements not met' };
+          {
+            const bookingReqs = checkBookingRequirements('entry');
+            if (!bookingReqs.allMet) {
+              const firstUnmet = bookingReqs.unmetRequirements[0];
+              return firstUnmet || { met: false, requirement: 'Requirements not met' };
+            }
+            return { met: true, requirement: '' };
           }
-          return { met: true, requirement: '' };
 
         case 'become_companion':
           const companionReqs = checkCompanionRequirements();

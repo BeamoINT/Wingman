@@ -6,6 +6,7 @@
 
 import type { Companion } from '../types';
 import { supabase } from './supabase';
+import { isIdVerificationActive } from '../utils/idVerification';
 
 /**
  * Fetch active companions from the database, joined with their profile data.
@@ -29,14 +30,18 @@ export async function fetchCompanions(): Promise<Companion[]> {
   return data
     .map((row: any) => {
       const profile = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles;
-      const verificationLevel = profile?.verification_level === 'premium'
+      const hasActiveIdVerification = isIdVerificationActive({
+        id_verified: profile?.id_verified,
+        id_verification_status: profile?.id_verification_status,
+        id_verification_expires_at: profile?.id_verification_expires_at,
+      });
+      const verificationLevel = (
+        hasActiveIdVerification
+        && profile?.verification_level === 'premium'
+      )
         ? 'premium'
-        : (profile?.verification_level === 'verified' ? 'verified' : 'basic');
-      const idVerified = (
-        verificationLevel === 'verified'
-        || verificationLevel === 'premium'
-        || !!profile?.id_verified
-      );
+        : (hasActiveIdVerification ? 'verified' : 'basic');
+      const idVerified = hasActiveIdVerification;
       const hasProfilePhoto = typeof profile?.avatar_url === 'string' && profile.avatar_url.trim().length > 0;
 
       const companion: Companion = {
@@ -49,6 +54,15 @@ export async function fetchCompanions(): Promise<Companion[]> {
           avatar: profile?.avatar_url || undefined,
           isVerified: idVerified,
           isPremium: (profile?.subscription_tier || 'free') !== 'free',
+          idVerificationStatus: typeof profile?.id_verification_status === 'string'
+            ? profile.id_verification_status
+            : 'unverified',
+          idVerificationExpiresAt: typeof profile?.id_verification_expires_at === 'string'
+            ? profile.id_verification_expires_at
+            : null,
+          idVerifiedAt: typeof profile?.id_verified_at === 'string'
+            ? profile.id_verified_at
+            : null,
           createdAt: profile?.created_at || row.created_at || new Date().toISOString(),
         },
         rating: Number(row.rating) || 0,

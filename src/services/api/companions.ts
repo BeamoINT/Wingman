@@ -5,6 +5,7 @@
 
 import { supabase } from '../supabase';
 import type { ProfileData } from './profiles';
+import { isIdVerificationActive } from '../../utils/idVerification';
 
 export interface CompanionData {
   id: string;
@@ -85,6 +86,19 @@ function normalizeProfile(rawProfile: unknown): ProfileData | undefined {
     email_verified: !!profile.email_verified,
     phone_verified: !!profile.phone_verified,
     id_verified: !!profile.id_verified,
+    id_verified_at: typeof profile.id_verified_at === 'string' ? profile.id_verified_at : null,
+    id_verification_status: typeof profile.id_verification_status === 'string'
+      ? profile.id_verification_status
+      : 'unverified',
+    id_verification_expires_at: typeof profile.id_verification_expires_at === 'string'
+      ? profile.id_verification_expires_at
+      : null,
+    id_verification_provider: typeof profile.id_verification_provider === 'string'
+      ? profile.id_verification_provider
+      : null,
+    id_verification_provider_ref: typeof profile.id_verification_provider_ref === 'string'
+      ? profile.id_verification_provider_ref
+      : null,
     verification_level: typeof profile.verification_level === 'string'
       ? profile.verification_level
       : 'basic',
@@ -129,12 +143,11 @@ function normalizeCompanion(rawCompanion: unknown): CompanionData {
 }
 
 function isVerifiedCompanion(companion: CompanionData): boolean {
-  const verificationLevel = companion.user?.verification_level;
-  const hasIdVerification = (
-    verificationLevel === 'verified'
-    || verificationLevel === 'premium'
-    || Boolean(companion.user?.id_verified)
-  );
+  const hasIdVerification = isIdVerificationActive({
+    id_verified: companion.user?.id_verified,
+    id_verification_status: companion.user?.id_verification_status,
+    id_verification_expires_at: companion.user?.id_verification_expires_at,
+  });
   const hasProfilePhoto = Boolean(companion.user?.avatar_url?.trim());
 
   return hasIdVerification && hasProfilePhoto;

@@ -202,6 +202,14 @@ function isMissingSchemaError(error: unknown, identifier: string): boolean {
   );
 }
 
+function mapBookingRpcErrorMessage(message: string): string {
+  if (message.includes('ID_VERIFICATION_REQUIRED')) {
+    return 'Your ID verification is expired or incomplete. Re-verify in Profile > Verification to continue booking.';
+  }
+
+  return message;
+}
+
 function normalizeProfile(rawProfile: unknown): ProfileData | undefined {
   const profileObject = Array.isArray(rawProfile) ? rawProfile[0] : rawProfile;
   if (!profileObject || typeof profileObject !== 'object') {
@@ -227,6 +235,19 @@ function normalizeProfile(rawProfile: unknown): ProfileData | undefined {
     email_verified: !!profile.email_verified,
     phone_verified: !!profile.phone_verified,
     id_verified: !!profile.id_verified,
+    id_verified_at: typeof profile.id_verified_at === 'string' ? profile.id_verified_at : null,
+    id_verification_status: typeof profile.id_verification_status === 'string'
+      ? profile.id_verification_status
+      : 'unverified',
+    id_verification_expires_at: typeof profile.id_verification_expires_at === 'string'
+      ? profile.id_verification_expires_at
+      : null,
+    id_verification_provider: typeof profile.id_verification_provider === 'string'
+      ? profile.id_verification_provider
+      : null,
+    id_verification_provider_ref: typeof profile.id_verification_provider_ref === 'string'
+      ? profile.id_verification_provider_ref
+      : null,
     verification_level: typeof profile.verification_level === 'string'
       ? profile.verification_level
       : 'basic',
@@ -401,9 +422,10 @@ export async function createBooking(
 
       if (rpcResponse.error && !isMissingSchemaError(rpcResponse.error, 'create_booking_with_meetup_v1')) {
         console.error('Error creating booking with meetup RPC:', rpcResponse.error);
+        const rawMessage = rpcResponse.error.message || 'Failed to create booking';
         return {
           booking: null,
-          error: new Error(rpcResponse.error.message || 'Failed to create booking'),
+          error: new Error(mapBookingRpcErrorMessage(rawMessage)),
         };
       }
     }

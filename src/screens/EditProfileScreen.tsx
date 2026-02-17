@@ -113,7 +113,10 @@ export const EditProfileScreen: React.FC = () => {
     const hasAvatar = Boolean(activeAvatarUri);
 
     if (!trimmedFirst || !trimmedLast) {
-      Alert.alert('Missing Information', 'Please enter your first and last name.');
+      Alert.alert(
+        'Missing Legal Name',
+        'Please enter your legal first and last name exactly as shown on your government photo ID.',
+      );
       return;
     }
 
@@ -133,9 +136,21 @@ export const EditProfileScreen: React.FC = () => {
     if (!attestedPhotoMatch) {
       Alert.alert(
         'Photo-ID Confirmation Required',
-        'You must confirm your profile photo clearly matches your government photo ID before booking.',
+        'You must confirm your legal name and profile photo exactly match your government photo ID before booking.',
       );
       return;
+    }
+
+    const changingLegalName = (
+      trimmedFirst !== (user?.firstName || '').trim()
+      || trimmedLast !== (user?.lastName || '').trim()
+    );
+
+    if (changingLegalName && user?.idVerificationStatus === 'verified') {
+      Alert.alert(
+        'ID Verification Will Reset',
+        'Changing your legal name will require a new ID verification before your next booking.',
+      );
     }
 
     setIsSaving(true);
@@ -184,7 +199,7 @@ export const EditProfileScreen: React.FC = () => {
 
       <InlineBanner
         title="Booking safety requirement"
-        message="Your profile photo must clearly match your government photo ID before you can finalize any booking."
+        message="Your legal first and last name must exactly match your government photo ID, and your profile photo must clearly match that same ID."
         variant="info"
       />
 
@@ -216,14 +231,14 @@ export const EditProfileScreen: React.FC = () => {
               color={attestedPhotoMatch ? tokens.colors.accent.primary : tokens.colors.text.tertiary}
             />
             <Text style={styles.attestationText}>
-              I confirm this profile photo clearly matches my government photo ID.
+              I confirm my legal name and profile photo exactly match my government photo ID.
             </Text>
           </TouchableOpacity>
         </Card>
       </View>
 
       <View style={styles.section}>
-        <SectionHeader title="Basic Details" subtitle="Keep your account details current" />
+        <SectionHeader title="Legal Details" subtitle="Must match your government photo ID exactly" />
         <Card variant="outlined" style={styles.formCard}>
           <Input
             label="First Name"

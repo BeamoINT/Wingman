@@ -35,6 +35,11 @@ export interface ProfileData {
   email_verified: boolean;
   phone_verified: boolean;
   id_verified: boolean;
+  id_verified_at?: string | null;
+  id_verification_status?: 'unverified' | 'pending' | 'verified' | 'expired' | 'failed_name_mismatch' | 'failed' | string;
+  id_verification_expires_at?: string | null;
+  id_verification_provider?: string | null;
+  id_verification_provider_ref?: string | null;
   verification_level: string;
   terms_accepted: boolean;
   privacy_accepted: boolean;

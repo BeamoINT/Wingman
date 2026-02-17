@@ -37,6 +37,12 @@ const getStatusConfig = (tokens: ThemeTokens): Record<OverallVerificationStatus,
     icon: 'time-outline',
     background: tokens.colors.status.warningLight,
   },
+  expired: {
+    label: 'Verification Expired',
+    color: tokens.colors.status.error,
+    icon: 'alert-circle',
+    background: tokens.colors.status.errorLight,
+  },
   verified: {
     label: 'ID Verified',
     color: tokens.colors.verification.verified,
