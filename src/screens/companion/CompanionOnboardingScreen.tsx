@@ -20,8 +20,10 @@ import {
   ScreenScaffold,
   SectionHeader,
 } from '../../components';
+import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { useVerification } from '../../context/VerificationContext';
+import { updateProfile } from '../../services/api/profiles';
 import { getWingmanOnboardingState } from '../../services/api/wingmanOnboardingApi';
 import { trackEvent } from '../../services/monitoring/events';
 import type { ThemeTokens } from '../../theme/tokens';
@@ -61,6 +63,7 @@ export const CompanionOnboardingScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const { tokens } = useTheme();
   const styles = useThemedStyles(createStyles);
+  const { user, refreshUserProfile } = useAuth();
   const {
     idVerificationStatus,
     idVerificationFailureMessage,
@@ -70,8 +73,11 @@ export const CompanionOnboardingScreen: React.FC = () => {
 
   const [isLoading, setIsLoading] = useState(true);
   const [isLaunchingVerification, setIsLaunchingVerification] = useState(false);
+  const [isSavingAttestation, setIsSavingAttestation] = useState(false);
   const [state, setState] = useState<WingmanOnboardingState>(defaultState);
   const completionTrackedRef = useRef({ step1: false, step2: false, step3: false });
+  const hasProfilePhoto = Boolean(user?.avatar);
+  const hasPhotoIdAttestation = user?.profilePhotoIdMatchAttested === true;
 
   const loadState = useCallback(async () => {
     setIsLoading(true);
@@ -158,6 +164,14 @@ export const CompanionOnboardingScreen: React.FC = () => {
       return;
     }
 
+    if (!hasPhotoIdAttestation) {
+      Alert.alert(
+        'Photo-ID Confirmation Required',
+        'Confirm your profile photo matches your government photo ID before starting verification.',
+      );
+      return;
+    }
+
     setIsLaunchingVerification(true);
     await haptics.medium();
     trackEvent('wingman_onboarding_step_viewed', { step: 1 });
@@ -200,6 +214,58 @@ export const CompanionOnboardingScreen: React.FC = () => {
     await haptics.medium();
     trackEvent('wingman_onboarding_step_viewed', { step: 3 });
     navigation.navigate('WingmanProfileSetup', { source: 'onboarding' });
+  };
+
+  const handleOpenEditProfile = async () => {
+    await haptics.light();
+    navigation.navigate('EditProfile');
+  };
+
+  const handleConfirmPhotoIdAttestation = async () => {
+    if (isSavingAttestation) {
+      return;
+    }
+
+    if (!hasProfilePhoto) {
+      Alert.alert(
+        'Profile Photo Required',
+        'Upload a clear profile photo first, then confirm it matches your government photo ID.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Open Edit Profile',
+            onPress: () => navigation.navigate('EditProfile'),
+          },
+        ],
+      );
+      return;
+    }
+
+    setIsSavingAttestation(true);
+    await haptics.medium();
+
+    try {
+      const { error } = await updateProfile({
+        profile_photo_id_match_attested: true,
+        profile_photo_id_match_attested_at: new Date().toISOString(),
+      });
+
+      if (error) {
+        Alert.alert(
+          'Unable to save confirmation',
+          error.message || 'Please try again.',
+        );
+        return;
+      }
+
+      await refreshUserProfile();
+      await haptics.success();
+    } catch (error) {
+      console.error('Unable to update photo-ID attestation:', error);
+      Alert.alert('Unable to save confirmation', 'Please try again.');
+    } finally {
+      setIsSavingAttestation(false);
+    }
   };
 
   return (
@@ -296,6 +362,50 @@ export const CompanionOnboardingScreen: React.FC = () => {
 
           {activeStep === 1 ? (
             <Card variant="outlined" style={styles.actionCard}>
+              <View style={styles.attestationBlock}>
+                <View style={styles.attestationStatusRow}>
+                  <Ionicons
+                    name={hasPhotoIdAttestation ? 'checkmark-circle' : 'ellipse-outline'}
+                    size={18}
+                    color={hasPhotoIdAttestation ? tokens.colors.status.success : tokens.colors.text.tertiary}
+                  />
+                  <Text style={styles.attestationStatusTitle}>
+                    {hasPhotoIdAttestation
+                      ? 'Photo-ID confirmation complete'
+                      : 'Required: confirm profile photo matches your photo ID'}
+                  </Text>
+                </View>
+                <Text style={styles.attestationStatusBody}>
+                  This confirms your profile photo and legal profile name match your government-issued photo ID.
+                </Text>
+                {!hasProfilePhoto ? (
+                  <InlineBanner
+                    title="Add a profile photo first"
+                    message="Upload a clear face photo in Edit Profile before confirming."
+                    variant="warning"
+                  />
+                ) : null}
+                {!hasPhotoIdAttestation ? (
+                  <Button
+                    title={isSavingAttestation ? 'Saving…' : 'Confirm Photo Matches ID'}
+                    onPress={handleConfirmPhotoIdAttestation}
+                    loading={isSavingAttestation}
+                    disabled={isSavingAttestation}
+                    icon="checkmark-circle"
+                    iconPosition="left"
+                    fullWidth
+                  />
+                ) : null}
+                <Button
+                  title="Edit Profile Photo/Name"
+                  onPress={handleOpenEditProfile}
+                  variant="outline"
+                  icon="person-circle"
+                  iconPosition="left"
+                  fullWidth
+                />
+              </View>
+
               <Text style={styles.actionBody}>
                 Stripe Identity requires a government-issued photo ID and a live selfie liveness capture. Uploaded gallery selfies are not allowed.
               </Text>
@@ -311,7 +421,7 @@ export const CompanionOnboardingScreen: React.FC = () => {
                 }
                 onPress={handleLaunchIdVerification}
                 loading={isLaunchingVerification}
-                disabled={isLaunchingVerification || isLoading}
+                disabled={isLaunchingVerification || isLoading || isSavingAttestation || !hasPhotoIdAttestation}
                 icon="shield-checkmark"
                 iconPosition="left"
                 fullWidth
@@ -440,6 +550,30 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
   },
   actionCard: {
     gap: spacing.md,
+  },
+  attestationBlock: {
+    gap: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
+    borderRadius: spacing.radius.md,
+    padding: spacing.sm,
+    backgroundColor: colors.surface.level2,
+  },
+  attestationStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  attestationStatusTitle: {
+    ...typography.presets.bodySmall,
+    color: colors.text.primary,
+    fontWeight: typography.weights.semibold,
+    flex: 1,
+  },
+  attestationStatusBody: {
+    ...typography.presets.caption,
+    color: colors.text.secondary,
+    lineHeight: 18,
   },
   actionBody: {
     ...typography.presets.bodySmall,
