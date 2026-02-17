@@ -6,7 +6,16 @@
 import { supabase } from '../supabase';
 import { resolveMetroArea } from './locationApi';
 
-const PROFILE_AVATARS_BUCKET = 'profile-avatars';
+const PROFILE_AVATAR_BUCKET_CANDIDATES = [
+  'profile-avatars',
+  'profile-photos',
+  'avatars',
+] as const;
+
+const isBucketMissingError = (error: unknown): boolean => {
+  const message = String((error as { message?: string } | null)?.message || '').toLowerCase();
+  return message.includes('bucket') && message.includes('not found');
+};
 
 export interface ProfileData {
   id: string;
@@ -275,20 +284,43 @@ export async function uploadProfileAvatar(fileUri: string): Promise<{ profile: P
     })();
 
     const objectPath = `${user.id}/avatar-${Date.now()}.${extension}`;
-    const { data: uploadData, error: uploadError } = await supabase.storage
-      .from(PROFILE_AVATARS_BUCKET)
-      .upload(objectPath, blob, {
-        contentType,
-        upsert: true,
-      });
 
-    if (uploadError || !uploadData?.path) {
+    let uploadPath: string | null = null;
+    let activeBucket: string = PROFILE_AVATAR_BUCKET_CANDIDATES[0];
+    let lastBucketMissingError: Error | null = null;
+
+    for (const bucket of PROFILE_AVATAR_BUCKET_CANDIDATES) {
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from(bucket)
+        .upload(objectPath, blob, {
+          contentType,
+          upsert: true,
+        });
+
+      if (!uploadError && uploadData?.path) {
+        uploadPath = uploadData.path;
+        activeBucket = bucket;
+        break;
+      }
+
+      if (uploadError && isBucketMissingError(uploadError)) {
+        lastBucketMissingError = uploadError as Error;
+        continue;
+      }
+
       return { profile: null, error: uploadError || new Error('Failed to upload profile photo') };
     }
 
+    if (!uploadPath) {
+      return {
+        profile: null,
+        error: lastBucketMissingError || new Error('Profile photo uploads are temporarily unavailable'),
+      };
+    }
+
     const { data: publicUrlData } = supabase.storage
-      .from(PROFILE_AVATARS_BUCKET)
-      .getPublicUrl(uploadData.path);
+      .from(activeBucket)
+      .getPublicUrl(uploadPath);
 
     const avatarUrl = publicUrlData?.publicUrl;
     if (!avatarUrl) {
