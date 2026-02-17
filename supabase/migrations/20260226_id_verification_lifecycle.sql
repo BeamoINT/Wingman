@@ -10,6 +10,10 @@ ALTER TABLE public.profiles
   ADD COLUMN IF NOT EXISTS id_verification_provider TEXT,
   ADD COLUMN IF NOT EXISTS id_verification_provider_ref TEXT;
 
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS profile_photo_id_match_attested BOOLEAN DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS profile_photo_id_match_attested_at TIMESTAMPTZ;
+
 UPDATE public.profiles
 SET id_verification_status = CASE
   WHEN COALESCE(id_verified, FALSE) = TRUE THEN 'verified'

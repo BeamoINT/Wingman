@@ -44,7 +44,6 @@ CREATE TABLE IF NOT EXISTS profiles (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
-
 -- ===========================================
 -- Companions Table
 -- ===========================================
@@ -65,7 +64,6 @@ CREATE TABLE IF NOT EXISTS companions (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
-
 -- ===========================================
 -- Bookings Table
 -- ===========================================
@@ -94,7 +92,6 @@ CREATE TABLE IF NOT EXISTS bookings (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
-
 -- ===========================================
 -- Conversations Table
 -- ===========================================
@@ -108,7 +105,6 @@ CREATE TABLE IF NOT EXISTS conversations (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(participant_1, participant_2)
 );
-
 -- ===========================================
 -- Messages Table
 -- ===========================================
@@ -122,7 +118,6 @@ CREATE TABLE IF NOT EXISTS messages (
   read_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
-
 -- ===========================================
 -- Reviews Table
 -- ===========================================
@@ -137,7 +132,6 @@ CREATE TABLE IF NOT EXISTS reviews (
   is_verified BOOLEAN DEFAULT TRUE,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
-
 -- ===========================================
 -- Friends Feature Tables
 -- ===========================================
@@ -154,7 +148,6 @@ CREATE TABLE IF NOT EXISTS friend_posts (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
-
 -- Post Likes
 CREATE TABLE IF NOT EXISTS post_likes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -163,7 +156,6 @@ CREATE TABLE IF NOT EXISTS post_likes (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(post_id, user_id)
 );
-
 -- Post Comments
 CREATE TABLE IF NOT EXISTS post_comments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -172,7 +164,6 @@ CREATE TABLE IF NOT EXISTS post_comments (
   content TEXT NOT NULL,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
-
 -- Friend Groups
 CREATE TABLE IF NOT EXISTS friend_groups (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -186,7 +177,6 @@ CREATE TABLE IF NOT EXISTS friend_groups (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
-
 -- Group Memberships
 CREATE TABLE IF NOT EXISTS group_memberships (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -196,7 +186,6 @@ CREATE TABLE IF NOT EXISTS group_memberships (
   joined_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(group_id, user_id)
 );
-
 -- Friend Events
 CREATE TABLE IF NOT EXISTS friend_events (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -217,7 +206,6 @@ CREATE TABLE IF NOT EXISTS friend_events (
   group_id UUID REFERENCES friend_groups(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
-
 -- Event RSVPs
 CREATE TABLE IF NOT EXISTS event_rsvps (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -227,7 +215,6 @@ CREATE TABLE IF NOT EXISTS event_rsvps (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(event_id, user_id)
 );
-
 -- Friend Matches
 CREATE TABLE IF NOT EXISTS friend_matches (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -238,7 +225,6 @@ CREATE TABLE IF NOT EXISTS friend_matches (
   status TEXT DEFAULT 'matched' CHECK (status IN ('matched', 'chatting', 'met_up', 'friends')),
   UNIQUE(user_id_1, user_id_2)
 );
-
 -- Match Swipes
 CREATE TABLE IF NOT EXISTS match_swipes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -248,7 +234,6 @@ CREATE TABLE IF NOT EXISTS match_swipes (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(from_user_id, to_user_id)
 );
-
 -- ===========================================
 -- Enable Row Level Security
 -- ===========================================
@@ -267,31 +252,24 @@ ALTER TABLE friend_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE event_rsvps ENABLE ROW LEVEL SECURITY;
 ALTER TABLE friend_matches ENABLE ROW LEVEL SECURITY;
 ALTER TABLE match_swipes ENABLE ROW LEVEL SECURITY;
-
 -- ===========================================
 -- RLS Policies - Profiles
 -- ===========================================
 CREATE POLICY "Users can view any profile" ON profiles
   FOR SELECT USING (true);
-
 CREATE POLICY "Users can insert own profile" ON profiles
   FOR INSERT WITH CHECK (auth.uid() = id);
-
 CREATE POLICY "Users can update own profile" ON profiles
   FOR UPDATE USING (auth.uid() = id);
-
 -- ===========================================
 -- RLS Policies - Companions
 -- ===========================================
 CREATE POLICY "Anyone can view active companions" ON companions
   FOR SELECT USING (is_active = true);
-
 CREATE POLICY "Users can insert own companion profile" ON companions
   FOR INSERT WITH CHECK (auth.uid() = user_id);
-
 CREATE POLICY "Users can update own companion profile" ON companions
   FOR UPDATE USING (auth.uid() = user_id);
-
 -- ===========================================
 -- RLS Policies - Bookings
 -- ===========================================
@@ -300,25 +278,20 @@ CREATE POLICY "Users can view own bookings" ON bookings
     auth.uid() = client_id OR
     auth.uid() IN (SELECT user_id FROM companions WHERE id = companion_id)
   );
-
 CREATE POLICY "Users can create bookings" ON bookings
   FOR INSERT WITH CHECK (auth.uid() = client_id);
-
 CREATE POLICY "Participants can update bookings" ON bookings
   FOR UPDATE USING (
     auth.uid() = client_id OR
     auth.uid() IN (SELECT user_id FROM companions WHERE id = companion_id)
   );
-
 -- ===========================================
 -- RLS Policies - Conversations
 -- ===========================================
 CREATE POLICY "Users can view own conversations" ON conversations
   FOR SELECT USING (auth.uid() = participant_1 OR auth.uid() = participant_2);
-
 CREATE POLICY "Users can create conversations" ON conversations
   FOR INSERT WITH CHECK (auth.uid() = participant_1 OR auth.uid() = participant_2);
-
 -- ===========================================
 -- RLS Policies - Messages
 -- ===========================================
@@ -329,7 +302,6 @@ CREATE POLICY "Users can view messages in their conversations" ON messages
       WHERE participant_1 = auth.uid() OR participant_2 = auth.uid()
     )
   );
-
 CREATE POLICY "Users can send messages to their conversations" ON messages
   FOR INSERT WITH CHECK (
     auth.uid() = sender_id AND
@@ -338,16 +310,13 @@ CREATE POLICY "Users can send messages to their conversations" ON messages
       WHERE participant_1 = auth.uid() OR participant_2 = auth.uid()
     )
   );
-
 CREATE POLICY "Users can update own messages" ON messages
   FOR UPDATE USING (auth.uid() = sender_id);
-
 -- ===========================================
 -- RLS Policies - Reviews
 -- ===========================================
 CREATE POLICY "Anyone can view reviews" ON reviews
   FOR SELECT USING (true);
-
 CREATE POLICY "Users can create reviews for their bookings" ON reviews
   FOR INSERT WITH CHECK (
     auth.uid() = reviewer_id AND
@@ -356,55 +325,42 @@ CREATE POLICY "Users can create reviews for their bookings" ON reviews
       companion_id IN (SELECT id FROM companions WHERE user_id = auth.uid())
     )
   );
-
 -- ===========================================
 -- RLS Policies - Friend Posts
 -- ===========================================
 CREATE POLICY "Anyone can view public posts" ON friend_posts
   FOR SELECT USING (true);
-
 CREATE POLICY "Users can create own posts" ON friend_posts
   FOR INSERT WITH CHECK (auth.uid() = author_id);
-
 CREATE POLICY "Users can update own posts" ON friend_posts
   FOR UPDATE USING (auth.uid() = author_id);
-
 CREATE POLICY "Users can delete own posts" ON friend_posts
   FOR DELETE USING (auth.uid() = author_id);
-
 -- ===========================================
 -- RLS Policies - Post Likes
 -- ===========================================
 CREATE POLICY "Anyone can view likes" ON post_likes
   FOR SELECT USING (true);
-
 CREATE POLICY "Users can like posts" ON post_likes
   FOR INSERT WITH CHECK (auth.uid() = user_id);
-
 CREATE POLICY "Users can unlike" ON post_likes
   FOR DELETE USING (auth.uid() = user_id);
-
 -- ===========================================
 -- RLS Policies - Post Comments
 -- ===========================================
 CREATE POLICY "Anyone can view comments" ON post_comments
   FOR SELECT USING (true);
-
 CREATE POLICY "Users can create comments" ON post_comments
   FOR INSERT WITH CHECK (auth.uid() = author_id);
-
 CREATE POLICY "Users can delete own comments" ON post_comments
   FOR DELETE USING (auth.uid() = author_id);
-
 -- ===========================================
 -- RLS Policies - Groups
 -- ===========================================
 CREATE POLICY "Anyone can view public groups" ON friend_groups
   FOR SELECT USING (is_public = true);
-
 CREATE POLICY "Users can create groups" ON friend_groups
   FOR INSERT WITH CHECK (auth.uid() = created_by);
-
 CREATE POLICY "Admins can update groups" ON friend_groups
   FOR UPDATE USING (
     auth.uid() = created_by OR
@@ -413,61 +369,47 @@ CREATE POLICY "Admins can update groups" ON friend_groups
       WHERE group_id = id AND role = 'admin'
     )
   );
-
 -- ===========================================
 -- RLS Policies - Group Memberships
 -- ===========================================
 CREATE POLICY "Members can view memberships" ON group_memberships
   FOR SELECT USING (true);
-
 CREATE POLICY "Users can join groups" ON group_memberships
   FOR INSERT WITH CHECK (auth.uid() = user_id);
-
 CREATE POLICY "Users can leave groups" ON group_memberships
   FOR DELETE USING (auth.uid() = user_id);
-
 -- ===========================================
 -- RLS Policies - Events
 -- ===========================================
 CREATE POLICY "Anyone can view public events" ON friend_events
   FOR SELECT USING (is_public = true);
-
 CREATE POLICY "Users can create events" ON friend_events
   FOR INSERT WITH CHECK (auth.uid() = host_id);
-
 CREATE POLICY "Hosts can update events" ON friend_events
   FOR UPDATE USING (auth.uid() = host_id);
-
 -- ===========================================
 -- RLS Policies - Event RSVPs
 -- ===========================================
 CREATE POLICY "Anyone can view RSVPs" ON event_rsvps
   FOR SELECT USING (true);
-
 CREATE POLICY "Users can RSVP" ON event_rsvps
   FOR INSERT WITH CHECK (auth.uid() = user_id);
-
 CREATE POLICY "Users can update own RSVP" ON event_rsvps
   FOR UPDATE USING (auth.uid() = user_id);
-
 CREATE POLICY "Users can delete own RSVP" ON event_rsvps
   FOR DELETE USING (auth.uid() = user_id);
-
 -- ===========================================
 -- RLS Policies - Friend Matches
 -- ===========================================
 CREATE POLICY "Users can view own matches" ON friend_matches
   FOR SELECT USING (auth.uid() = user_id_1 OR auth.uid() = user_id_2);
-
 -- ===========================================
 -- RLS Policies - Match Swipes
 -- ===========================================
 CREATE POLICY "Users can view own swipes" ON match_swipes
   FOR SELECT USING (auth.uid() = from_user_id);
-
 CREATE POLICY "Users can create swipes" ON match_swipes
   FOR INSERT WITH CHECK (auth.uid() = from_user_id);
-
 -- ===========================================
 -- Triggers for updated_at
 -- ===========================================
@@ -478,27 +420,21 @@ BEGIN
   RETURN NEW;
 END;
 $$ language 'plpgsql';
-
 CREATE TRIGGER update_profiles_updated_at
   BEFORE UPDATE ON profiles
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
 CREATE TRIGGER update_companions_updated_at
   BEFORE UPDATE ON companions
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
 CREATE TRIGGER update_bookings_updated_at
   BEFORE UPDATE ON bookings
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
 CREATE TRIGGER update_friend_posts_updated_at
   BEFORE UPDATE ON friend_posts
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
 CREATE TRIGGER update_friend_groups_updated_at
   BEFORE UPDATE ON friend_groups
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
 -- ===========================================
 -- Trigger: Auto-create profile on auth signup
 -- ===========================================
@@ -569,11 +505,9 @@ BEGIN
   RETURN NEW;
 END;
 $$ language 'plpgsql' SECURITY DEFINER;
-
 CREATE OR REPLACE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION handle_new_user();
-
 -- ===========================================
 -- Trigger: Update companion rating on new review
 -- ===========================================
@@ -605,11 +539,9 @@ BEGIN
   RETURN NEW;
 END;
 $$ language 'plpgsql';
-
 CREATE TRIGGER update_companion_rating_trigger
   AFTER INSERT ON reviews
   FOR EACH ROW EXECUTE FUNCTION update_companion_rating();
-
 -- ===========================================
 -- Trigger: Update conversation last_message
 -- ===========================================
@@ -624,11 +556,9 @@ BEGIN
   RETURN NEW;
 END;
 $$ language 'plpgsql';
-
 CREATE TRIGGER update_conversation_on_message
   AFTER INSERT ON messages
   FOR EACH ROW EXECUTE FUNCTION update_conversation_last_message();
-
 -- ===========================================
 -- Indexes for performance
 -- ===========================================

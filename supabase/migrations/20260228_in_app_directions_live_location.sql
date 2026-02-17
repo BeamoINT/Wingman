@@ -126,6 +126,51 @@ AS $$
   );
 $$;
 
+DO $$
+BEGIN
+  IF to_regprocedure('public.is_conversation_member(uuid,uuid,boolean)') IS NULL THEN
+    EXECUTE $fn$
+      CREATE FUNCTION public.is_conversation_member(
+        p_conversation_id UUID,
+        p_user_id UUID,
+        p_respect_blocking BOOLEAN DEFAULT TRUE
+      )
+      RETURNS BOOLEAN
+      LANGUAGE plpgsql
+      STABLE
+      SECURITY DEFINER
+      SET search_path = public
+      AS $body$
+      DECLARE
+        participant_record public.conversations%ROWTYPE;
+      BEGIN
+        IF p_conversation_id IS NULL OR p_user_id IS NULL THEN
+          RETURN FALSE;
+        END IF;
+
+        SELECT *
+        INTO participant_record
+        FROM public.conversations c
+        WHERE c.id = p_conversation_id;
+
+        IF participant_record.id IS NULL THEN
+          RETURN FALSE;
+        END IF;
+
+        IF participant_record.participant_ids IS NOT NULL
+           AND ARRAY_LENGTH(participant_record.participant_ids, 1) > 0 THEN
+          RETURN participant_record.participant_ids @> ARRAY[p_user_id]::UUID[];
+        END IF;
+
+        RETURN participant_record.participant_1 = p_user_id
+          OR participant_record.participant_2 = p_user_id;
+      END
+      $body$;
+    $fn$;
+  END IF;
+END
+$$;
+
 -- ---------------------------------------------------------------------------
 -- RPCs
 -- ---------------------------------------------------------------------------

@@ -3,35 +3,25 @@
 
 ALTER TABLE IF EXISTS profiles
 ADD COLUMN IF NOT EXISTS message_encryption_public_key TEXT;
-
 ALTER TABLE IF EXISTS profiles
 ADD COLUMN IF NOT EXISTS message_encryption_key_version TEXT DEFAULT 'x25519-xsalsa20poly1305-v1';
-
 ALTER TABLE IF EXISTS profiles
 ADD COLUMN IF NOT EXISTS message_encryption_updated_at TIMESTAMPTZ;
-
 ALTER TABLE IF EXISTS messages
 ADD COLUMN IF NOT EXISTS encrypted_for_participant_1 TEXT;
-
 ALTER TABLE IF EXISTS messages
 ADD COLUMN IF NOT EXISTS encrypted_for_participant_2 TEXT;
-
 ALTER TABLE IF EXISTS messages
 ADD COLUMN IF NOT EXISTS encryption_nonce_p1 TEXT;
-
 ALTER TABLE IF EXISTS messages
 ADD COLUMN IF NOT EXISTS encryption_nonce_p2 TEXT;
-
 ALTER TABLE IF EXISTS messages
 ADD COLUMN IF NOT EXISTS encryption_sender_public_key TEXT;
-
 ALTER TABLE IF EXISTS messages
 ADD COLUMN IF NOT EXISTS encryption_version TEXT DEFAULT 'x25519-xsalsa20poly1305-v1';
-
 CREATE INDEX IF NOT EXISTS idx_profiles_message_encryption_public_key
   ON profiles(message_encryption_public_key)
   WHERE message_encryption_public_key IS NOT NULL;
-
 DO $$
 BEGIN
   IF NOT EXISTS (

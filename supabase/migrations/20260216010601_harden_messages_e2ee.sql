@@ -17,7 +17,6 @@ BEGIN
   END IF;
 END
 $$;
-
 CREATE OR REPLACE FUNCTION prevent_messages_e2ee_mutation()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -74,9 +73,7 @@ BEGIN
   RETURN NEW;
 END
 $$;
-
 DROP TRIGGER IF EXISTS trg_prevent_messages_e2ee_mutation ON messages;
-
 CREATE TRIGGER trg_prevent_messages_e2ee_mutation
 BEFORE UPDATE ON messages
 FOR EACH ROW

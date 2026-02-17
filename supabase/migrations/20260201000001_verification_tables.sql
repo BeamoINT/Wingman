@@ -141,43 +141,51 @@ ALTER TABLE verification_events ENABLE ROW LEVEL SECURITY;
 
 -- Background checks policies
 -- Users can view their own background checks
+DROP POLICY IF EXISTS "Users can view own background checks" ON background_checks;
 CREATE POLICY "Users can view own background checks"
     ON background_checks FOR SELECT
     USING (auth.uid() = user_id);
 
 -- Only service role (edge functions) can insert background checks
+DROP POLICY IF EXISTS "Service role can insert background checks" ON background_checks;
 CREATE POLICY "Service role can insert background checks"
     ON background_checks FOR INSERT
     WITH CHECK (auth.role() = 'service_role');
 
 -- Only service role (edge functions) can update background checks
+DROP POLICY IF EXISTS "Service role can update background checks" ON background_checks;
 CREATE POLICY "Service role can update background checks"
     ON background_checks FOR UPDATE
     USING (auth.role() = 'service_role');
 
 -- Verification preferences policies
 -- Users can view their own preferences
+DROP POLICY IF EXISTS "Users can view own verification preferences" ON verification_preferences;
 CREATE POLICY "Users can view own verification preferences"
     ON verification_preferences FOR SELECT
     USING (auth.uid() = user_id);
 
 -- Users can insert their own preferences
+DROP POLICY IF EXISTS "Users can insert own verification preferences" ON verification_preferences;
 CREATE POLICY "Users can insert own verification preferences"
     ON verification_preferences FOR INSERT
     WITH CHECK (auth.uid() = user_id);
 
 -- Users can update their own preferences
+DROP POLICY IF EXISTS "Users can update own verification preferences" ON verification_preferences;
 CREATE POLICY "Users can update own verification preferences"
     ON verification_preferences FOR UPDATE
     USING (auth.uid() = user_id);
 
 -- Verification events policies
 -- Users can view their own verification events
+DROP POLICY IF EXISTS "Users can view own verification events" ON verification_events;
 CREATE POLICY "Users can view own verification events"
     ON verification_events FOR SELECT
     USING (auth.uid() = user_id);
 
 -- Only service role can insert verification events
+DROP POLICY IF EXISTS "Service role can insert verification events" ON verification_events;
 CREATE POLICY "Service role can insert verification events"
     ON verification_events FOR INSERT
     WITH CHECK (auth.role() = 'service_role');
