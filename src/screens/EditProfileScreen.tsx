@@ -61,13 +61,18 @@ export const EditProfileScreen: React.FC = () => {
     country: user?.location?.country || 'United States',
     countryCode: resolveCountryCode(user?.location?.country),
   });
-  const [selectedAvatarUri, setSelectedAvatarUri] = useState<string | null>(null);
-  const [attestedPhotoMatch, setAttestedPhotoMatch] = useState(user?.profilePhotoIdMatchAttested === true);
+  const [selectedAvatarAsset, setSelectedAvatarAsset] = useState<{
+    uri: string;
+    width?: number;
+    height?: number;
+    fileSizeBytes?: number;
+  } | null>(null);
+  const [attestedPhotoMatch, setAttestedPhotoMatch] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
   const activeAvatarUri = useMemo(
-    () => selectedAvatarUri || user?.avatar || null,
-    [selectedAvatarUri, user?.avatar],
+    () => selectedAvatarAsset?.uri || user?.avatar || null,
+    [selectedAvatarAsset?.uri, user?.avatar],
   );
   const savedMetroAreaLabel = useMemo(() => {
     const metroAreaName = user?.location?.metroAreaName?.trim();
@@ -111,7 +116,12 @@ export const EditProfileScreen: React.FC = () => {
       });
 
       if (!result.canceled && result.assets[0]?.uri) {
-        setSelectedAvatarUri(result.assets[0].uri);
+        setSelectedAvatarAsset({
+          uri: result.assets[0].uri,
+          width: typeof result.assets[0].width === 'number' ? result.assets[0].width : undefined,
+          height: typeof result.assets[0].height === 'number' ? result.assets[0].height : undefined,
+          fileSizeBytes: typeof result.assets[0].fileSize === 'number' ? result.assets[0].fileSize : undefined,
+        });
         setAttestedPhotoMatch(false);
       }
     } catch (error) {
@@ -155,8 +165,8 @@ export const EditProfileScreen: React.FC = () => {
 
     if (!attestedPhotoMatch) {
       Alert.alert(
-        'Photo-ID Confirmation Required',
-        'You must confirm your legal name and profile photo exactly match your government photo ID before booking.',
+        'Photo Acknowledgment Required',
+        'Please confirm the photo clearly shows your face. Stripe Identity still performs the final live ID and selfie match.',
       );
       return;
     }
@@ -176,8 +186,15 @@ export const EditProfileScreen: React.FC = () => {
     setIsSaving(true);
 
     try {
-      if (selectedAvatarUri) {
-        const { error: avatarError } = await uploadProfileAvatar(selectedAvatarUri);
+      if (selectedAvatarAsset) {
+        const { error: avatarError } = await uploadProfileAvatar(
+          selectedAvatarAsset.uri,
+          {
+            width: selectedAvatarAsset.width,
+            height: selectedAvatarAsset.height,
+            fileSizeBytes: selectedAvatarAsset.fileSizeBytes,
+          },
+        );
         if (avatarError) {
           Alert.alert('Profile Photo', avatarError.message || 'Unable to save your profile photo right now.');
           return;
@@ -193,8 +210,6 @@ export const EditProfileScreen: React.FC = () => {
         city: trimmedCity,
         state: location.state?.trim() || null,
         country: trimmedCountry,
-        profile_photo_id_match_attested: true,
-        profile_photo_id_match_attested_at: new Date().toISOString(),
       });
 
       if (error) {
@@ -226,37 +241,42 @@ export const EditProfileScreen: React.FC = () => {
       <View style={styles.section}>
         <SectionHeader title="Profile Photo" subtitle="Use a clear face photo that matches your ID" />
         <Card variant="outlined" style={styles.photoCard}>
-          <TouchableOpacity style={styles.photoPreview} onPress={handlePickPhoto} activeOpacity={0.9}>
-            {activeAvatarUri ? (
-              <Image source={{ uri: activeAvatarUri }} style={styles.photoImage} />
-            ) : (
-              <View style={styles.photoPlaceholder}>
-                <View style={styles.photoPlaceholderIconWrap}>
-                  <Ionicons name="camera-outline" size={28} color={tokens.colors.primary.blue} />
+          <View style={styles.photoControlsWrap}>
+            <TouchableOpacity style={styles.photoPreview} onPress={handlePickPhoto} activeOpacity={0.9}>
+              {activeAvatarUri ? (
+                <Image source={{ uri: activeAvatarUri }} style={styles.photoImage} />
+              ) : (
+                <View style={styles.photoPlaceholder}>
+                  <View style={styles.photoPlaceholderIconWrap}>
+                    <Ionicons name="camera-outline" size={28} color={tokens.colors.primary.blue} />
+                  </View>
+                  <Text style={styles.photoPlaceholderTitle}>Take profile photo</Text>
+                  <Text style={styles.photoPlaceholderSubtitle}>Camera capture only</Text>
                 </View>
-                <Text style={styles.photoPlaceholderTitle}>Take profile photo</Text>
-                <Text style={styles.photoPlaceholderSubtitle}>Camera capture only</Text>
-              </View>
-            )}
-          </TouchableOpacity>
+              )}
+            </TouchableOpacity>
 
-          <Button
-            title={activeAvatarUri ? 'Retake Photo' : 'Take Photo'}
-            onPress={handlePickPhoto}
-            variant="outline"
-            size="small"
-          />
+            <View style={styles.photoButtonWrap}>
+              <Button
+                title={activeAvatarUri ? 'Retake Photo' : 'Take Photo'}
+                onPress={handlePickPhoto}
+                variant="outline"
+                size="small"
+                style={styles.photoButton}
+              />
+            </View>
 
-          <TouchableOpacity style={styles.attestationRow} onPress={handleToggleAttestation} activeOpacity={0.8}>
-            <Ionicons
-              name={attestedPhotoMatch ? 'checkmark-circle' : 'ellipse-outline'}
-              size={22}
-              color={attestedPhotoMatch ? tokens.colors.accent.primary : tokens.colors.text.tertiary}
-            />
-            <Text style={styles.attestationText}>
-              I confirm my legal name and profile photo exactly match my government photo ID.
-            </Text>
-          </TouchableOpacity>
+            <TouchableOpacity style={styles.attestationRow} onPress={handleToggleAttestation} activeOpacity={0.8}>
+              <Ionicons
+                name={attestedPhotoMatch ? 'checkmark-circle' : 'ellipse-outline'}
+                size={22}
+                color={attestedPhotoMatch ? tokens.colors.accent.primary : tokens.colors.text.tertiary}
+              />
+              <Text style={styles.attestationText}>
+                I confirm this profile photo clearly shows my face. I understand Stripe performs the final government ID + live selfie identity check.
+              </Text>
+            </TouchableOpacity>
+          </View>
         </Card>
       </View>
 
@@ -342,6 +362,13 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
   photoCard: {
     gap: spacing.md,
   },
+  photoControlsWrap: {
+    width: '100%',
+    maxWidth: 420,
+    alignSelf: 'center',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
   photoPreview: {
     width: 136,
     height: 136,
@@ -350,7 +377,15 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     borderWidth: 1,
     borderColor: colors.border.subtle,
     backgroundColor: colors.surface.level2,
-    alignSelf: 'flex-start',
+    alignSelf: 'center',
+  },
+  photoButtonWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+  },
+  photoButton: {
+    alignSelf: 'center',
   },
   photoImage: {
     width: '100%',
@@ -390,6 +425,7 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     borderColor: colors.border.subtle,
     backgroundColor: colors.surface.level1,
     padding: spacing.md,
+    width: '100%',
   },
   attestationText: {
     ...typography.presets.bodySmall,

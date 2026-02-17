@@ -184,7 +184,7 @@ const BookingScreenContent: React.FC = () => {
       }
     }
     if (!photoVerified) missing.push('profile photo');
-    if (!bookingRequirements.photoIdMatchAttested.met) missing.push('photo-ID match confirmation');
+    if (!bookingRequirements.photoIdMatchAttested.met) missing.push('trusted photo-ID verification');
 
     if (missing.length === 0) {
       return '';
@@ -375,7 +375,7 @@ const BookingScreenContent: React.FC = () => {
     if (!requirements.photoIdMatchAttested.met) {
       return {
         valid: false,
-        message: 'Confirm in Edit Profile that your profile photo clearly matches your government photo ID.',
+        message: 'Retake your profile photo and complete ID verification to restore trusted photo-ID verification.',
       };
     }
 
@@ -450,7 +450,7 @@ const BookingScreenContent: React.FC = () => {
                 ? 'Verify Phone'
                 : (needsEmailOrIdVerification
                   ? (needsExpiredIdVerification ? 'Re-verify ID' : 'Complete Verification')
-                  : 'Update Profile'),
+                  : (needsPhotoIdMatch ? 'Re-verify ID' : 'Update Profile')),
               onPress: () => {
                 if (needsPhoneVerification) {
                   navigation.navigate('VerifyPhone', { source: 'booking' });
@@ -469,8 +469,19 @@ const BookingScreenContent: React.FC = () => {
                   return;
                 }
 
-                if (needsProfilePhoto || needsPhotoIdMatch) {
+                if (needsProfilePhoto) {
                   navigation.navigate('EditProfile');
+                  return;
+                }
+
+                if (needsPhotoIdMatch) {
+                  if (!companionIdForVerification) {
+                    return;
+                  }
+                  navigation.navigate('Verification', {
+                    source: 'booking_final_step',
+                    companionId: companionIdForVerification,
+                  });
                   return;
                 }
 

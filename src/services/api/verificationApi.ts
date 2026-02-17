@@ -8,6 +8,7 @@
  */
 
 import type {
+    IdVerificationStartErrorCode,
     IdVerificationStatus,
     VerificationEvent,
     VerificationLevel,
@@ -35,6 +36,9 @@ type CreateIdVerificationSessionResponse = {
   url?: string;
   status?: string;
   error?: string;
+  errorCode?: IdVerificationStartErrorCode | string;
+  adminActionUrl?: string;
+  supportMessage?: string;
 };
 
 type DerivedVerificationSnapshot = {
@@ -408,6 +412,9 @@ export async function createIdVerificationSession(): Promise<{
   url: string | null;
   status: IdVerificationStatus | null;
   error: string | null;
+  errorCode: IdVerificationStartErrorCode | null;
+  adminActionUrl: string | null;
+  supportMessage: string | null;
 }> {
   const invoke = async (accessToken?: string | null) => {
     const headers = accessToken
@@ -436,6 +443,9 @@ export async function createIdVerificationSession(): Promise<{
       url: null,
       status: null,
       error: 'Your session expired. Please sign in again and retry verification.',
+      errorCode: null,
+      adminActionUrl: null,
+      supportMessage: null,
     };
   }
 
@@ -447,11 +457,22 @@ export async function createIdVerificationSession(): Promise<{
       url: data.url,
       status: normalizeIdVerificationStatus(data.status),
       error: null,
+      errorCode: null,
+      adminActionUrl: null,
+      supportMessage: null,
     };
   }
 
   if (data?.error) {
-    return { sessionId: null, url: null, status: null, error: data.error };
+    return {
+      sessionId: null,
+      url: null,
+      status: null,
+      error: data.error,
+      errorCode: (data.errorCode as IdVerificationStartErrorCode | undefined) || null,
+      adminActionUrl: typeof data.adminActionUrl === 'string' ? data.adminActionUrl : null,
+      supportMessage: typeof data.supportMessage === 'string' ? data.supportMessage : null,
+    };
   }
 
   let parsedError = await extractFunctionError(error as FunctionsErrorLike | null);
@@ -469,11 +490,22 @@ export async function createIdVerificationSession(): Promise<{
           url: data.url,
           status: normalizeIdVerificationStatus(data.status),
           error: null,
+          errorCode: null,
+          adminActionUrl: null,
+          supportMessage: null,
         };
       }
 
       if (data?.error) {
-        return { sessionId: null, url: null, status: null, error: data.error };
+        return {
+          sessionId: null,
+          url: null,
+          status: null,
+          error: data.error,
+          errorCode: (data.errorCode as IdVerificationStartErrorCode | undefined) || null,
+          adminActionUrl: typeof data.adminActionUrl === 'string' ? data.adminActionUrl : null,
+          supportMessage: typeof data.supportMessage === 'string' ? data.supportMessage : null,
+        };
       }
 
       parsedError = await extractFunctionError(error as FunctionsErrorLike | null);
@@ -486,6 +518,9 @@ export async function createIdVerificationSession(): Promise<{
       url: null,
       status: null,
       error: 'ID verification service is not deployed yet. Please deploy create-id-verification-session.',
+      errorCode: null,
+      adminActionUrl: null,
+      supportMessage: null,
     };
   }
 
@@ -501,6 +536,9 @@ export async function createIdVerificationSession(): Promise<{
         url: null,
         status: null,
         error: 'Unable to authenticate verification request. Please wait a moment and try again.',
+        errorCode: null,
+        adminActionUrl: null,
+        supportMessage: null,
       };
     }
 
@@ -509,6 +547,21 @@ export async function createIdVerificationSession(): Promise<{
       url: null,
       status: null,
       error: 'Your session expired. Please sign in again and retry verification.',
+      errorCode: null,
+      adminActionUrl: null,
+      supportMessage: null,
+    };
+  }
+
+  if (parsedError.message?.toLowerCase().includes('not set up to use identity')) {
+    return {
+      sessionId: null,
+      url: null,
+      status: null,
+      error: 'Stripe Identity is not enabled for this account yet.',
+      errorCode: 'STRIPE_IDENTITY_NOT_ENABLED',
+      adminActionUrl: null,
+      supportMessage: 'Ask an account admin to enable Stripe Identity in dashboard settings.',
     };
   }
 
@@ -517,6 +570,9 @@ export async function createIdVerificationSession(): Promise<{
     url: null,
     status: null,
     error: parsedError.message || 'Unable to start ID verification right now.',
+    errorCode: null,
+    adminActionUrl: null,
+    supportMessage: null,
   };
 }
 
@@ -541,6 +597,7 @@ export async function getVerificationStatus(userId: string): Promise<Verificatio
       'id_verification_expires_at',
       'id_verification_failure_code',
       'id_verification_failure_message',
+      'profile_photo_id_match_attested',
     ];
 
     while (selectableColumns.length > 0) {
@@ -619,6 +676,7 @@ export async function getVerificationStatus(userId: string): Promise<Verificatio
           : null,
         idVerificationExpiresAt,
         idVerifiedAt: typeof profile.id_verified_at === 'string' ? profile.id_verified_at : null,
+        profilePhotoIdMatchAttested: profile.profile_photo_id_match_attested === true,
         verificationLevel,
       };
     }
@@ -643,6 +701,7 @@ function getDefaultVerificationStatus(emailVerified = false): VerificationStatus
     idVerificationFailureMessage: null,
     idVerificationExpiresAt: null,
     idVerifiedAt: null,
+    profilePhotoIdMatchAttested: false,
     verificationLevel: 'basic',
   };
 }

@@ -9,7 +9,7 @@
  */
 
 import React, {
-    createContext, useCallback, useContext, useEffect, useMemo, useState
+    createContext, useCallback, useContext, useEffect, useMemo, useRef, useState
 } from 'react';
 import {
     createIdVerificationSession,
@@ -18,7 +18,9 @@ import {
     logVerificationEvent,
     subscribeToVerificationUpdates
 } from '../services/api/verificationApi';
+import { trackEvent } from '../services/monitoring/events';
 import type {
+    IdVerificationStartErrorCode,
     IdVerificationReminder,
     IdVerificationStatus,
     OverallVerificationStatus, VerificationEvent,
@@ -35,7 +37,15 @@ interface VerificationContextType extends VerificationState {
   // Actions
   refreshStatus: () => Promise<void>;
   loadHistory: () => Promise<void>;
-  startIdVerification: () => Promise<{ success: boolean; url?: string; sessionId?: string; error?: string }>;
+  startIdVerification: () => Promise<{
+    success: boolean;
+    url?: string;
+    sessionId?: string;
+    error?: string;
+    errorCode?: IdVerificationStartErrorCode | null;
+    adminActionUrl?: string | null;
+    supportMessage?: string | null;
+  }>;
 
   // Computed
   getVerificationSteps: () => VerificationStep[];
@@ -64,6 +74,7 @@ export const VerificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const [idVerifiedAt, setIdVerifiedAt] = useState<string | null>(null);
   const [verificationLevel, setVerificationLevel] = useState<VerificationLevel>('basic');
   const [history, setHistory] = useState<VerificationEvent[]>([]);
+  const profilePhotoTrustRef = useRef(false);
 
   // ===========================================
   // Data Loading
@@ -132,6 +143,14 @@ export const VerificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         setIdVerificationExpiresAt(status.idVerificationExpiresAt);
         setIdVerifiedAt(status.idVerifiedAt);
         setVerificationLevel(status.verificationLevel);
+
+        if (status.profilePhotoIdMatchAttested && !profilePhotoTrustRef.current) {
+          trackEvent('profile_photo_trust_promoted', { source: 'verification_status_refresh' });
+        }
+        if (!status.profilePhotoIdMatchAttested && profilePhotoTrustRef.current) {
+          trackEvent('profile_photo_trust_revoked', { source: 'verification_status_refresh' });
+        }
+        profilePhotoTrustRef.current = status.profilePhotoIdMatchAttested;
 
         const existingEvents = await getVerificationEvents(user.id);
         const syncedEvents = await ensureVerificationHistoryForStatus(user.id, status, existingEvents);
@@ -275,13 +294,24 @@ export const VerificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     url?: string;
     sessionId?: string;
     error?: string;
+    errorCode?: IdVerificationStartErrorCode | null;
+    adminActionUrl?: string | null;
+    supportMessage?: string | null;
   }> => {
-    const { url, error, sessionId, status } = await createIdVerificationSession();
+    const { url, error, sessionId, status, errorCode, adminActionUrl, supportMessage } = await createIdVerificationSession();
 
     if (!url || error) {
+      if (errorCode === 'STRIPE_IDENTITY_NOT_ENABLED') {
+        trackEvent('id_verification_start_blocked_identity_not_enabled', {
+          source: 'verification_context',
+        });
+      }
       return {
         success: false,
         error: error || 'Unable to start ID verification right now.',
+        errorCode: errorCode || null,
+        adminActionUrl: adminActionUrl || null,
+        supportMessage: supportMessage || null,
       };
     }
 
@@ -297,6 +327,9 @@ export const VerificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       success: true,
       url,
       sessionId: sessionId || undefined,
+      errorCode: null,
+      adminActionUrl: null,
+      supportMessage: null,
     };
   }, []);
 
@@ -327,6 +360,7 @@ export const VerificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       setIdVerifiedAt(null);
       setVerificationLevel('basic');
       setHistory([]);
+      profilePhotoTrustRef.current = false;
     }
   }, [isAuthenticated, user?.id, refreshStatus]);
 

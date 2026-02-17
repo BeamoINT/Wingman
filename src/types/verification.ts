@@ -100,6 +100,12 @@ export type IdVerificationFailureReason =
   | 'verification_failed'
   | string;
 
+export type IdVerificationStartErrorCode =
+  | 'STRIPE_IDENTITY_NOT_ENABLED'
+  | 'STRIPE_KEY_INVALID'
+  | 'STRIPE_ACCOUNT_INCOMPLETE'
+  | 'ID_VERIFICATION_UNAVAILABLE';
+
 export type IdVerificationReminderStage = 90 | 30 | 7 | 1 | 'expired' | null;
 
 export interface IdVerificationReminder {
@@ -176,5 +182,6 @@ export interface VerificationStatusResponse {
   idVerificationFailureMessage: string | null;
   idVerificationExpiresAt: string | null;
   idVerifiedAt: string | null;
+  profilePhotoIdMatchAttested: boolean;
   verificationLevel: VerificationLevel;
 }

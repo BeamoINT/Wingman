@@ -62,7 +62,7 @@ export const VerificationScreen: React.FC = () => {
   const verificationSource = route.params?.source || 'profile';
   const openedFromFinalBookingStep = verificationSource === 'booking_final_step';
   const hasProfilePhoto = Boolean(user?.avatar?.trim());
-  const photoIdMatchAttested = user?.profilePhotoIdMatchAttested === true;
+  const photoCaptureReady = hasProfilePhoto && user?.profilePhotoCaptureVerified === true;
 
   const verificationSteps = useMemo<VerificationStep[]>(
     () => [
@@ -82,11 +82,11 @@ export const VerificationScreen: React.FC = () => {
       },
       {
         id: 'photo',
-        title: 'Photo Verification',
-        description: 'Use a clear profile photo that visibly matches your government photo ID',
+        title: 'Profile Photo Capture',
+        description: 'Take and save a clear profile photo with the in-app camera',
         icon: 'camera',
-        status: hasProfilePhoto && photoIdMatchAttested ? 'completed' : 'pending',
-        action: (!hasProfilePhoto || !photoIdMatchAttested) && openedFromFinalBookingStep
+        status: photoCaptureReady ? 'completed' : 'pending',
+        action: (!photoCaptureReady) && openedFromFinalBookingStep
           ? 'Update Photo'
           : undefined,
       },
@@ -134,7 +134,7 @@ export const VerificationScreen: React.FC = () => {
       emailVerified,
       phoneVerified,
       hasProfilePhoto,
-      photoIdMatchAttested,
+      photoCaptureReady,
       idVerified,
       idVerificationStatus,
       idVerificationExpiresAt,
@@ -181,7 +181,26 @@ export const VerificationScreen: React.FC = () => {
       try {
         const result = await startIdVerification();
         if (!result.success || !result.url) {
-          Alert.alert('Verification Unavailable', result.error || 'Unable to start ID verification right now.');
+          if (result.errorCode === 'STRIPE_IDENTITY_NOT_ENABLED' && result.adminActionUrl) {
+            Alert.alert(
+              'Stripe Identity Setup Required',
+              `${result.error || 'Stripe Identity is not enabled for this account.'}\n\n${result.supportMessage || 'An account admin must enable Stripe Identity.'}`,
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Open Stripe Setup',
+                  onPress: () => {
+                    void WebBrowser.openBrowserAsync(result.adminActionUrl as string, {
+                      presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN,
+                      showTitle: true,
+                    });
+                  },
+                },
+              ],
+            );
+          } else {
+            Alert.alert('Verification Unavailable', result.error || 'Unable to start ID verification right now.');
+          }
           return;
         }
 

@@ -21,6 +21,10 @@
 
 Security note: if a RevenueCat `sk_` secret key is ever shared in plaintext, rotate it after deployment and update `REVENUECAT_SECRET_API_KEY` immediately.
 
+Stripe key mode note: `STRIPE_SECRET_KEY` must match the environment where Stripe Identity is enabled.
+- `sk_test_...` key -> enable Identity in test mode.
+- `sk_live_...` key -> enable Identity in live mode.
+
 ## Deploy sequence
 1. Link the project and verify environment:
 ```bash
@@ -41,8 +45,8 @@ supabase functions deploy sync-pro-entitlement
 supabase functions deploy resolve-metro-area
 supabase functions deploy get-directions
 supabase functions deploy live-location-maintenance
-supabase functions deploy create-id-verification-session
-supabase functions deploy stripe-identity-webhook
+supabase functions deploy create-id-verification-session --no-verify-jwt
+supabase functions deploy stripe-identity-webhook --no-verify-jwt
 supabase functions deploy id-verification-maintenance
 ```
 4. Set secrets:
@@ -68,18 +72,27 @@ supabase secrets set LIVE_LOCATION_MAINTENANCE_SECRET=...
 #
 # Subscribe to identity.verification_session.* events.
 ```
-6. Configure a daily scheduler to call maintenance:
+6. Enable Stripe Identity capability in both environments before smoke testing:
+```bash
+# Test mode
+# https://dashboard.stripe.com/test/settings/identity
+#
+# Live mode
+# https://dashboard.stripe.com/settings/identity
+```
+Expected result after enablement: account setting shows Identity active and session creation returns a hosted verification URL.
+7. Configure a daily scheduler to call maintenance:
 ```bash
 # POST https://<project-ref>.functions.supabase.co/id-verification-maintenance
 # Header: x-maintenance-secret: <ID_VERIFICATION_MAINTENANCE_SECRET>
 ```
-7. Configure a 5-minute scheduler for live location cleanup:
+8. Configure a 5-minute scheduler for live location cleanup:
 ```bash
 # POST https://<project-ref>.functions.supabase.co/live-location-maintenance
 # Header: x-maintenance-secret: <LIVE_LOCATION_MAINTENANCE_SECRET>
 ```
-8. Verify function health with authenticated calls from a staging build.
-9. Verify companion onboarding RPCs:
+9. Verify function health with authenticated calls from a staging build.
+10. Verify companion onboarding RPCs:
 ```bash
 # Authenticated RPC smoke tests
 # public.get_wingman_onboarding_state_v1()
@@ -87,13 +100,27 @@ supabase secrets set LIVE_LOCATION_MAINTENANCE_SECRET=...
 # public.upsert_wingman_profile_v1(...)
 ```
 
+## Stripe troubleshooting
+1. Error: `account is not set up to use Identity`
+- Confirm Identity is enabled in Stripe Dashboard for the same mode as the secret key.
+- Test URL: `https://dashboard.stripe.com/test/settings/identity`
+- Live URL: `https://dashboard.stripe.com/settings/identity`
+
+2. Error: `invalid api key` / `authentication_error`
+- Rotate and re-set `STRIPE_SECRET_KEY`.
+- Confirm key belongs to the same Stripe account that has Identity enabled.
+
+3. Error: user sees setup CTA unexpectedly
+- Confirm function is deployed with `--no-verify-jwt`.
+- Confirm app sends a valid Supabase session token and the user is signed in.
+
 ## Validation checklist
 1. `conversation_members` and `participant_ids` are present on `conversations`.
 2. `message_device_identities`, `message_key_boxes`, `message_attachments` tables exist with RLS.
 3. `get_or_create_direct_conversation_v2` RPC is callable by authenticated users.
 4. RevenueCat webhook writes `subscription_events` and updates `profiles.subscription_tier`.
 5. `resolve-metro-area` returns metro payloads for US city aliases (for example Franklin, TN -> Nashville Metro).
-6. `create-id-verification-session` returns a Stripe Identity hosted URL for authenticated users with photo-ID attestation.
+6. `create-id-verification-session` returns a Stripe Identity hosted URL for authenticated users with camera-captured profile photo readiness state.
 7. `stripe-identity-webhook` marks successful matches as `profiles.id_verification_status='verified'` with a 3-year expiry.
 8. `id-verification-maintenance` marks expired users and sends 90/30/7/1-day Resend reminders.
 9. `get-directions` returns recommended route + alternatives for authenticated users.

@@ -10,6 +10,9 @@ type StripeIdentitySessionResponse = {
   id?: string;
   url?: string;
   error?: {
+    type?: string;
+    code?: string;
+    doc_url?: string;
     message?: string;
   };
 };
@@ -17,7 +20,11 @@ type StripeIdentitySessionResponse = {
 type ProfileRow = {
   first_name?: string | null;
   last_name?: string | null;
-  profile_photo_id_match_attested?: boolean | null;
+  avatar_url?: string | null;
+  profile_photo_source?: string | null;
+  profile_photo_captured_at?: string | null;
+  profile_photo_capture_verified?: boolean | null;
+  profile_photo_last_changed_at?: string | null;
   id_verified?: boolean | null;
   id_verification_status?: string | null;
   id_verification_expires_at?: string | null;
@@ -25,6 +32,12 @@ type ProfileRow = {
   id_verification_failure_message?: string | null;
   id_verification_last_failed_at?: string | null;
 };
+
+type StartVerificationErrorCode =
+  | "STRIPE_IDENTITY_NOT_ENABLED"
+  | "STRIPE_KEY_INVALID"
+  | "STRIPE_ACCOUNT_INCOMPLETE"
+  | "ID_VERIFICATION_UNAVAILABLE";
 
 function jsonResponse(body: Record<string, unknown>, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -55,6 +68,116 @@ function normalizeNamePart(value: string | null | undefined): string {
   return String(value || "").trim().replace(/\s+/g, " ");
 }
 
+function parseIsoDate(value: string | null | undefined): Date | null {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+  return parsed;
+}
+
+function isLikelyTestModeSecret(secretKey: string): boolean {
+  const normalized = secretKey.trim().toLowerCase();
+  return normalized.startsWith("sk_test_") || normalized.startsWith("rk_test_");
+}
+
+function getStripeIdentitySetupUrl(secretKey: string): string {
+  return isLikelyTestModeSecret(secretKey)
+    ? "https://dashboard.stripe.com/test/settings/identity"
+    : "https://dashboard.stripe.com/settings/identity";
+}
+
+function buildActionableErrorResponse(
+  error: string,
+  errorCode: StartVerificationErrorCode,
+  status = 400,
+  extra: {
+    adminActionUrl?: string;
+    supportMessage?: string;
+  } = {},
+): Response {
+  return jsonResponse(
+    {
+      error,
+      errorCode,
+      ...extra,
+    },
+    status,
+  );
+}
+
+function mapStripeIdentitySessionError(
+  stripePayload: StripeIdentitySessionResponse,
+  stripeSecretKey: string,
+): {
+  status: number;
+  error: string;
+  errorCode: StartVerificationErrorCode;
+  adminActionUrl?: string;
+  supportMessage?: string;
+} {
+  const rawMessage = String(stripePayload?.error?.message || "").trim();
+  const message = rawMessage.toLowerCase();
+  const code = String(stripePayload?.error?.code || "").toLowerCase();
+  const type = String(stripePayload?.error?.type || "").toLowerCase();
+  const setupUrl = getStripeIdentitySetupUrl(stripeSecretKey);
+
+  if (
+    message.includes("not set up to use identity")
+    || message.includes("not enabled for identity")
+    || message.includes("identity verification is not enabled")
+  ) {
+    return {
+      status: 400,
+      error: "Stripe Identity is not enabled for this account yet.",
+      errorCode: "STRIPE_IDENTITY_NOT_ENABLED",
+      adminActionUrl: setupUrl,
+      supportMessage: "Ask an account admin to enable Stripe Identity in Dashboard settings, then retry.",
+    };
+  }
+
+  if (
+    code.includes("api_key")
+    || message.includes("invalid api key")
+    || message.includes("no such api key")
+    || type.includes("authentication_error")
+  ) {
+    return {
+      status: 500,
+      error: "Stripe credentials are invalid for Identity verification.",
+      errorCode: "STRIPE_KEY_INVALID",
+      adminActionUrl: setupUrl,
+      supportMessage: "Rotate STRIPE_SECRET_KEY and ensure it belongs to the Stripe account with Identity enabled.",
+    };
+  }
+
+  if (
+    message.includes("account")
+    && (
+      message.includes("incomplete")
+      || message.includes("restricted")
+      || message.includes("requirements")
+      || message.includes("disabled")
+    )
+  ) {
+    return {
+      status: 400,
+      error: "Stripe account setup is incomplete for Identity verification.",
+      errorCode: "STRIPE_ACCOUNT_INCOMPLETE",
+      adminActionUrl: setupUrl,
+      supportMessage: "An account admin must complete Stripe account requirements before users can verify IDs.",
+    };
+  }
+
+  return {
+    status: 500,
+    error: rawMessage || "Unable to create identity verification session.",
+    errorCode: "ID_VERIFICATION_UNAVAILABLE",
+    supportMessage: "Please retry shortly. If this persists, contact support.",
+  };
+}
+
 function isCurrentlyActiveVerification(profile: ProfileRow): boolean {
   if (profile.id_verified !== true) {
     return false;
@@ -76,6 +199,15 @@ function isCurrentlyActiveVerification(profile: ProfileRow): boolean {
   return expiry.getTime() > Date.now();
 }
 
+function isPhotoCaptureFreshForVerification(profile: ProfileRow): boolean {
+  const capturedAt = parseIsoDate(profile.profile_photo_captured_at);
+  if (!capturedAt) {
+    return false;
+  }
+  const maxPhotoAgeMs = 1000 * 60 * 60 * 24 * 30;
+  return Date.now() - capturedAt.getTime() <= maxPhotoAgeMs;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -95,7 +227,14 @@ serve(async (req) => {
   }
 
   if (!stripeSecretKey) {
-    return jsonResponse({ error: "Server configuration error: missing STRIPE_SECRET_KEY" }, 500);
+    return buildActionableErrorResponse(
+      "ID verification service is temporarily unavailable.",
+      "ID_VERIFICATION_UNAVAILABLE",
+      500,
+      {
+        supportMessage: "Server configuration is missing STRIPE_SECRET_KEY.",
+      },
+    );
   }
 
   try {
@@ -121,7 +260,7 @@ serve(async (req) => {
     const { data: profileData, error: profileError } = await supabaseAdmin
       .from("profiles")
       .select(
-        "first_name,last_name,profile_photo_id_match_attested,id_verified,id_verification_status,id_verification_expires_at,id_verification_failure_code,id_verification_failure_message,id_verification_last_failed_at"
+        "first_name,last_name,avatar_url,profile_photo_source,profile_photo_captured_at,profile_photo_capture_verified,profile_photo_last_changed_at,id_verified,id_verification_status,id_verification_expires_at,id_verification_failure_code,id_verification_failure_message,id_verification_last_failed_at"
       )
       .eq("id", userId)
       .maybeSingle();
@@ -135,20 +274,62 @@ serve(async (req) => {
     const lastName = normalizeNamePart(profile.last_name);
 
     if (!firstName || !lastName) {
-      return jsonResponse(
-        {
-          error: "Your legal profile name is required. Add your first and last name exactly as shown on your government-issued photo ID.",
-        },
+      return buildActionableErrorResponse(
+        "Your legal profile name is required. Add your first and last name exactly as shown on your government-issued photo ID.",
+        "ID_VERIFICATION_UNAVAILABLE",
         400
       );
     }
 
-    if (profile.profile_photo_id_match_attested !== true) {
-      return jsonResponse(
-        {
-          error: "Confirm in Edit Profile that your profile photo clearly matches your government photo ID before starting verification.",
-        },
+    if (!normalizeNamePart(profile.avatar_url)) {
+      return buildActionableErrorResponse(
+        "Take a profile photo in Edit Profile before starting verification.",
+        "ID_VERIFICATION_UNAVAILABLE",
         400
+      );
+    }
+
+    if (String(profile.profile_photo_source || "").toLowerCase() !== "in_app_camera") {
+      return buildActionableErrorResponse(
+        "Retake your profile photo with the in-app camera before starting verification.",
+        "ID_VERIFICATION_UNAVAILABLE",
+        400,
+      );
+    }
+
+    if (profile.profile_photo_capture_verified !== true) {
+      return buildActionableErrorResponse(
+        "Your profile photo needs a fresh quality check. Retake and save your profile photo before verification.",
+        "ID_VERIFICATION_UNAVAILABLE",
+        400
+      );
+    }
+
+    if (!isPhotoCaptureFreshForVerification(profile)) {
+      return buildActionableErrorResponse(
+        "Your profile photo capture is too old. Retake your photo before starting verification.",
+        "ID_VERIFICATION_UNAVAILABLE",
+        400
+      );
+    }
+
+    const fifteenMinutesAgoIso = new Date(Date.now() - (15 * 60 * 1000)).toISOString();
+    const { count: recentStartCount, error: recentStartError } = await supabaseAdmin
+      .from("verification_events")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("event_type", "id_verification_started")
+      .gte("created_at", fifteenMinutesAgoIso);
+
+    if (recentStartError && !["42P01", "PGRST205"].includes(String(recentStartError.code || ""))) {
+      console.error("Unable to check verification start rate-limit:", recentStartError);
+    }
+
+    if ((recentStartCount || 0) >= 5) {
+      return buildActionableErrorResponse(
+        "Too many verification attempts. Please wait a few minutes and try again.",
+        "ID_VERIFICATION_UNAVAILABLE",
+        429
       );
     }
 
@@ -175,11 +356,25 @@ serve(async (req) => {
       body,
     });
 
-    const stripePayload = await stripeResponse.json() as StripeIdentitySessionResponse;
+    const stripePayload = await stripeResponse.json().catch(() => ({})) as StripeIdentitySessionResponse;
 
     if (!stripeResponse.ok || !stripePayload.id || !stripePayload.url) {
-      const stripeMessage = stripePayload?.error?.message || "Unable to create identity verification session.";
-      return jsonResponse({ error: stripeMessage }, 500);
+      const mappedError = mapStripeIdentitySessionError(stripePayload, stripeSecretKey);
+      console.error("Stripe Identity session creation failed:", {
+        status: stripeResponse.status,
+        error_code: stripePayload?.error?.code || null,
+        error_type: stripePayload?.error?.type || null,
+        mapped_error_code: mappedError.errorCode,
+      });
+      return buildActionableErrorResponse(
+        mappedError.error,
+        mappedError.errorCode,
+        mappedError.status,
+        {
+          adminActionUrl: mappedError.adminActionUrl,
+          supportMessage: mappedError.supportMessage,
+        },
+      );
     }
 
     const nowIso = new Date().toISOString();

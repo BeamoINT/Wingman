@@ -20,6 +20,10 @@ export interface User {
   proStatus?: ProStatus;
   profilePhotoIdMatchAttested?: boolean;
   profilePhotoIdMatchAttestedAt?: string | null;
+  profilePhotoSource?: 'in_app_camera' | 'legacy_import' | 'unknown';
+  profilePhotoCapturedAt?: string | null;
+  profilePhotoCaptureVerified?: boolean;
+  profilePhotoLastChangedAt?: string | null;
   idVerificationStatus?: 'unverified' | 'pending' | 'verified' | 'expired' | 'failed_name_mismatch' | 'failed';
   idVerificationExpiresAt?: string | null;
   idVerifiedAt?: string | null;

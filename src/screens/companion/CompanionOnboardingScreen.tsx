@@ -23,7 +23,6 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { useVerification } from '../../context/VerificationContext';
-import { updateProfile } from '../../services/api/profiles';
 import { getWingmanOnboardingState } from '../../services/api/wingmanOnboardingApi';
 import { trackEvent } from '../../services/monitoring/events';
 import type { ThemeTokens } from '../../theme/tokens';
@@ -63,7 +62,7 @@ export const CompanionOnboardingScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const { tokens } = useTheme();
   const styles = useThemedStyles(createStyles);
-  const { user, refreshUserProfile } = useAuth();
+  const { user } = useAuth();
   const {
     idVerificationStatus,
     idVerificationFailureMessage,
@@ -73,11 +72,11 @@ export const CompanionOnboardingScreen: React.FC = () => {
 
   const [isLoading, setIsLoading] = useState(true);
   const [isLaunchingVerification, setIsLaunchingVerification] = useState(false);
-  const [isSavingAttestation, setIsSavingAttestation] = useState(false);
   const [state, setState] = useState<WingmanOnboardingState>(defaultState);
   const completionTrackedRef = useRef({ step1: false, step2: false, step3: false });
   const hasProfilePhoto = Boolean(user?.avatar);
-  const hasPhotoIdAttestation = user?.profilePhotoIdMatchAttested === true;
+  const hasPhotoCaptureReady = hasProfilePhoto && user?.profilePhotoCaptureVerified === true;
+  const hasTrustedPhotoMatch = user?.profilePhotoIdMatchAttested === true;
 
   const loadState = useCallback(async () => {
     setIsLoading(true);
@@ -164,10 +163,10 @@ export const CompanionOnboardingScreen: React.FC = () => {
       return;
     }
 
-    if (!hasPhotoIdAttestation) {
+    if (!hasPhotoCaptureReady) {
       Alert.alert(
-        'Photo-ID Confirmation Required',
-        'Confirm your profile photo matches your government photo ID before starting verification.',
+        'Profile Photo Required',
+        'Retake and save a clear camera photo in Edit Profile before starting verification.',
       );
       return;
     }
@@ -179,10 +178,30 @@ export const CompanionOnboardingScreen: React.FC = () => {
     try {
       const result = await startIdVerification();
       if (!result.success || !result.url) {
-        Alert.alert('Unable to start verification', result.error || 'Please try again.');
+        if (result.errorCode === 'STRIPE_IDENTITY_NOT_ENABLED' && result.adminActionUrl) {
+          Alert.alert(
+            'Stripe Identity Setup Required',
+            `${result.error || 'Stripe Identity is not enabled for this account.'}\n\n${result.supportMessage || 'An account admin must enable Stripe Identity first.'}`,
+            [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Open Stripe Setup',
+                onPress: () => {
+                  void WebBrowser.openBrowserAsync(result.adminActionUrl as string, {
+                    presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN,
+                    showTitle: true,
+                  });
+                },
+              },
+            ],
+          );
+        } else {
+          Alert.alert('Unable to start verification', result.error || 'Please try again.');
+        }
         trackEvent('wingman_onboarding_blocked', {
           reason: 'start_id_verification_failed',
           message: result.error || 'unknown',
+          error_code: result.errorCode || 'unknown',
         });
         return;
       }
@@ -219,53 +238,6 @@ export const CompanionOnboardingScreen: React.FC = () => {
   const handleOpenEditProfile = async () => {
     await haptics.light();
     navigation.navigate('EditProfile');
-  };
-
-  const handleConfirmPhotoIdAttestation = async () => {
-    if (isSavingAttestation) {
-      return;
-    }
-
-    if (!hasProfilePhoto) {
-      Alert.alert(
-        'Profile Photo Required',
-        'Upload a clear profile photo first, then confirm it matches your government photo ID.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Open Edit Profile',
-            onPress: () => navigation.navigate('EditProfile'),
-          },
-        ],
-      );
-      return;
-    }
-
-    setIsSavingAttestation(true);
-    await haptics.medium();
-
-    try {
-      const { error } = await updateProfile({
-        profile_photo_id_match_attested: true,
-        profile_photo_id_match_attested_at: new Date().toISOString(),
-      });
-
-      if (error) {
-        Alert.alert(
-          'Unable to save confirmation',
-          error.message || 'Please try again.',
-        );
-        return;
-      }
-
-      await refreshUserProfile();
-      await haptics.success();
-    } catch (error) {
-      console.error('Unable to update photo-ID attestation:', error);
-      Alert.alert('Unable to save confirmation', 'Please try again.');
-    } finally {
-      setIsSavingAttestation(false);
-    }
   };
 
   return (
@@ -365,35 +337,38 @@ export const CompanionOnboardingScreen: React.FC = () => {
               <View style={styles.attestationBlock}>
                 <View style={styles.attestationStatusRow}>
                   <Ionicons
-                    name={hasPhotoIdAttestation ? 'checkmark-circle' : 'ellipse-outline'}
+                    name={hasPhotoCaptureReady ? 'checkmark-circle' : 'ellipse-outline'}
                     size={18}
-                    color={hasPhotoIdAttestation ? tokens.colors.status.success : tokens.colors.text.tertiary}
+                    color={hasPhotoCaptureReady ? tokens.colors.status.success : tokens.colors.text.tertiary}
                   />
                   <Text style={styles.attestationStatusTitle}>
-                    {hasPhotoIdAttestation
-                      ? 'Photo-ID confirmation complete'
-                      : 'Required: confirm profile photo matches your photo ID'}
+                    {hasPhotoCaptureReady
+                      ? 'Profile photo capture is ready'
+                      : 'Required: take and save a clear profile photo'}
                   </Text>
                 </View>
                 <Text style={styles.attestationStatusBody}>
-                  This confirms your profile photo and legal profile name match your government-issued photo ID.
+                  Retake your profile photo with the in-app camera if needed. Stripe performs the final government ID + live selfie match.
                 </Text>
                 {!hasProfilePhoto ? (
                   <InlineBanner
                     title="Add a profile photo first"
-                    message="Upload a clear face photo in Edit Profile before confirming."
+                    message="Take a clear face photo in Edit Profile before starting verification."
                     variant="warning"
                   />
                 ) : null}
-                {!hasPhotoIdAttestation ? (
-                  <Button
-                    title={isSavingAttestation ? 'Saving…' : 'Confirm Photo Matches ID'}
-                    onPress={handleConfirmPhotoIdAttestation}
-                    loading={isSavingAttestation}
-                    disabled={isSavingAttestation}
-                    icon="checkmark-circle"
-                    iconPosition="left"
-                    fullWidth
+                {!hasPhotoCaptureReady && hasProfilePhoto ? (
+                  <InlineBanner
+                    title="Retake required"
+                    message="Your saved photo did not pass capture readiness checks. Retake and save a new camera photo."
+                    variant="warning"
+                  />
+                ) : null}
+                {hasTrustedPhotoMatch ? (
+                  <InlineBanner
+                    title="Trusted photo match active"
+                    message="Your profile photo is currently trusted for booking under your active verification cycle."
+                    variant="success"
                   />
                 ) : null}
                 <Button
@@ -421,7 +396,7 @@ export const CompanionOnboardingScreen: React.FC = () => {
                 }
                 onPress={handleLaunchIdVerification}
                 loading={isLaunchingVerification}
-                disabled={isLaunchingVerification || isLoading || isSavingAttestation || !hasPhotoIdAttestation}
+                disabled={isLaunchingVerification || isLoading || !hasPhotoCaptureReady}
                 icon="shield-checkmark"
                 iconPosition="left"
                 fullWidth

@@ -807,9 +807,9 @@ export const RequirementsProvider: React.FC<{ children: React.ReactNode }> = ({ 
       },
       photoIdMatchAttested: {
         met: user?.profilePhotoIdMatchAttested === true,
-        requirement: 'Your profile photo must clearly match your government photo ID',
-        action: 'Confirm Photo-ID Match',
-        navigateTo: 'EditProfile',
+        requirement: 'Trusted profile photo verification is required. Retake your camera photo and complete ID verification.',
+        action: 'Re-verify ID',
+        navigateTo: 'Verification',
       },
       profileComplete: {
         met: profileCompletionData.isComplete,

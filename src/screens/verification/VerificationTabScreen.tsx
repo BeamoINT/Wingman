@@ -88,7 +88,26 @@ export const VerificationTabScreen: React.FC = () => {
     try {
       const result = await startIdVerification();
       if (!result.success || !result.url) {
-        Alert.alert('Verification Unavailable', result.error || 'Unable to start ID verification right now.');
+        if (result.errorCode === 'STRIPE_IDENTITY_NOT_ENABLED' && result.adminActionUrl) {
+          Alert.alert(
+            'Stripe Identity Setup Required',
+            `${result.error || 'Stripe Identity is not enabled for this account.'}\n\n${result.supportMessage || 'An account admin must enable Stripe Identity first.'}`,
+            [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Open Stripe Setup',
+                onPress: () => {
+                  void WebBrowser.openBrowserAsync(result.adminActionUrl as string, {
+                    presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN,
+                    showTitle: true,
+                  });
+                },
+              },
+            ],
+          );
+        } else {
+          Alert.alert('Verification Unavailable', result.error || 'Unable to start ID verification right now.');
+        }
         return;
       }
 

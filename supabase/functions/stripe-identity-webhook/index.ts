@@ -11,6 +11,11 @@ type ProfileRow = {
   id: string;
   first_name?: string | null;
   last_name?: string | null;
+  avatar_url?: string | null;
+  profile_photo_source?: string | null;
+  profile_photo_captured_at?: string | null;
+  profile_photo_capture_verified?: boolean | null;
+  profile_photo_last_changed_at?: string | null;
   profile_photo_id_match_attested?: boolean | null;
   id_verified?: boolean | null;
   id_verified_at?: string | null;
@@ -49,6 +54,15 @@ function normalizeHumanName(value: string): string {
 
 function toString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function parseIsoDate(value: string | null | undefined): Date | null {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+  return parsed;
 }
 
 function extractVerifiedFullName(session: Stripe.Identity.VerificationSession): string {
@@ -98,6 +112,56 @@ function getThreeYearExpiryIso(now = new Date()): string {
   const expiry = new Date(now);
   expiry.setUTCFullYear(expiry.getUTCFullYear() + 3);
   return expiry.toISOString();
+}
+
+function evaluateProfilePhotoEligibility(profile: ProfileRow, now: Date): {
+  eligible: boolean;
+  code?: string;
+  message?: string;
+} {
+  if (!toString(profile.avatar_url)) {
+    return {
+      eligible: false,
+      code: "profile_photo_missing",
+      message: "Retake and save a profile photo before retrying verification.",
+    };
+  }
+
+  if (toString(profile.profile_photo_source).toLowerCase() !== "in_app_camera") {
+    return {
+      eligible: false,
+      code: "profile_photo_source_invalid",
+      message: "Retake your profile photo with the in-app camera before verification.",
+    };
+  }
+
+  if (profile.profile_photo_capture_verified !== true) {
+    return {
+      eligible: false,
+      code: "profile_photo_capture_unverified",
+      message: "Retake your profile photo to complete quality and anti-spoof checks before verification.",
+    };
+  }
+
+  const capturedAt = parseIsoDate(profile.profile_photo_captured_at);
+  if (!capturedAt) {
+    return {
+      eligible: false,
+      code: "profile_photo_capture_missing_time",
+      message: "Retake your profile photo before retrying verification.",
+    };
+  }
+
+  const maxAgeMs = 1000 * 60 * 60 * 24 * 30;
+  if (now.getTime() - capturedAt.getTime() > maxAgeMs) {
+    return {
+      eligible: false,
+      code: "profile_photo_capture_stale",
+      message: "Your profile photo capture is too old. Retake your photo before verification.",
+    };
+  }
+
+  return { eligible: true };
 }
 
 function addSignal(target: Set<string>, raw: unknown): void {
@@ -155,15 +219,17 @@ function resolveFailureReason(
   verificationReport: Record<string, unknown> | null,
   options: {
     nameMismatch: boolean;
-    hasPhotoIdAttestation: boolean;
+    profilePhotoEligible: boolean;
+    profilePhotoEligibilityCode?: string;
+    profilePhotoEligibilityMessage?: string;
     sessionStatus: string;
   },
 ): FailureReason {
-  if (!options.hasPhotoIdAttestation) {
+  if (!options.profilePhotoEligible) {
     return {
-      code: "photo_id_attestation_missing",
-      message: "Confirm in Edit Profile that your legal name and profile photo match your government photo ID.",
-      sourceSignals: ["photo_id_attestation_missing"],
+      code: options.profilePhotoEligibilityCode || "profile_photo_retake_required",
+      message: options.profilePhotoEligibilityMessage || "Retake your profile photo before retrying verification.",
+      sourceSignals: [options.profilePhotoEligibilityCode || "profile_photo_retake_required"],
     };
   }
 
@@ -273,7 +339,7 @@ async function getProfileForSession(
     const { data } = await supabaseAdmin
       .from("profiles")
       .select(
-        "id,first_name,last_name,profile_photo_id_match_attested,id_verified,id_verified_at,id_verification_status,id_verification_expires_at,id_verification_failure_code,id_verification_failure_message,id_verification_last_failed_at"
+        "id,first_name,last_name,avatar_url,profile_photo_source,profile_photo_captured_at,profile_photo_capture_verified,profile_photo_last_changed_at,profile_photo_id_match_attested,id_verified,id_verified_at,id_verification_status,id_verification_expires_at,id_verification_failure_code,id_verification_failure_message,id_verification_last_failed_at"
       )
       .eq("id", metadataUserId)
       .maybeSingle();
@@ -286,7 +352,7 @@ async function getProfileForSession(
   const { data: fallbackData } = await supabaseAdmin
     .from("profiles")
     .select(
-      "id,first_name,last_name,profile_photo_id_match_attested,id_verified,id_verified_at,id_verification_status,id_verification_expires_at,id_verification_failure_code,id_verification_failure_message,id_verification_last_failed_at"
+      "id,first_name,last_name,avatar_url,profile_photo_source,profile_photo_captured_at,profile_photo_capture_verified,profile_photo_last_changed_at,profile_photo_id_match_attested,id_verified,id_verified_at,id_verification_status,id_verification_expires_at,id_verification_failure_code,id_verification_failure_message,id_verification_last_failed_at"
     )
     .eq("id_verification_provider_ref", session.id)
     .maybeSingle();
@@ -342,7 +408,8 @@ serve(async (req) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY");
-  const stripeWebhookSecret = Deno.env.get("STRIPE_IDENTITY_WEBHOOK_SECRET");
+  const stripeWebhookSecret = Deno.env.get("STRIPE_IDENTITY_WEBHOOK_SECRET")
+    || Deno.env.get("STRIPE_WEBHOOK_SECRET");
 
   if (!supabaseUrl || !supabaseServiceRoleKey) {
     return jsonResponse({ error: "Server configuration error: missing Supabase settings" }, 500);
@@ -429,7 +496,7 @@ serve(async (req) => {
     const normalizedExpected = normalizeHumanName(buildExpectedProfileName(profile));
     const normalizedVerified = normalizeHumanName(verifiedName);
     const nameMatches = !!normalizedExpected && normalizedExpected === normalizedVerified;
-    const hasPhotoIdAttestation = profile.profile_photo_id_match_attested === true;
+    const profilePhotoEligibility = evaluateProfilePhotoEligibility(profile, now);
     const currentlyActive = isCurrentlyActiveVerification(profile);
     const verificationReport = await getVerificationReport(stripe, session);
 
@@ -443,13 +510,15 @@ serve(async (req) => {
 
     let companionApplicationUpdate: Record<string, unknown> | null = null;
 
-    if (sessionStatus === "verified" && hasPhotoIdAttestation && nameMatches) {
+    if (sessionStatus === "verified" && profilePhotoEligibility.eligible && nameMatches) {
       updatePayload = {
         ...updatePayload,
         id_verified: true,
         id_verified_at: nowIso,
         id_verification_status: "verified",
         id_verification_expires_at: getThreeYearExpiryIso(now),
+        profile_photo_id_match_attested: true,
+        profile_photo_id_match_attested_at: nowIso,
         id_verification_failure_code: null,
         id_verification_failure_message: null,
         id_verification_last_failed_at: null,
@@ -470,12 +539,15 @@ serve(async (req) => {
           provider: "stripe_identity",
           session_id: session.id,
           verified_at: nowIso,
+          profile_photo_trust_promoted: true,
         },
       );
-    } else if (sessionStatus === "verified" && (!hasPhotoIdAttestation || !nameMatches)) {
+    } else if (sessionStatus === "verified" && (!profilePhotoEligibility.eligible || !nameMatches)) {
       const failure = resolveFailureReason(session, verificationReport, {
         nameMismatch: !nameMatches,
-        hasPhotoIdAttestation,
+        profilePhotoEligible: profilePhotoEligibility.eligible,
+        profilePhotoEligibilityCode: profilePhotoEligibility.code,
+        profilePhotoEligibilityMessage: profilePhotoEligibility.message,
         sessionStatus,
       });
 
@@ -484,8 +556,10 @@ serve(async (req) => {
           ...updatePayload,
           id_verified: false,
           id_verified_at: null,
-          id_verification_status: hasPhotoIdAttestation ? "failed_name_mismatch" : "failed",
+          id_verification_status: nameMatches ? "failed" : "failed_name_mismatch",
           id_verification_expires_at: null,
+          profile_photo_id_match_attested: false,
+          profile_photo_id_match_attested_at: null,
           id_verification_failure_code: failure.code,
           id_verification_failure_message: failure.message,
           id_verification_last_failed_at: nowIso,
@@ -543,7 +617,9 @@ serve(async (req) => {
     } else if (sessionStatus === "requires_input" || sessionStatus === "canceled") {
       const failure = resolveFailureReason(session, verificationReport, {
         nameMismatch: false,
-        hasPhotoIdAttestation,
+        profilePhotoEligible: profilePhotoEligibility.eligible,
+        profilePhotoEligibilityCode: profilePhotoEligibility.code,
+        profilePhotoEligibilityMessage: profilePhotoEligibility.message,
         sessionStatus,
       });
 
@@ -553,6 +629,8 @@ serve(async (req) => {
           id_verified: false,
           id_verification_status: "failed",
           id_verification_expires_at: null,
+          profile_photo_id_match_attested: false,
+          profile_photo_id_match_attested_at: null,
           id_verification_failure_code: failure.code,
           id_verification_failure_message: failure.message,
           id_verification_last_failed_at: nowIso,

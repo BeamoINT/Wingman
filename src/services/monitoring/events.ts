@@ -43,7 +43,13 @@ export type MonitoringEventName =
   | 'wingman_agreement_accept_fail'
   | 'wingman_profile_setup_save_success'
   | 'wingman_profile_setup_save_fail'
-  | 'id_verification_retry_started';
+  | 'id_verification_retry_started'
+  | 'profile_photo_capture_started'
+  | 'profile_photo_capture_failed_quality'
+  | 'profile_photo_capture_failed_spoof_risk'
+  | 'profile_photo_trust_promoted'
+  | 'profile_photo_trust_revoked'
+  | 'id_verification_start_blocked_identity_not_enabled';
 
 type EventPayload = Record<string, string | number | boolean | null | undefined>;
 

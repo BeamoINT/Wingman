@@ -206,6 +206,9 @@ function mapBookingRpcErrorMessage(message: string): string {
   if (message.includes('ID_VERIFICATION_REQUIRED')) {
     return 'Your ID verification is expired or incomplete. Re-verify in Profile > Verification to continue booking.';
   }
+  if (message.includes('PHOTO_ID_REVERIFY_REQUIRED')) {
+    return 'Trusted profile photo verification is required. Retake your profile photo and re-verify ID in Profile > Verification.';
+  }
 
   return message;
 }

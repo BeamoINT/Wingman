@@ -5,6 +5,7 @@
 
 import { supabase } from '../supabase';
 import { resolveMetroArea } from './locationApi';
+import { trackEvent } from '../monitoring/events';
 
 const PROFILE_AVATAR_BUCKET_CANDIDATES = [
   'profile-avatars',
@@ -16,6 +17,10 @@ const isBucketMissingError = (error: unknown): boolean => {
   const message = String((error as { message?: string } | null)?.message || '').toLowerCase();
   return message.includes('bucket') && message.includes('not found');
 };
+
+const MIN_PROFILE_PHOTO_BYTES = 45_000;
+const MAX_PROFILE_PHOTO_BYTES = 10_485_760;
+const MIN_PROFILE_PHOTO_DIMENSION = 512;
 
 export interface ProfileData {
   id: string;
@@ -67,6 +72,10 @@ export interface ProfileData {
   pro_renews_at?: string | null;
   pro_expires_at?: string | null;
   pro_entitlement_updated_at?: string | null;
+  profile_photo_source?: 'in_app_camera' | 'legacy_import' | 'unknown' | string | null;
+  profile_photo_captured_at?: string | null;
+  profile_photo_capture_verified?: boolean;
+  profile_photo_last_changed_at?: string | null;
   profile_photo_id_match_attested?: boolean;
   profile_photo_id_match_attested_at?: string | null;
   created_at: string;
@@ -84,8 +93,6 @@ export interface UpdateProfileInput {
   city?: string | null;
   state?: string | null;
   country?: string | null;
-  profile_photo_id_match_attested?: boolean;
-  profile_photo_id_match_attested_at?: string | null;
 }
 
 export interface UpdateLegalConsentsInput {
@@ -94,6 +101,39 @@ export interface UpdateLegalConsentsInput {
   privacy_accepted?: boolean;
   privacy_version?: string;
   age_confirmed?: boolean;
+}
+
+type ProfilePhotoCaptureMetadata = {
+  width?: number;
+  height?: number;
+  fileSizeBytes?: number;
+};
+
+type CaptureVerificationResultRow = {
+  success?: boolean;
+  reason_code?: string | null;
+  reason_message?: string | null;
+};
+
+function normalizeCaptureVerificationResult(raw: unknown): CaptureVerificationResultRow {
+  if (Array.isArray(raw) && raw.length > 0) {
+    return (raw[0] || {}) as CaptureVerificationResultRow;
+  }
+  if (raw && typeof raw === 'object') {
+    return raw as CaptureVerificationResultRow;
+  }
+  return {};
+}
+
+function isMissingCaptureVerificationRpcError(error: unknown): boolean {
+  const typedError = error as { code?: string | null; message?: string | null } | null | undefined;
+  const code = String(typedError?.code || '');
+  const message = String(typedError?.message || '').toLowerCase();
+  return (
+    code === '42883'
+    || (code.startsWith('PGRST') && message.includes('mark_profile_photo_capture_verified_v1'))
+    || message.includes('mark_profile_photo_capture_verified_v1')
+  );
 }
 
 /**
@@ -255,8 +295,13 @@ export async function updateProfile(updates: UpdateProfileInput): Promise<{ prof
  * Upload and persist the current user's profile avatar.
  * Resets photo-ID attestation so users must reconfirm after changing photo.
  */
-export async function uploadProfileAvatar(fileUri: string): Promise<{ profile: ProfileData | null; error: Error | null }> {
+export async function uploadProfileAvatar(
+  fileUri: string,
+  captureMetadata?: ProfilePhotoCaptureMetadata,
+): Promise<{ profile: ProfileData | null; error: Error | null }> {
   try {
+    trackEvent('profile_photo_capture_started', { source: 'edit_profile' });
+
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) {
@@ -265,6 +310,51 @@ export async function uploadProfileAvatar(fileUri: string): Promise<{ profile: P
 
     const response = await fetch(fileUri);
     const blob = await response.blob();
+    const blobSizeBytes = Math.max(0, Math.floor(
+      Number.isFinite(captureMetadata?.fileSizeBytes)
+        ? Number(captureMetadata?.fileSizeBytes)
+        : blob.size
+    ));
+
+    if (blobSizeBytes < MIN_PROFILE_PHOTO_BYTES) {
+      trackEvent('profile_photo_capture_failed_quality', {
+        reason: 'file_too_small',
+        file_size_bytes: blobSizeBytes,
+      });
+      return {
+        profile: null,
+        error: new Error('Photo quality is too low. Retake with better lighting and your full face visible.'),
+      };
+    }
+
+    if (blobSizeBytes > MAX_PROFILE_PHOTO_BYTES) {
+      trackEvent('profile_photo_capture_failed_quality', {
+        reason: 'file_too_large',
+        file_size_bytes: blobSizeBytes,
+      });
+      return {
+        profile: null,
+        error: new Error('Photo file is too large. Retake your photo and try again.'),
+      };
+    }
+
+    const captureWidth = Number.isFinite(captureMetadata?.width) ? Number(captureMetadata?.width) : null;
+    const captureHeight = Number.isFinite(captureMetadata?.height) ? Number(captureMetadata?.height) : null;
+
+    if (
+      (captureWidth !== null && captureWidth < MIN_PROFILE_PHOTO_DIMENSION)
+      || (captureHeight !== null && captureHeight < MIN_PROFILE_PHOTO_DIMENSION)
+    ) {
+      trackEvent('profile_photo_capture_failed_quality', {
+        reason: 'resolution_too_low',
+        width: captureWidth ?? 0,
+        height: captureHeight ?? 0,
+      });
+      return {
+        profile: null,
+        error: new Error('Photo resolution is too low. Retake your photo with your face centered and clearly visible.'),
+      };
+    }
 
     const extension = (() => {
       const filename = fileUri.split('?')[0] || '';
@@ -331,8 +421,6 @@ export async function uploadProfileAvatar(fileUri: string): Promise<{ profile: P
       .from('profiles')
       .update({
         avatar_url: avatarUrl,
-        profile_photo_id_match_attested: false,
-        profile_photo_id_match_attested_at: null,
         updated_at: new Date().toISOString(),
       })
       .eq('id', user.id)
@@ -343,7 +431,59 @@ export async function uploadProfileAvatar(fileUri: string): Promise<{ profile: P
       return { profile: null, error: profileError };
     }
 
-    return { profile: updatedProfile as ProfileData, error: null };
+    trackEvent('profile_photo_trust_revoked', { reason: 'avatar_changed' });
+
+    const { data: captureVerificationData, error: captureVerificationError } = await supabase
+      .rpc('mark_profile_photo_capture_verified_v1', {
+        p_blob_size_bytes: blobSizeBytes,
+        p_capture_width: captureWidth,
+        p_capture_height: captureHeight,
+      });
+
+    if (captureVerificationError) {
+      if (isMissingCaptureVerificationRpcError(captureVerificationError)) {
+        // Backward compatibility while migration/function rollout completes.
+        return { profile: updatedProfile as ProfileData, error: null };
+      }
+
+      const captureErrorMessage = String(captureVerificationError.message || 'Unable to validate profile photo capture.');
+      if (captureErrorMessage.toLowerCase().includes('rate')) {
+        trackEvent('profile_photo_capture_failed_spoof_risk', { reason: 'capture_rate_limited' });
+      } else {
+        trackEvent('profile_photo_capture_failed_quality', { reason: 'capture_validation_failed' });
+      }
+
+      return {
+        profile: null,
+        error: new Error(captureErrorMessage),
+      };
+    }
+
+    const captureResult = normalizeCaptureVerificationResult(captureVerificationData);
+    if (captureResult.success !== true) {
+      const reasonCode = String(captureResult.reason_code || '').toLowerCase();
+      const reasonMessage = captureResult.reason_message || 'Retake your profile photo and try again.';
+      if (reasonCode.includes('rate')) {
+        trackEvent('profile_photo_capture_failed_spoof_risk', { reason: reasonCode || 'capture_rate_limited' });
+      } else {
+        trackEvent('profile_photo_capture_failed_quality', { reason: reasonCode || 'capture_validation_failed' });
+      }
+      return {
+        profile: null,
+        error: new Error(reasonMessage),
+      };
+    }
+
+    const { data: refreshedProfile } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    return {
+      profile: ((refreshedProfile || updatedProfile) as ProfileData),
+      error: null,
+    };
   } catch (err) {
     console.error('Error uploading profile avatar:', err);
     return { profile: null, error: err as Error };
