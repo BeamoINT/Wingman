@@ -35,6 +35,10 @@ export interface Location {
   metroCity?: string;
   metroState?: string;
   metroCountry?: string;
+  autoMetroAreaId?: string;
+  manualMetroAreaId?: string;
+  defaultMetroAreaId?: string;
+  metroSelectionMode?: 'auto' | 'manual' | 'default';
 }
 
 // Companion Types
@@ -392,6 +396,8 @@ export type RootStackParamList = {
   Groups: undefined;
   Events: undefined;
   FriendRequests: undefined;
+  MetroPreferences: undefined;
+  MetroMapPicker: undefined;
 };
 
 export type MainTabParamList = {

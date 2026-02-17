@@ -49,6 +49,34 @@ export interface MetroResolution {
   metroCity: string | null;
   metroState: string | null;
   metroCountry: string | null;
+  distanceKm?: number | null;
+}
+
+export interface MetroArea {
+  id: string;
+  metroAreaName: string;
+  metroName: string;
+  metroCity: string;
+  metroState: string;
+  metroCountry: string;
+  latitude: number | null;
+  longitude: number | null;
+  population: number | null;
+}
+
+export type MetroSelectionMode = 'auto' | 'manual' | 'default';
+
+export interface MetroPreferences {
+  mode: MetroSelectionMode;
+  autoMetroAreaId: string | null;
+  manualMetroAreaId: string | null;
+  defaultMetroAreaId: string | null;
+  effectiveMetroAreaId: string | null;
+  effectiveMetroAreaName: string | null;
+  effectiveMetroCity: string | null;
+  effectiveMetroState: string | null;
+  effectiveMetroCountry: string | null;
+  updatedAt: string | null;
 }
 
 export interface ResolveMetroAreaResult {
@@ -58,8 +86,48 @@ export interface ResolveMetroAreaResult {
     state: string | null;
     country: string | null;
   } | null;
-  resolutionMode: 'metro_match' | 'us_city_fallback' | 'non_us_fallback' | 'rate_limited';
+  resolutionMode:
+    | 'metro_match_alias'
+    | 'metro_match_nearest'
+    | 'non_metro_city_nearest'
+    | 'fallback_no_match'
+    | 'rate_limited';
   error?: string;
+}
+
+function toOptionalString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value : null;
+}
+
+function toOptionalNumber(value: unknown): number | null {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizeMetroPreferences(payload: unknown): MetroPreferences | null {
+  const row = Array.isArray(payload) ? payload[0] : payload;
+  if (!row || typeof row !== 'object') {
+    return null;
+  }
+
+  const data = row as Record<string, unknown>;
+  const modeRaw = typeof data.mode === 'string' ? data.mode : 'auto';
+  const mode: MetroSelectionMode = (
+    modeRaw === 'manual' || modeRaw === 'default' ? modeRaw : 'auto'
+  );
+
+  return {
+    mode,
+    autoMetroAreaId: toOptionalString(data.auto_metro_area_id),
+    manualMetroAreaId: toOptionalString(data.manual_metro_area_id),
+    defaultMetroAreaId: toOptionalString(data.default_metro_area_id),
+    effectiveMetroAreaId: toOptionalString(data.effective_metro_area_id),
+    effectiveMetroAreaName: toOptionalString(data.effective_metro_area_name),
+    effectiveMetroCity: toOptionalString(data.effective_metro_city),
+    effectiveMetroState: toOptionalString(data.effective_metro_state),
+    effectiveMetroCountry: toOptionalString(data.effective_metro_country),
+    updatedAt: toOptionalString(data.updated_at),
+  };
 }
 
 /**
@@ -163,6 +231,8 @@ export async function resolveMetroArea(input: {
   state?: string;
   country?: string;
   countryCode?: string;
+  latitude?: number;
+  longitude?: number;
 }): Promise<ResolveMetroAreaResult> {
   try {
     const { data, error } = await supabase.functions.invoke('resolve-metro-area', {
@@ -174,7 +244,7 @@ export async function resolveMetroArea(input: {
       return {
         metro: null,
         fallback: null,
-        resolutionMode: 'non_us_fallback',
+        resolutionMode: 'fallback_no_match',
         error: error.message || 'Failed to resolve metro area',
       };
     }
@@ -186,18 +256,105 @@ export async function resolveMetroArea(input: {
     }
 
     trackEvent('metro_resolve_success', { mode: response.resolutionMode });
+    if (
+      response.resolutionMode === 'metro_match_nearest'
+      || response.resolutionMode === 'non_metro_city_nearest'
+    ) {
+      trackEvent('metro_nearest_resolution_used', { mode: response.resolutionMode });
+    }
     return {
       metro: response.metro || null,
       fallback: response.fallback || null,
-      resolutionMode: response.resolutionMode || 'non_us_fallback',
+      resolutionMode: response.resolutionMode || 'fallback_no_match',
     };
   } catch (err) {
     trackEvent('metro_resolve_failed', { reason: 'exception' });
     return {
       metro: null,
       fallback: null,
-      resolutionMode: 'non_us_fallback',
+      resolutionMode: 'fallback_no_match',
       error: 'Failed to resolve metro area.',
     };
+  }
+}
+
+export async function listMetroAreas(input: {
+  query?: string;
+  countryCode?: string;
+  limit?: number;
+  offset?: number;
+} = {}): Promise<{ metros: MetroArea[]; error?: string }> {
+  const { query, countryCode, limit = 50, offset = 0 } = input;
+
+  try {
+    const { data, error } = await supabase.rpc('list_metro_areas_v1', {
+      p_query: query ?? null,
+      p_country_code: countryCode ?? null,
+      p_limit: limit,
+      p_offset: offset,
+    });
+
+    if (error) {
+      return { metros: [], error: error.message || 'Unable to load metro areas.' };
+    }
+
+    const rows = Array.isArray(data) ? data : [];
+    return {
+      metros: rows.map((row) => {
+        const record = row as Record<string, unknown>;
+        return {
+          id: String(record.id || ''),
+          metroAreaName: String(record.metro_area_name || record.metro_city || 'Unknown Metro'),
+          metroName: String(record.metro_name || record.metro_area_name || ''),
+          metroCity: String(record.metro_city || record.metro_area_name || ''),
+          metroState: String(record.metro_state || ''),
+          metroCountry: String(record.metro_country || ''),
+          latitude: toOptionalNumber(record.latitude),
+          longitude: toOptionalNumber(record.longitude),
+          population: toOptionalNumber(record.population),
+        } satisfies MetroArea;
+      }).filter((metro) => metro.id.length > 0),
+    };
+  } catch (err) {
+    return { metros: [], error: 'Unable to load metro areas.' };
+  }
+}
+
+export async function getMetroPreferences(): Promise<{
+  preferences: MetroPreferences | null;
+  error?: string;
+}> {
+  try {
+    const { data, error } = await supabase.rpc('get_current_metro_preferences_v1');
+    if (error) {
+      return { preferences: null, error: error.message || 'Unable to load metro preferences.' };
+    }
+
+    return { preferences: normalizeMetroPreferences(data) };
+  } catch (err) {
+    return { preferences: null, error: 'Unable to load metro preferences.' };
+  }
+}
+
+export async function updateMetroPreferences(input: {
+  mode: MetroSelectionMode;
+  manualMetroAreaId?: string | null;
+  defaultMetroAreaId?: string | null;
+}): Promise<{ preferences: MetroPreferences | null; error?: string }> {
+  try {
+    const { data, error } = await supabase.rpc('update_metro_preferences_v1', {
+      p_mode: input.mode,
+      p_manual_metro_area_id: input.manualMetroAreaId ?? null,
+      p_default_metro_area_id: input.defaultMetroAreaId ?? null,
+    });
+
+    if (error) {
+      return { preferences: null, error: error.message || 'Unable to update metro preferences.' };
+    }
+
+    const preferences = normalizeMetroPreferences(data);
+    return { preferences };
+  } catch (err) {
+    return { preferences: null, error: 'Unable to update metro preferences.' };
   }
 }

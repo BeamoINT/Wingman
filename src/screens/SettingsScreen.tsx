@@ -260,6 +260,13 @@ export const SettingsScreen: React.FC = () => {
           type: 'value',
           value: 'USD ($)',
         },
+        {
+          id: 'metro-preferences',
+          icon: 'location-outline',
+          label: 'Metro Area Preferences',
+          type: 'link',
+          onPress: () => navigation.navigate('MetroPreferences'),
+        },
       ],
     },
     {

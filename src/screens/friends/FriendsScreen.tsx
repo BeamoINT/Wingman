@@ -3,6 +3,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React from 'react';
 import {
+  Alert,
   FlatList,
   StyleSheet,
   Text,
@@ -13,19 +14,21 @@ import {
 import { Card, Header, ScreenScaffold, SectionHeader } from '../../components';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
+import { trackEvent } from '../../services/monitoring/events';
 import type { ThemeTokens } from '../../theme/tokens';
 import { useThemedStyles } from '../../theme/useThemedStyles';
 import type { RootStackParamList } from '../../types';
 import { haptics } from '../../utils/haptics';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+type FriendFeatureRoute = 'FriendMatching' | 'FriendRequests' | 'SocialFeed' | 'Groups' | 'Events';
 
 type FriendFeatureCard = {
   key: string;
   title: string;
   description: string;
   icon: keyof typeof Ionicons.glyphMap;
-  route: keyof RootStackParamList;
+  route: FriendFeatureRoute;
   previewAccessible: boolean;
 };
 
@@ -72,6 +75,14 @@ const FEATURE_CARDS: FriendFeatureCard[] = [
   },
 ];
 
+const FEATURE_ROUTE_REGISTRY: Record<FriendFeatureRoute, FriendFeatureRoute> = {
+  FriendMatching: 'FriendMatching',
+  FriendRequests: 'FriendRequests',
+  SocialFeed: 'SocialFeed',
+  Groups: 'Groups',
+  Events: 'Events',
+};
+
 export const FriendsScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const { tokens } = useTheme();
@@ -94,24 +105,24 @@ export const FriendsScreen: React.FC = () => {
       return;
     }
 
-    switch (feature.route) {
-      case 'FriendMatching':
-        navigation.navigate('FriendMatching');
-        break;
-      case 'FriendRequests':
-        navigation.navigate('FriendRequests');
-        break;
-      case 'SocialFeed':
-        navigation.navigate('SocialFeed');
-        break;
-      case 'Groups':
-        navigation.navigate('Groups');
-        break;
-      case 'Events':
-        navigation.navigate('Events');
-        break;
-      default:
-        break;
+    if (feature.key === 'matching') {
+      trackEvent('friends_match_entry_tapped', { source: 'friends_hub' });
+    }
+
+    try {
+      const routeName = FEATURE_ROUTE_REGISTRY[feature.route];
+      if (!routeName) {
+        throw new Error('Route not registered');
+      }
+      navigation.navigate(routeName);
+    } catch (error) {
+      if (feature.key === 'matching') {
+        trackEvent('friends_match_entry_failed', { source: 'friends_hub' });
+      }
+      Alert.alert(
+        'Unable to open feature',
+        'Please try again in a moment.'
+      );
     }
   };
 

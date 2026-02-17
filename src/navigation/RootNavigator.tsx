@@ -25,6 +25,8 @@ import { BookingScreen } from '../screens/BookingScreen';
 import { ChatScreen } from '../screens/ChatScreen';
 import { CompanionProfileScreen } from '../screens/CompanionProfileScreen';
 import { EditProfileScreen } from '../screens/EditProfileScreen';
+import { MetroMapPickerScreen } from '../screens/MetroMapPickerScreen';
+import { MetroPreferencesScreen } from '../screens/MetroPreferencesScreen';
 import { NotificationsScreen } from '../screens/NotificationsScreen';
 import { SafetyScreen } from '../screens/SafetyScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
@@ -99,6 +101,8 @@ const ProtectedChangePasswordScreen = withAuthGuard(ChangePasswordScreen, 'Chang
 const ProtectedChangeEmailScreen = withAuthGuard(ChangeEmailScreen, 'ChangeEmail');
 const ProtectedEditProfileScreen = withAuthGuard(EditProfileScreen, 'EditProfile');
 const ProtectedNotificationsScreen = withAuthGuard(NotificationsScreen, 'Notifications');
+const ProtectedMetroPreferencesScreen = withAuthGuard(MetroPreferencesScreen, 'MetroPreferences');
+const ProtectedMetroMapPickerScreen = withAuthGuard(MetroMapPickerScreen, 'MetroMapPicker');
 
 // Companion Feature - Protected
 const ProtectedCompanionOnboardingScreen = withAuthGuard(CompanionOnboardingScreen, 'CompanionOnboarding');
@@ -236,6 +240,12 @@ export const RootNavigator: React.FC = () => {
         <Stack.Screen name="Chat" component={ProtectedChatScreen} />
         <Stack.Screen name="EditProfile" component={ProtectedEditProfileScreen} />
         <Stack.Screen name="Settings" component={ProtectedSettingsScreen} />
+        <Stack.Screen name="MetroPreferences" component={ProtectedMetroPreferencesScreen} />
+        <Stack.Screen
+          name="MetroMapPicker"
+          component={ProtectedMetroMapPickerScreen}
+          options={{ animation: modalAnimation }}
+        />
         <Stack.Screen name="ChangePassword" component={ProtectedChangePasswordScreen} />
         <Stack.Screen name="ChangeEmail" component={ProtectedChangeEmailScreen} />
         <Stack.Screen

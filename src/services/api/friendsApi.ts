@@ -132,6 +132,12 @@ function isMissingProfilesPublicView(error: unknown): boolean {
   return message.includes('profiles_public') || message.includes("relation 'profiles_public'");
 }
 
+function isMissingRpc(error: unknown, rpcName: string): boolean {
+  const typedError = error as QueryError | null | undefined;
+  const message = String(typedError?.message || '').toLowerCase();
+  return message.includes(`function public.${rpcName}`) && message.includes('does not exist');
+}
+
 function calculateAge(dateOfBirth?: string): number {
   if (!dateOfBirth) return 18;
   const parsedDate = new Date(dateOfBirth);
@@ -223,6 +229,7 @@ function transformRecommendationRowToFriendProfile(rowData: unknown): FriendProf
   const metroState = toOptionalString(row.metro_state);
   const metroCountry = toOptionalString(row.metro_country);
   const locationLabel = toOptionalString(row.location_label);
+  const distanceKm = toNumber(row.distance_km, Number.NaN);
 
   return {
     id: toStringValue(row.user_id),
@@ -250,6 +257,16 @@ function transformRecommendationRowToFriendProfile(rowData: unknown): FriendProf
     verificationLevel: 'verified',
     mutualFriendsCount: 0,
     compatibilityScore: toNumber(row.compatibility_score, 0),
+    scoringBreakdown: {
+      metro: toNumber(row.score_metro, 0),
+      interests: toNumber(row.score_interests, 0),
+      goals: toNumber(row.score_goals, 0),
+      languages: toNumber(row.score_languages, 0),
+      recency: toNumber(row.score_recency, 0),
+      graph: toNumber(row.score_graph, 0),
+      fatiguePenalty: toNumber(row.score_fatigue, 0),
+      distanceKm: Number.isFinite(distanceKm) ? distanceKm : null,
+    },
     commonalities: {
       interests: commonInterests,
       languages: commonLanguages,
@@ -350,7 +367,7 @@ async function ensureCurrentUserMetroResolved(userId: string): Promise<void> {
 
   const { data, error } = await supabase
     .from('profiles')
-    .select('city,state,country,metro_area_id,metro_resolved_at')
+    .select('city,state,country,metro_area_id,auto_metro_area_id,metro_resolved_at')
     .eq('id', userId)
     .maybeSingle();
 
@@ -362,7 +379,10 @@ async function ensureCurrentUserMetroResolved(userId: string): Promise<void> {
   const city = toStringValue((data as RawRecord | null)?.city);
   const country = toStringValue((data as RawRecord | null)?.country);
   const state = toOptionalString((data as RawRecord | null)?.state);
-  const hasMetroArea = Boolean(toOptionalString((data as RawRecord | null)?.metro_area_id));
+  const hasMetroArea = (
+    Boolean(toOptionalString((data as RawRecord | null)?.metro_area_id))
+    || Boolean(toOptionalString((data as RawRecord | null)?.auto_metro_area_id))
+  );
   const hasResolvedAt = Boolean(toOptionalString((data as RawRecord | null)?.metro_resolved_at));
 
   if (hasMetroArea || hasResolvedAt || !city.trim() || !country.trim()) {
@@ -375,12 +395,13 @@ async function ensureCurrentUserMetroResolved(userId: string): Promise<void> {
   };
 
   if (resolution.metro) {
-    payload.metro_area_id = resolution.metro.metroAreaId;
+    payload.auto_metro_area_id = resolution.metro.metroAreaId;
     payload.metro_area_name = resolution.metro.metroAreaName;
     payload.metro_city = resolution.metro.metroCity;
     payload.metro_state = resolution.metro.metroState;
     payload.metro_country = resolution.metro.metroCountry;
   } else {
+    payload.auto_metro_area_id = null;
     payload.metro_area_id = null;
     payload.metro_area_name = null;
     payload.metro_city = null;
@@ -388,13 +409,31 @@ async function ensureCurrentUserMetroResolved(userId: string): Promise<void> {
     payload.metro_country = null;
   }
 
-  const { error: updateError } = await supabase
+  let { error: updateError } = await supabase
     .from('profiles')
     .update(payload)
     .eq('id', userId);
 
   if (updateError) {
+    const message = String(updateError.message || '').toLowerCase();
+    if (message.includes('auto_metro_area_id')) {
+      const legacyPayload = { ...payload };
+      delete legacyPayload.auto_metro_area_id;
+      const legacyResult = await supabase
+        .from('profiles')
+        .update(legacyPayload)
+        .eq('id', userId);
+      updateError = legacyResult.error;
+    }
+  }
+
+  if (updateError) {
     trackEvent('metro_resolve_failed', { reason: updateError.code || 'profile_update_failed' });
+  } else if (
+    resolution.resolutionMode === 'metro_match_nearest'
+    || resolution.resolutionMode === 'non_metro_city_nearest'
+  ) {
+    trackEvent('metro_nearest_resolution_used', { source: 'friends_bootstrap' });
   }
 }
 
@@ -435,59 +474,65 @@ export async function fetchRankedFriendProfiles(limit = 30, offset = 0): Promise
 
     await ensureCurrentUserMetroResolved(userId);
 
-    if (!friendsFeatureFlags.friendsRankedListEnabled) {
-      const { data: profileRows, error: profileError } = await supabase
-        .from('profiles_public')
-        .select(PROFILE_PUBLIC_SELECT)
-        .neq('id', userId)
-        .order('updated_at', { ascending: false })
-        .range(offset, offset + Math.max(limit, 1) - 1);
+    const rpcName = (friendsFeatureFlags.friendsMatchingV4Enabled && friendsFeatureFlags.friendsGlobalMetroEnabled)
+      ? 'get_friend_recommendations_v4'
+      : 'get_friend_recommendations_v3';
 
-      const fallbackRowsResult = (
-        profileError && isMissingProfilesPublicView(profileError)
-          ? await supabase
-            .from('profiles')
-            .select(LEGACY_PROFILE_SELECT)
-            .neq('id', userId)
-            .order('updated_at', { ascending: false })
-            .range(offset, offset + Math.max(limit, 1) - 1)
-          : null
-      );
+    let rpcData: unknown;
+    let rpcError: QueryError | null = null;
 
-      const rows = fallbackRowsResult?.data || profileRows;
-      const errorToUse = fallbackRowsResult?.error || profileError;
-
-      if (errorToUse) {
-        return {
-          profiles: [],
-          error: new Error(errorToUse.message || 'Failed to load profiles'),
-        };
-      }
-
-      return {
-        profiles: (rows || []).map((row) => transformProfileToFriendProfile(row as unknown as RawRecord)),
-        error: null,
-      };
-    }
-
-    const { data, error } = await supabase.rpc('get_friend_recommendations_v3', {
+    const primaryCall = await supabase.rpc(rpcName, {
       p_limit: limit,
       p_offset: offset,
     });
+    rpcData = primaryCall.data;
+    rpcError = primaryCall.error;
 
-    if (error) {
-      console.error('Error loading ranked friend recommendations:', error);
+    if (
+      rpcError
+      && rpcName === 'get_friend_recommendations_v4'
+      && (isMissingRpc(rpcError, 'get_friend_recommendations_v4') || !friendsFeatureFlags.friendsRankedListEnabled)
+    ) {
+      const fallbackCall = await supabase.rpc('get_friend_recommendations_v3', {
+        p_limit: limit,
+        p_offset: offset,
+      });
+      rpcData = fallbackCall.data;
+      rpcError = fallbackCall.error;
+    }
+
+    if (rpcError) {
+      if (rpcName === 'get_friend_recommendations_v4') {
+        trackEvent('friends_recommendations_v4_failed', { code: rpcError.code || 'unknown' });
+      }
       trackEvent('location_data_blocked_read', { source: 'friend_recommendations' });
       return {
         profiles: [],
-        error: new Error(error.message || 'Failed to load recommendations'),
+        error: new Error(rpcError.message || 'Failed to load recommendations'),
       };
     }
 
-    const rows = Array.isArray(data) ? data : [];
+    const rows = Array.isArray(rpcData) ? rpcData : [];
     const profiles = rows
       .map((row) => transformRecommendationRowToFriendProfile(row as RawRecord))
       .filter((profile) => !!profile.id);
+
+    if (profiles.length > 0 && rpcName === 'get_friend_recommendations_v4') {
+      const impressionIds = profiles
+        .map((profile) => profile.userId)
+        .filter((id) => id && id !== userId);
+
+      if (impressionIds.length > 0) {
+        const { error: impressionError } = await supabase.rpc('record_friend_match_impressions_v1', {
+          p_user_ids: impressionIds,
+        });
+
+        if (impressionError) {
+          // Non-blocking telemetry path.
+          trackEvent('friends_recommendations_v4_failed', { code: 'impression_write_failed' });
+        }
+      }
+    }
 
     return { profiles, error: null };
   } catch (err) {

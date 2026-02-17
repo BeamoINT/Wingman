@@ -22,6 +22,11 @@ export interface ProfileData {
   state?: string;
   country?: string;
   metro_area_id?: string | null;
+  auto_metro_area_id?: string | null;
+  manual_metro_area_id?: string | null;
+  default_metro_area_id?: string | null;
+  metro_selection_mode?: 'auto' | 'manual' | 'default' | string | null;
+  metro_selection_updated_at?: string | null;
   metro_area_name?: string | null;
   metro_city?: string | null;
   metro_state?: string | null;
@@ -175,12 +180,13 @@ export async function updateProfile(updates: UpdateProfileInput): Promise<{ prof
       };
 
       if (metroResolution.metro) {
-        metroUpdates.metro_area_id = metroResolution.metro.metroAreaId;
+        metroUpdates.auto_metro_area_id = metroResolution.metro.metroAreaId;
         metroUpdates.metro_area_name = metroResolution.metro.metroAreaName;
         metroUpdates.metro_city = metroResolution.metro.metroCity;
         metroUpdates.metro_state = metroResolution.metro.metroState;
         metroUpdates.metro_country = metroResolution.metro.metroCountry;
       } else {
+        metroUpdates.auto_metro_area_id = null;
         metroUpdates.metro_area_id = null;
         metroUpdates.metro_area_name = null;
         metroUpdates.metro_city = null;
@@ -197,6 +203,26 @@ export async function updateProfile(updates: UpdateProfileInput): Promise<{ prof
 
       if (!metroError && metroProfile) {
         profile = metroProfile as ProfileData;
+      } else if (metroError) {
+        const message = String((metroError as { message?: string })?.message || '').toLowerCase();
+        if (message.includes('auto_metro_area_id')) {
+          const fallbackMetroUpdates = { ...metroUpdates };
+          delete fallbackMetroUpdates.auto_metro_area_id;
+          if (metroResolution.metro) {
+            fallbackMetroUpdates.metro_area_id = metroResolution.metro.metroAreaId;
+          }
+
+          const { data: legacyMetroProfile, error: legacyMetroError } = await supabase
+            .from('profiles')
+            .update(fallbackMetroUpdates)
+            .eq('id', user.id)
+            .select()
+            .single();
+
+          if (!legacyMetroError && legacyMetroProfile) {
+            profile = legacyMetroProfile as ProfileData;
+          }
+        }
       }
     }
 

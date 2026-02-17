@@ -150,8 +150,12 @@ const FriendMatchingContent: React.FC = () => {
 
   const renderProfile = ({ item }: { item: FriendProfile }) => {
     const name = `${item.firstName} ${item.lastName}`.trim();
-    const metroLabel = item.location.metroAreaName || item.location.city;
-    const locationText = metroLabel || 'Location unavailable';
+    const metroLabel = item.location.metroAreaName
+      || item.location.metroCity
+      || item.location.city;
+    const locationText = metroLabel
+      ? `${metroLabel}${metroLabel.toLowerCase().includes('metro') ? '' : ' Metro'}`
+      : 'Location unavailable';
     const score = Math.max(0, Math.min(item.compatibilityScore || 0, 100));
     const isBusy = busyUserId === item.userId;
 
@@ -223,6 +227,17 @@ const FriendMatchingContent: React.FC = () => {
         onRightPress={() => navigation.navigate('FriendRequests')}
         transparent
       />
+
+      <View style={styles.toolbarWrap}>
+        <TouchableOpacity
+          style={styles.metroPreferencesButton}
+          activeOpacity={0.85}
+          onPress={() => navigation.navigate('MetroPreferences')}
+        >
+          <Ionicons name="location-outline" size={16} color={colors.accent.primary} />
+          <Text style={styles.metroPreferencesText}>Metro preferences</Text>
+        </TouchableOpacity>
+      </View>
 
       {!isPro ? (
         <View style={styles.bannerWrap}>
@@ -311,6 +326,26 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
   bannerWrap: {
     paddingHorizontal: spacing.screenPadding,
     gap: spacing.sm,
+  },
+  toolbarWrap: {
+    paddingHorizontal: spacing.screenPadding,
+    marginBottom: spacing.sm,
+  },
+  metroPreferencesButton: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    backgroundColor: colors.surface.level1,
+    borderRadius: spacing.radius.full,
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  metroPreferencesText: {
+    ...typography.presets.caption,
+    color: colors.text.secondary,
   },
   upgradeButton: {
     alignSelf: 'flex-start',

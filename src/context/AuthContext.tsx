@@ -126,6 +126,10 @@ function transformSupabaseUser(supabaseUser: SupabaseUser, profile?: any): User 
       metroCity: profile.metro_city || undefined,
       metroState: profile.metro_state || undefined,
       metroCountry: profile.metro_country || undefined,
+      autoMetroAreaId: profile.auto_metro_area_id || undefined,
+      manualMetroAreaId: profile.manual_metro_area_id || undefined,
+      defaultMetroAreaId: profile.default_metro_area_id || undefined,
+      metroSelectionMode: profile.metro_selection_mode || 'auto',
     } : undefined,
     isVerified: profile?.id_verified === true,
     isPremium: normalizedSubscriptionTier === 'pro',
@@ -144,6 +148,7 @@ function buildMetroUpdatePayload(resolution: Awaited<ReturnType<typeof resolveMe
   };
 
   if (resolution.metro) {
+    payload.auto_metro_area_id = resolution.metro.metroAreaId;
     payload.metro_area_id = resolution.metro.metroAreaId;
     payload.metro_area_name = resolution.metro.metroAreaName;
     payload.metro_city = resolution.metro.metroCity;
@@ -152,6 +157,7 @@ function buildMetroUpdatePayload(resolution: Awaited<ReturnType<typeof resolveMe
     return payload;
   }
 
+  payload.auto_metro_area_id = null;
   payload.metro_area_id = null;
   payload.metro_area_name = null;
   payload.metro_city = null;
@@ -295,6 +301,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     const metroAlreadyResolved = typeof profile.metro_area_id === 'string'
+      || typeof profile.auto_metro_area_id === 'string'
       || typeof profile.metro_resolved_at === 'string';
     if (metroAlreadyResolved) {
       return profile;
@@ -308,12 +315,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
 
     const metroPayload = buildMetroUpdatePayload(resolution);
-    const { data: updatedProfile, error } = await supabase
+    let { data: updatedProfile, error } = await supabase
       .from('profiles')
       .update(metroPayload)
       .eq('id', userId)
       .select('*')
       .single();
+
+    if (error) {
+      const message = String(error.message || '').toLowerCase();
+      if (message.includes('auto_metro_area_id')) {
+        const fallbackPayload = { ...metroPayload };
+        delete fallbackPayload.auto_metro_area_id;
+        const fallbackResult = await supabase
+          .from('profiles')
+          .update(fallbackPayload)
+          .eq('id', userId)
+          .select('*')
+          .single();
+        updatedProfile = fallbackResult.data;
+        error = fallbackResult.error;
+      }
+    }
 
     if (error) {
       safeLog('Metro resolution persistence failed', { error: error.message || 'unknown' });

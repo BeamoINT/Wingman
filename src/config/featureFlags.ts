@@ -11,6 +11,9 @@ export interface FriendsFeatureFlags {
   friendsProModelEnabled: boolean;
   friendsRankedListEnabled: boolean;
   friendsConnectionRequestsEnabled: boolean;
+  friendsMatchingV4Enabled: boolean;
+  friendsGlobalMetroEnabled: boolean;
+  friendsMapboxPickerEnabled: boolean;
 }
 
 function parseBool(value: unknown, fallback: boolean): boolean {
@@ -49,4 +52,7 @@ export const friendsFeatureFlags: FriendsFeatureFlags = {
   friendsProModelEnabled: resolveFlag('friends_pro_model_enabled', true),
   friendsRankedListEnabled: resolveFlag('friends_ranked_list_enabled', true),
   friendsConnectionRequestsEnabled: resolveFlag('friends_connection_requests_enabled', true),
+  friendsMatchingV4Enabled: resolveFlag('friends_matching_v4_enabled', true),
+  friendsGlobalMetroEnabled: resolveFlag('friends_global_metro_enabled', true),
+  friendsMapboxPickerEnabled: resolveFlag('friends_mapbox_picker_enabled', true),
 };

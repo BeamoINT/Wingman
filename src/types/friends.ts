@@ -36,6 +36,16 @@ export interface FriendProfile {
   verificationLevel: 'basic' | 'verified' | 'premium';
   mutualFriendsCount: number;
   compatibilityScore?: number;
+  scoringBreakdown?: {
+    metro?: number;
+    interests?: number;
+    goals?: number;
+    languages?: number;
+    recency?: number;
+    graph?: number;
+    fatiguePenalty?: number;
+    distanceKm?: number | null;
+  };
   commonalities?: {
     interests: string[];
     languages: string[];
