@@ -22,8 +22,7 @@ export const MainTabNavigator: React.FC = () => {
   const { colors, spacing } = tokens;
   const insets = useSafeAreaInsets();
 
-  const tabBarBottomPadding = Math.max(insets.bottom, spacing.xs);
-  const tabBarHeight = 52 + tabBarBottomPadding;
+  const tabBarHeight = 58 + Math.max(insets.bottom, spacing.xs);
 
   const styles = StyleSheet.create({
     tabBar: {
@@ -35,22 +34,27 @@ export const MainTabNavigator: React.FC = () => {
       borderTopWidth: 1,
       borderColor: colors.border.light,
       height: tabBarHeight,
-      paddingTop: spacing.xs,
-      paddingBottom: tabBarBottomPadding,
+      paddingTop: 0,
+      paddingBottom: 0,
       backgroundColor: colors.surface.level1,
     },
     tabBarItem: {
+      height: tabBarHeight,
       alignItems: 'center',
       justifyContent: 'center',
-      paddingVertical: 0,
+      paddingTop: 0,
+      paddingBottom: 0,
     },
     activeIconContainer: {
-      backgroundColor: colors.accent.soft,
+      backgroundColor: colors.surface.level2,
       borderRadius: spacing.radius.md,
       paddingHorizontal: spacing.sm,
-      paddingVertical: 4,
-      borderTopWidth: 2,
-      borderTopColor: colors.accent.primary,
+      paddingVertical: spacing.xxs,
+      borderWidth: 1,
+      borderColor: colors.accent.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
+      minWidth: 34,
     },
   });
 
