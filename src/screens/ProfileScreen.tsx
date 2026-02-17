@@ -2,7 +2,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { CommonActions, useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as WebBrowser from 'expo-web-browser';
 import React, { useCallback, useState } from 'react';
 import {
     Alert, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View
@@ -13,7 +12,7 @@ import { useAuth } from '../context/AuthContext';
 import { useVerification } from '../context/VerificationContext';
 import { checkExistingCompanionProfile, getCompanionApplication } from '../services/api/companionApplicationApi';
 import { getWingmanOnboardingState } from '../services/api/wingmanOnboardingApi';
-import { createPaymentPortalSession } from '../services/api/payments';
+import { getBillingManagementLink } from '../services/api/payments';
 import type { CompanionApplicationStatus, RootStackParamList, WingmanOnboardingState } from '../types';
 import { haptics } from '../utils/haptics';
 import { useTheme } from '../context/ThemeContext';
@@ -43,7 +42,7 @@ export const ProfileScreen: React.FC = () => {
 
   const [companionStatus, setCompanionStatus] = useState<CompanionApplicationStatus | 'active' | null>(null);
   const [wingmanOnboardingState, setWingmanOnboardingState] = useState<WingmanOnboardingState | null>(null);
-  const [isOpeningPaymentPortal, setIsOpeningPaymentPortal] = useState(false);
+  const [isOpeningBillingSettings, setIsOpeningBillingSettings] = useState(false);
 
   // Load companion/application status on screen focus
   useFocusEffect(
@@ -155,30 +154,27 @@ export const ProfileScreen: React.FC = () => {
   };
 
   const handlePaymentMethodsPress = useCallback(async () => {
-    if (isOpeningPaymentPortal) {
+    if (isOpeningBillingSettings) {
       return;
     }
 
-    setIsOpeningPaymentPortal(true);
+    setIsOpeningBillingSettings(true);
     try {
-      const { url, error } = await createPaymentPortalSession();
+      const { url, error } = await getBillingManagementLink();
 
       if (error || !url) {
-        Alert.alert('Payment Methods', error || 'Unable to open payment methods right now.');
+        Alert.alert('Billing & Subscriptions', error || 'Unable to open billing settings right now.');
         return;
       }
 
-      await WebBrowser.openBrowserAsync(url, {
-        presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN,
-        showTitle: true,
-      });
+      await Linking.openURL(url);
     } catch (error) {
-      console.error('Error opening payment methods:', error);
-      Alert.alert('Payment Methods', 'Unable to open payment methods right now. Please try again.');
+      console.error('Error opening billing settings:', error);
+      Alert.alert('Billing & Subscriptions', 'Unable to open billing settings right now. Please try again.');
     } finally {
-      setIsOpeningPaymentPortal(false);
+      setIsOpeningBillingSettings(false);
     }
-  }, [isOpeningPaymentPortal]);
+  }, [isOpeningBillingSettings]);
 
   const handleSupportPress = useCallback(async () => {
     const supportEmailUrl = 'mailto:support@wingman.app?subject=Wingman%20Support';
@@ -223,8 +219,10 @@ export const ProfileScreen: React.FC = () => {
     {
       id: 'payments',
       icon: 'card',
-      label: 'Payment Methods',
-      subtitle: isOpeningPaymentPortal ? 'Opening Stripe payment portal...' : 'Manage your payment options',
+      label: 'Billing & Subscriptions',
+      subtitle: isOpeningBillingSettings
+        ? 'Opening Apple/Google subscription settings...'
+        : 'Manage billing in the App Store or Google Play',
       onPress: handlePaymentMethodsPress,
     },
     {
