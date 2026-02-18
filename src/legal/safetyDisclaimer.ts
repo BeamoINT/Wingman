@@ -40,11 +40,13 @@ By using the safety features of ${COMPANY_INFO.appName}, you acknowledge that yo
 
 1.3 LOCATION SHARING
 - Share your live location with emergency contacts
-- Location history during active bookings
+- Time-limited live location during active safety sessions
+- Emergency location data is automatically expired and not retained as permanent history
 
 1.4 EMERGENCY SOS
 - Quick-access emergency button
 - Alerts emergency contacts with your location
+- Misuse of SOS (false or prank alerts) can result in account restrictions or removal
 
 1.5 VERIFICATION SYSTEMS
 - ID verification

@@ -18,6 +18,13 @@
 - `RESEND_FROM_EMAIL`
 - `ID_VERIFICATION_MAINTENANCE_SECRET` (required if securing scheduled maintenance endpoint)
 - `LIVE_LOCATION_MAINTENANCE_SECRET` (recommended for scheduled live-location cleanup)
+- `TWILIO_ACCOUNT_SID`
+- `TWILIO_AUTH_TOKEN`
+- `TWILIO_VERIFY_SERVICE_SID`
+- `TWILIO_MESSAGING_SERVICE_SID` or `TWILIO_FROM_NUMBER`
+- `SAFETY_MAINTENANCE_SECRET` (recommended for scheduled safety maintenance endpoint)
+- `EMERGENCY_LINK_SIGNING_SECRET` (required for secure external emergency live-location links)
+- `GOOGLE_MAPS_WEB_API_KEY` (optional, only for map tiles in external emergency viewer)
 
 Security note: if a RevenueCat `sk_` secret key is ever shared in plaintext, rotate it after deployment and update `REVENUECAT_SECRET_API_KEY` immediately.
 
@@ -48,6 +55,11 @@ supabase functions deploy live-location-maintenance
 supabase functions deploy create-id-verification-session --no-verify-jwt
 supabase functions deploy stripe-identity-webhook --no-verify-jwt
 supabase functions deploy id-verification-maintenance
+supabase functions deploy send-emergency-contact-otp --no-verify-jwt
+supabase functions deploy verify-emergency-contact-otp --no-verify-jwt
+supabase functions deploy trigger-emergency-alert --no-verify-jwt
+supabase functions deploy safety-maintenance
+supabase functions deploy emergency-live-location-view
 ```
 4. Set secrets:
 ```bash
@@ -64,6 +76,14 @@ supabase secrets set RESEND_API_KEY=...
 supabase secrets set RESEND_FROM_EMAIL=...
 supabase secrets set ID_VERIFICATION_MAINTENANCE_SECRET=...
 supabase secrets set LIVE_LOCATION_MAINTENANCE_SECRET=...
+supabase secrets set TWILIO_ACCOUNT_SID=...
+supabase secrets set TWILIO_AUTH_TOKEN=...
+supabase secrets set TWILIO_VERIFY_SERVICE_SID=...
+supabase secrets set TWILIO_MESSAGING_SERVICE_SID=...
+supabase secrets set TWILIO_FROM_NUMBER=...
+supabase secrets set SAFETY_MAINTENANCE_SECRET=...
+supabase secrets set EMERGENCY_LINK_SIGNING_SECRET=...
+supabase secrets set GOOGLE_MAPS_WEB_API_KEY=...
 ```
 5. Configure Stripe Identity webhook endpoint:
 ```bash
@@ -91,8 +111,13 @@ Expected result after enablement: account setting shows Identity active and sess
 # POST https://<project-ref>.functions.supabase.co/live-location-maintenance
 # Header: x-maintenance-secret: <LIVE_LOCATION_MAINTENANCE_SECRET>
 ```
-9. Verify function health with authenticated calls from a staging build.
-10. Verify companion onboarding RPCs:
+9. Configure a 1-minute scheduler for safety monitoring:
+```bash
+# POST https://<project-ref>.functions.supabase.co/safety-maintenance
+# Header: x-maintenance-secret: <SAFETY_MAINTENANCE_SECRET>
+```
+10. Verify function health with authenticated calls from a staging build.
+11. Verify companion onboarding RPCs:
 ```bash
 # Authenticated RPC smoke tests
 # public.get_wingman_onboarding_state_v1()
@@ -128,3 +153,7 @@ Expected result after enablement: account setting shows Identity active and sess
 11. `stripe-identity-webhook` writes failure reason code/message for failed verification attempts.
 12. `companion_agreement_acceptance_log` captures immutable acceptance records with agreement version + timestamp.
 13. `upsert_wingman_profile_v1` auto-publishes companion profiles only when active ID verification and current agreement acceptance are both satisfied.
+14. `send-emergency-contact-otp` and `verify-emergency-contact-otp` complete Twilio Verify OTP for emergency contacts.
+15. `trigger-emergency-alert` sends SMS only to verified emergency contacts and logs dispatch outcomes.
+16. `safety-maintenance` activates sessions, creates check-ins, escalates timeouts, and cleans emergency live-location state.
+17. `emergency-live-location-view` serves tokenized external viewer links and returns inactive/expired states safely.

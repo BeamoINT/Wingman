@@ -235,6 +235,13 @@ export const SettingsScreen: React.FC = () => {
           type: 'link',
           onPress: () => navigation.navigate('BlockedUsers'),
         },
+        {
+          id: 'emergency-contacts',
+          icon: 'shield-outline',
+          label: 'Emergency Contacts',
+          type: 'link',
+          onPress: () => navigation.navigate('EmergencyContacts'),
+        },
       ],
     },
     {

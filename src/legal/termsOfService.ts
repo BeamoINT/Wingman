@@ -287,6 +287,8 @@ We provide safety features including:
 - Location sharing (optional);
 - Emergency SOS functionality.
 
+Emergency features are for legitimate safety incidents only. You agree not to misuse SOS, emergency alerts, or emergency live location sharing for false reports, harassment, or non-emergency purposes.
+
 10.2 Limitations
 
 THESE SAFETY FEATURES ARE SUPPLEMENTARY AND DO NOT REPLACE EMERGENCY SERVICES. In case of emergency, always contact local emergency services (911 in the United States) first.

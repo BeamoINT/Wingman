@@ -1,36 +1,68 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import React, { useState } from 'react';
+import * as Location from 'expo-location';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
+  Linking,
+  Pressable,
   StyleSheet,
   Switch,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import {
-  Avatar,
   Button,
   Card,
   Header,
   InlineBanner,
-  SafetyBanner,
   ScreenScaffold,
   SectionHeader,
 } from '../components';
+import { useAuth } from '../context/AuthContext';
+import { useSafety } from '../context/SafetyContext';
 import { useTheme } from '../context/ThemeContext';
 import type { ThemeTokens } from '../theme/tokens';
 import { useThemedStyles } from '../theme/useThemedStyles';
 import type { RootStackParamList } from '../types';
-import { haptics } from '../utils/haptics';
+
+const HOLD_DURATION_MS = 1500;
+const CHECKIN_INTERVAL_OPTIONS = [15, 30, 45, 60];
+const RESPONSE_WINDOW_OPTIONS = [5, 10, 15];
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
-const emergencyContacts = [
-  { id: '1', name: 'Mom', phone: '+1 (555) 123-4567', isPrimary: true },
-  { id: '2', name: 'Best Friend', phone: '+1 (555) 987-6543', isPrimary: false },
-];
+function resolveEmergencyDialNumber(countryName?: string): string {
+  const normalized = String(countryName || '').trim().toLowerCase();
+
+  if (normalized.includes('united kingdom') || normalized.includes('ireland')) {
+    return '999';
+  }
+
+  if (normalized.includes('australia')) {
+    return '000';
+  }
+
+  if (normalized.includes('new zealand')) {
+    return '111';
+  }
+
+  if (
+    normalized.includes('germany')
+    || normalized.includes('france')
+    || normalized.includes('spain')
+    || normalized.includes('italy')
+    || normalized.includes('portugal')
+    || normalized.includes('sweden')
+    || normalized.includes('norway')
+    || normalized.includes('denmark')
+  ) {
+    return '112';
+  }
+
+  return '911';
+}
 
 interface SafetySettingRowProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -81,170 +113,442 @@ export const SafetyScreen: React.FC = () => {
   const styles = useThemedStyles(createStyles);
   const { colors } = tokens;
 
-  const [shareLocation, setShareLocation] = useState(true);
-  const [safetyCheckins, setSafetyCheckins] = useState(true);
-  const [emergencyButton, setEmergencyButton] = useState(true);
+  const { user } = useAuth();
+  const {
+    contacts,
+    preferences,
+    sessions,
+    pendingCheckin,
+    hasActiveSafetySession,
+    hasAcknowledgedSafetyDisclaimer,
+    isLoading,
+    updatePreferences,
+    acknowledgeSafetyDisclaimer,
+    respondCheckin,
+    triggerSos,
+    refreshSafetyState,
+  } = useSafety();
 
-  const handleBackPress = async () => {
-    await haptics.light();
-    navigation.goBack();
-  };
+  const [sosHolding, setSosHolding] = useState(false);
+  const [sosProgress, setSosProgress] = useState(0);
+  const [sosBusy, setSosBusy] = useState(false);
+  const [isAcknowledgingDisclaimer, setIsAcknowledgingDisclaimer] = useState(false);
+  const holdStartRef = useRef<number | null>(null);
+  const holdTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const holdIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [emergencyDialNumber, setEmergencyDialNumber] = useState(
+    resolveEmergencyDialNumber(user?.location?.country),
+  );
 
-  const handleToggle = async (
-    value: boolean,
-    setter: React.Dispatch<React.SetStateAction<boolean>>,
+  const verifiedContacts = useMemo(
+    () => contacts.filter((contact) => contact.is_verified),
+    [contacts],
+  );
+
+  const cleanupHoldState = useCallback(() => {
+    if (holdTimeoutRef.current) {
+      clearTimeout(holdTimeoutRef.current);
+      holdTimeoutRef.current = null;
+    }
+
+    if (holdIntervalRef.current) {
+      clearInterval(holdIntervalRef.current);
+      holdIntervalRef.current = null;
+    }
+
+    holdStartRef.current = null;
+    setSosHolding(false);
+    setSosProgress(0);
+  }, []);
+
+  const getCurrentLocationSnapshot = useCallback(async () => {
+    try {
+      const permission = await Location.getForegroundPermissionsAsync();
+      if (permission.status !== Location.PermissionStatus.GRANTED) {
+        const requested = await Location.requestForegroundPermissionsAsync();
+        if (requested.status !== Location.PermissionStatus.GRANTED) {
+          return null;
+        }
+      }
+
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      const accuracyM = typeof location.coords.accuracy === 'number'
+        && Number.isFinite(location.coords.accuracy)
+        ? location.coords.accuracy
+        : undefined;
+
+      return {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+        accuracyM,
+        capturedAt: new Date(location.timestamp).toISOString(),
+      };
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const executeSosTrigger = useCallback(async () => {
+    if (sosBusy) {
+      return;
+    }
+
+    setSosBusy(true);
+    const location = await getCurrentLocationSnapshot();
+
+    const activeSession = sessions.find((session) => session.status === 'active') || null;
+
+    const {
+      success,
+      sentCount,
+      failedCount,
+      emergencyDialNumber: resolvedDial,
+      error,
+    } = await triggerSos({
+      bookingId: activeSession?.booking_id || undefined,
+      location: location || undefined,
+      includeLiveLocationLink: false,
+      source: 'sos_button',
+    });
+
+    setSosBusy(false);
+
+    if (resolvedDial) {
+      setEmergencyDialNumber(resolvedDial);
+    }
+
+    if (!success) {
+      Alert.alert(
+        'SOS Alert Failed',
+        error || 'Unable to alert emergency contacts right now. Call emergency services directly.',
+      );
+      return;
+    }
+
+    Alert.alert(
+      'SOS Sent',
+      `Alert sent to ${sentCount} contact${sentCount === 1 ? '' : 's'}${failedCount > 0 ? ` (${failedCount} failed)` : ''}.`,
+    );
+  }, [getCurrentLocationSnapshot, sessions, sosBusy, triggerSos]);
+
+  const startSosHold = useCallback(() => {
+    if (sosBusy) {
+      return;
+    }
+
+    setSosHolding(true);
+    setSosProgress(0);
+    holdStartRef.current = Date.now();
+
+    holdTimeoutRef.current = setTimeout(() => {
+      cleanupHoldState();
+      void executeSosTrigger();
+    }, HOLD_DURATION_MS);
+
+    holdIntervalRef.current = setInterval(() => {
+      if (!holdStartRef.current) {
+        return;
+      }
+
+      const elapsed = Date.now() - holdStartRef.current;
+      const progress = Math.min(1, elapsed / HOLD_DURATION_MS);
+      setSosProgress(progress);
+    }, 50);
+  }, [cleanupHoldState, executeSosTrigger, sosBusy]);
+
+  const onToggleSafetySetting = useCallback(async (
+    nextValue: boolean,
+    key: 'checkinsEnabled' | 'autoShareLiveLocation' | 'sosEnabled',
   ) => {
-    await haptics.selection();
-    setter(value);
-  };
+    const result = await updatePreferences({ [key]: nextValue });
+    if (!result.success) {
+      Alert.alert('Unable to save setting', result.error || 'Please try again.');
+    }
+  }, [updatePreferences]);
+
+  const onSelectCheckinInterval = useCallback(async (minutes: number) => {
+    const result = await updatePreferences({ checkinIntervalMinutes: minutes });
+    if (!result.success) {
+      Alert.alert('Unable to save setting', result.error || 'Please try again.');
+    }
+  }, [updatePreferences]);
+
+  const onSelectResponseWindow = useCallback(async (minutes: number) => {
+    const result = await updatePreferences({ checkinResponseWindowMinutes: minutes });
+    if (!result.success) {
+      Alert.alert('Unable to save setting', result.error || 'Please try again.');
+    }
+  }, [updatePreferences]);
+
+  const onPressCallEmergency = useCallback(async () => {
+    const phoneToDial = emergencyDialNumber || resolveEmergencyDialNumber(user?.location?.country);
+    const telUrl = `tel:${phoneToDial}`;
+
+    const supported = await Linking.canOpenURL(telUrl);
+    if (!supported) {
+      Alert.alert('Unable to place call', `Please call ${phoneToDial} from your phone dialer.`);
+      return;
+    }
+
+    await Linking.openURL(telUrl);
+  }, [emergencyDialNumber, user?.location?.country]);
+
+  const onRespondPendingCheckin = useCallback(async (response: 'safe' | 'unsafe') => {
+    if (!pendingCheckin?.pending_checkin_id) {
+      return;
+    }
+
+    const result = await respondCheckin(pendingCheckin.pending_checkin_id, response);
+    if (!result.success) {
+      Alert.alert('Unable to submit response', result.error || 'Please try again.');
+      return;
+    }
+
+    if (response === 'unsafe') {
+      const activeSession = sessions.find((session) => session.status === 'active') || null;
+      const location = await getCurrentLocationSnapshot();
+      await triggerSos({
+        bookingId: activeSession?.booking_id || undefined,
+        source: 'checkin_unsafe',
+        includeLiveLocationLink: false,
+        location: location || undefined,
+      });
+    }
+
+    await refreshSafetyState();
+  }, [getCurrentLocationSnapshot, pendingCheckin?.pending_checkin_id, refreshSafetyState, respondCheckin, sessions, triggerSos]);
+
+  const onAcknowledgeSafetyDisclaimer = useCallback(async () => {
+    if (isAcknowledgingDisclaimer) {
+      return;
+    }
+
+    setIsAcknowledgingDisclaimer(true);
+    const result = await acknowledgeSafetyDisclaimer();
+    setIsAcknowledgingDisclaimer(false);
+
+    if (!result.success) {
+      Alert.alert('Unable to save acknowledgement', result.error || 'Please try again.');
+      return;
+    }
+
+    Alert.alert('Acknowledged', 'Emergency safety terms have been recorded for your account.');
+  }, [acknowledgeSafetyDisclaimer, isAcknowledgingDisclaimer]);
 
   return (
     <ScreenScaffold scrollable contentContainerStyle={styles.contentContainer}>
       <Header
         title="Safety Center"
         showBack
-        onBackPress={handleBackPress}
+        onBackPress={() => navigation.goBack()}
         transparent
       />
 
       <InlineBanner
-        title="Every Wingman is ID and photo verified before bookings"
-        message="Safety checks are active before, during, and after every session."
+        title="Emergency protection is active"
+        message="SOS sends real SMS alerts to your verified emergency contacts."
         variant="info"
       />
 
+      {!hasAcknowledgedSafetyDisclaimer ? (
+        <Card variant="outlined" style={styles.acknowledgementCard}>
+          <Text style={styles.acknowledgementTitle}>Safety Terms Required</Text>
+          <Text style={styles.acknowledgementBody}>
+            Confirm you understand SOS is for real emergencies only and does not replace calling emergency services.
+          </Text>
+          <Button
+            title={isAcknowledgingDisclaimer ? 'Saving...' : 'Acknowledge Safety Terms'}
+            variant="primary"
+            size="small"
+            loading={isAcknowledgingDisclaimer}
+            onPress={() => { void onAcknowledgeSafetyDisclaimer(); }}
+          />
+        </Card>
+      ) : null}
+
+      {pendingCheckin?.pending_checkin_id ? (
+        <Card variant="outlined" style={styles.pendingCard}>
+          <Text style={styles.pendingTitle}>Safety Check-in</Text>
+          <Text style={styles.pendingDescription}>Everything okay right now?</Text>
+          <View style={styles.pendingActions}>
+            <Button
+              title="I'm Safe"
+              variant="outline"
+              size="small"
+              onPress={() => { void onRespondPendingCheckin('safe'); }}
+            />
+            <Button
+              title="Not Safe"
+              variant="danger"
+              size="small"
+              onPress={() => { void onRespondPendingCheckin('unsafe'); }}
+            />
+          </View>
+        </Card>
+      ) : null}
+
       <View style={styles.section}>
         <SectionHeader
-          title="Emergency"
-          subtitle="Fast access if something feels wrong"
+          title="Emergency SOS"
+          subtitle="Press and hold to prevent accidental activation"
         />
-        <SafetyBanner variant="emergency" onPress={() => haptics.heavy()} />
+
+        <Card variant="outlined" style={styles.sosCard}>
+          <Pressable
+            onPressIn={startSosHold}
+            onPressOut={cleanupHoldState}
+            disabled={sosBusy || verifiedContacts.length === 0 || !hasAcknowledgedSafetyDisclaimer}
+            style={({ pressed }) => [
+              styles.sosButton,
+              (pressed || sosHolding) && styles.sosButtonPressed,
+              (sosBusy || verifiedContacts.length === 0 || !hasAcknowledgedSafetyDisclaimer) && styles.sosButtonDisabled,
+            ]}
+          >
+            <Ionicons name="warning" size={22} color={colors.text.onDanger} />
+            <Text style={styles.sosButtonText}>
+              {!hasAcknowledgedSafetyDisclaimer
+                ? 'Acknowledge safety terms first'
+                : verifiedContacts.length === 0
+                ? 'Add and verify a contact first'
+                : sosBusy
+                  ? 'Sending SOS...'
+                  : 'Hold 1.5s to Send SOS'}
+            </Text>
+          </Pressable>
+
+          <View style={styles.sosProgressTrack}>
+            <View style={[styles.sosProgressFill, { width: `${Math.round(sosProgress * 100)}%` }]} />
+          </View>
+
+          <Button
+            title={`Call Emergency Services (${emergencyDialNumber})`}
+            variant="outline"
+            size="small"
+            onPress={() => { void onPressCallEmergency(); }}
+          />
+        </Card>
       </View>
 
       <View style={styles.section}>
         <SectionHeader
           title="Safety Features"
-          subtitle="Control live protections for your bookings"
+          subtitle="Persistent settings for your account"
         />
 
         <Card variant="outlined" style={styles.settingsCard}>
           <SafetySettingRow
             icon="location"
-            title="Share Live Location"
-            description="Automatically share your location with emergency contacts during bookings."
-            value={shareLocation}
-            onChange={(value) => handleToggle(value, setShareLocation)}
+            title="Auto-share emergency location"
+            description="When enabled, you can quickly share live location with emergency contacts during bookings."
+            value={preferences?.auto_share_live_location ?? false}
+            onChange={(value) => { void onToggleSafetySetting(value, 'autoShareLiveLocation'); }}
           />
           <View style={styles.divider} />
           <SafetySettingRow
             icon="notifications"
-            title="Safety Check-ins"
-            description="Receive periodic check-in prompts while your booking is active."
-            value={safetyCheckins}
-            onChange={(value) => handleToggle(value, setSafetyCheckins)}
+            title="Safety check-ins"
+            description="Receive periodic safety prompts during active bookings."
+            value={preferences?.checkins_enabled ?? true}
+            onChange={(value) => { void onToggleSafetySetting(value, 'checkinsEnabled'); }}
           />
           <View style={styles.divider} />
           <SafetySettingRow
             icon="alert-circle"
-            title="Emergency Button"
-            description="Show a one-tap emergency trigger during sessions."
-            value={emergencyButton}
-            onChange={(value) => handleToggle(value, setEmergencyButton)}
+            title="Enable SOS trigger"
+            description="Keep hold-to-confirm SOS action available."
+            value={preferences?.sos_enabled ?? true}
+            onChange={(value) => { void onToggleSafetySetting(value, 'sosEnabled'); }}
           />
+        </Card>
+
+        <Card variant="outlined" style={styles.timingCard}>
+          <Text style={styles.timingTitle}>Check-in Interval</Text>
+          <Text style={styles.timingSubtitle}>
+            How often Wingman asks if you are safe during active bookings.
+          </Text>
+          <View style={styles.optionRow}>
+            {CHECKIN_INTERVAL_OPTIONS.map((minutes) => {
+              const selected = (preferences?.checkin_interval_minutes || 30) === minutes;
+              return (
+                <Pressable
+                  key={`interval-${minutes}`}
+                  onPress={() => { void onSelectCheckinInterval(minutes); }}
+                  style={[styles.optionPill, selected && styles.optionPillSelected]}
+                >
+                  <Text style={[styles.optionPillText, selected && styles.optionPillTextSelected]}>
+                    {minutes}m
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <Text style={styles.timingTitle}>Response Window</Text>
+          <Text style={styles.timingSubtitle}>
+            How long Wingman waits before escalating if you do not respond.
+          </Text>
+          <View style={styles.optionRow}>
+            {RESPONSE_WINDOW_OPTIONS.map((minutes) => {
+              const selected = (preferences?.checkin_response_window_minutes || 10) === minutes;
+              return (
+                <Pressable
+                  key={`window-${minutes}`}
+                  onPress={() => { void onSelectResponseWindow(minutes); }}
+                  style={[styles.optionPill, selected && styles.optionPillSelected]}
+                >
+                  <Text style={[styles.optionPillText, selected && styles.optionPillTextSelected]}>
+                    {minutes}m
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
         </Card>
       </View>
 
       <View style={styles.section}>
         <SectionHeader
           title="Emergency Contacts"
-          subtitle="Trusted people to notify quickly"
-          actionLabel="Add"
-          onPressAction={() => haptics.light()}
+          subtitle={`${verifiedContacts.length} verified of ${contacts.length} total`}
+          actionLabel="Manage"
+          onPressAction={() => navigation.navigate('EmergencyContacts')}
         />
 
-        {emergencyContacts.map((contact) => (
-          <Card key={contact.id} variant="outlined" style={styles.contactCard}>
-            <View style={styles.contactRow}>
-              <Avatar name={contact.name} size="small" />
-
-              <View style={styles.contactInfo}>
-                <View style={styles.contactHeader}>
+        <Card variant="outlined" style={styles.contactsCard}>
+          {isLoading ? (
+            <Text style={styles.loadingText}>Loading contacts...</Text>
+          ) : contacts.length === 0 ? (
+            <Text style={styles.emptyText}>Add emergency contacts so SOS can alert someone immediately.</Text>
+          ) : (
+            contacts.map((contact) => (
+              <View key={contact.id} style={styles.contactRow}>
+                <View style={styles.contactMeta}>
                   <Text style={styles.contactName}>{contact.name}</Text>
-                  {contact.isPrimary ? (
-                    <View style={styles.primaryBadge}>
-                      <Text style={styles.primaryText}>Primary</Text>
-                    </View>
-                  ) : null}
+                  <Text style={styles.contactDetail}>{contact.relationship} • {contact.phone_e164}</Text>
                 </View>
-                <Text style={styles.contactPhone}>{contact.phone}</Text>
+                <View style={styles.contactStatus}>
+                  <Ionicons
+                    name={contact.is_verified ? 'checkmark-circle' : 'alert-circle'}
+                    size={16}
+                    color={contact.is_verified ? colors.status.success : colors.status.warning}
+                  />
+                  <Text style={styles.contactStatusText}>{contact.is_verified ? 'Verified' : 'Unverified'}</Text>
+                </View>
               </View>
-
-              <TouchableOpacity onPress={() => haptics.light()}>
-                <Ionicons name="ellipsis-horizontal" size={20} color={colors.text.tertiary} />
-              </TouchableOpacity>
-            </View>
-          </Card>
-        ))}
-      </View>
-
-      <View style={styles.section}>
-        <SectionHeader
-          title="How Safety Works"
-          subtitle="Protection through the full booking lifecycle"
-        />
-
-        <Card variant="outlined" style={styles.timelineCard}>
-          {[
-            {
-              title: 'Before Your Booking',
-              description:
-                'Your emergency contacts can receive booking context and readiness alerts.',
-            },
-            {
-              title: 'During Your Booking',
-              description:
-                'Location sharing and check-ins help detect interruptions quickly.',
-            },
-            {
-              title: 'If Something Goes Wrong',
-              description:
-                'Use emergency actions to alert contacts and Wingman support immediately.',
-            },
-          ].map((item, index) => (
-            <View key={item.title} style={styles.timelineRow}>
-              <View style={styles.timelineIndex}>
-                <Text style={styles.timelineIndexText}>{index + 1}</Text>
-              </View>
-              <View style={styles.timelineContent}>
-                <Text style={styles.timelineTitle}>{item.title}</Text>
-                <Text style={styles.timelineDescription}>{item.description}</Text>
-              </View>
-            </View>
-          ))}
+            ))
+          )}
         </Card>
       </View>
 
-      <Card variant="outlined" style={styles.supportCard}>
-        <View style={styles.supportIcon}>
-          <Ionicons name="headset" size={24} color={colors.accent.primary} />
-        </View>
-        <Text style={styles.supportTitle}>24/7 Safety Support</Text>
-        <Text style={styles.supportDescription}>
-          Our trust and safety team is available around the clock to assist you.
-        </Text>
-        <Button
-          title="Contact Support"
-          onPress={() => haptics.light()}
-          variant="outline"
-          size="medium"
-          style={styles.supportButton}
+      {hasActiveSafetySession ? (
+        <InlineBanner
+          title="Active booking safety monitoring"
+          message="SOS and check-ins are actively monitoring your booking session."
+          variant="info"
         />
-      </Card>
-
-      <TouchableOpacity style={styles.reportButton} onPress={() => haptics.light()}>
-        <Ionicons name="flag-outline" size={18} color={colors.status.error} />
-        <Text style={styles.reportText}>Report a Safety Concern</Text>
-      </TouchableOpacity>
+      ) : null}
     </ScreenScaffold>
   );
 };
@@ -257,9 +561,118 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
   section: {
     gap: spacing.sm,
   },
+  acknowledgementCard: {
+    gap: spacing.sm,
+    borderColor: colors.status.warning,
+    backgroundColor: colors.status.warningLight,
+  },
+  acknowledgementTitle: {
+    ...typography.presets.body,
+    color: colors.text.primary,
+    fontWeight: typography.weights.semibold,
+  },
+  acknowledgementBody: {
+    ...typography.presets.caption,
+    color: colors.text.secondary,
+  },
+  pendingCard: {
+    gap: spacing.sm,
+    borderColor: colors.status.warning,
+    backgroundColor: colors.status.warningLight,
+  },
+  pendingTitle: {
+    ...typography.presets.body,
+    fontWeight: typography.weights.semibold,
+    color: colors.text.primary,
+  },
+  pendingDescription: {
+    ...typography.presets.caption,
+    color: colors.text.secondary,
+  },
+  pendingActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  sosCard: {
+    gap: spacing.sm,
+    borderColor: colors.status.error,
+  },
+  sosButton: {
+    minHeight: 56,
+    borderRadius: spacing.radius.md,
+    borderWidth: 1,
+    borderColor: colors.status.error,
+    backgroundColor: colors.status.error,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+  },
+  sosButtonPressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.99 }],
+  },
+  sosButtonDisabled: {
+    opacity: 0.55,
+  },
+  sosButtonText: {
+    ...typography.presets.body,
+    color: colors.text.onDanger,
+    fontWeight: typography.weights.semibold,
+  },
+  sosProgressTrack: {
+    height: 6,
+    borderRadius: spacing.radius.full,
+    backgroundColor: colors.status.errorLight,
+    overflow: 'hidden',
+  },
+  sosProgressFill: {
+    height: '100%',
+    backgroundColor: colors.status.error,
+  },
   settingsCard: {
     paddingVertical: spacing.sm,
     gap: spacing.xs,
+  },
+  timingCard: {
+    gap: spacing.sm,
+  },
+  timingTitle: {
+    ...typography.presets.body,
+    color: colors.text.primary,
+    fontWeight: typography.weights.semibold,
+  },
+  timingSubtitle: {
+    ...typography.presets.caption,
+    color: colors.text.secondary,
+  },
+  optionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    marginBottom: spacing.sm,
+  },
+  optionPill: {
+    minWidth: 56,
+    borderRadius: spacing.radius.round,
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.background.primary,
+  },
+  optionPillSelected: {
+    borderColor: colors.accent.primary,
+    backgroundColor: colors.primary.blueSoft,
+  },
+  optionPillText: {
+    ...typography.presets.caption,
+    color: colors.text.secondary,
+    fontWeight: typography.weights.semibold,
+  },
+  optionPillTextSelected: {
+    color: colors.accent.primary,
   },
   divider: {
     height: 1,
@@ -295,125 +708,44 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     color: colors.text.secondary,
     lineHeight: 18,
   },
-  contactCard: {
-    paddingVertical: spacing.sm,
-    marginBottom: spacing.sm,
+  contactsCard: {
+    gap: spacing.sm,
+  },
+  loadingText: {
+    ...typography.presets.caption,
+    color: colors.text.secondary,
+  },
+  emptyText: {
+    ...typography.presets.body,
+    color: colors.text.secondary,
   },
   contactRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     gap: spacing.sm,
-    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
   },
-  contactInfo: {
+  contactMeta: {
     flex: 1,
-    gap: spacing.xs,
-  },
-  contactHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
+    gap: spacing.xxs,
   },
   contactName: {
     ...typography.presets.body,
     color: colors.text.primary,
     fontWeight: typography.weights.semibold,
   },
-  contactPhone: {
+  contactDetail: {
     ...typography.presets.caption,
     color: colors.text.secondary,
   },
-  primaryBadge: {
-    backgroundColor: colors.status.successLight,
-    borderRadius: spacing.radius.round,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-  },
-  primaryText: {
-    ...typography.presets.caption,
-    color: colors.status.success,
-  },
-  timelineCard: {
-    gap: spacing.md,
-  },
-  timelineRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.sm,
-  },
-  timelineIndex: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.accent.primary,
-    marginTop: 2,
-  },
-  timelineIndexText: {
-    ...typography.presets.caption,
-    color: colors.text.inverse,
-    fontWeight: typography.weights.bold,
-  },
-  timelineContent: {
-    flex: 1,
-    gap: spacing.xs,
-  },
-  timelineTitle: {
-    ...typography.presets.body,
-    color: colors.text.primary,
-    fontWeight: typography.weights.semibold,
-  },
-  timelineDescription: {
-    ...typography.presets.caption,
-    color: colors.text.secondary,
-    lineHeight: 18,
-  },
-  supportCard: {
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingVertical: spacing.xl,
-  },
-  supportIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primary.blueSoft,
-  },
-  supportTitle: {
-    ...typography.presets.h4,
-    color: colors.text.primary,
-    textAlign: 'center',
-  },
-  supportDescription: {
-    ...typography.presets.bodySmall,
-    color: colors.text.secondary,
-    textAlign: 'center',
-    lineHeight: 20,
-    maxWidth: 420,
-  },
-  supportButton: {
-    marginTop: spacing.xs,
-    minWidth: 200,
-  },
-  reportButton: {
-    marginTop: spacing.sm,
-    marginBottom: spacing.lg,
-    alignSelf: 'center',
+  contactStatus: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: spacing.radius.round,
-    borderWidth: 1,
-    borderColor: colors.status.error,
-    backgroundColor: colors.status.errorLight,
   },
-  reportText: {
-    ...typography.presets.buttonSmall,
-    color: colors.status.error,
+  contactStatusText: {
+    ...typography.presets.caption,
+    color: colors.text.secondary,
   },
 });

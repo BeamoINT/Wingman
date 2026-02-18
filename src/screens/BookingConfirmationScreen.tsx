@@ -6,12 +6,14 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
-    ScrollView, StyleSheet, Text, TouchableOpacity, View
+    Pressable, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar, Badge, Button, Card, EmptyState } from '../components';
+import { useSafety } from '../context/SafetyContext';
 import type { BookingData } from '../services/api/bookingsApi';
 import { cancelBooking, fetchBookingById } from '../services/api/bookingsApi';
+import { getBookingSafetySettings, type BookingSafetySettings, upsertBookingSafetySettings } from '../services/api/safetyApi';
 import { getOrCreateConversation } from '../services/api/messages';
 import type {
     Booking,
@@ -185,6 +187,8 @@ function meetupStatusLabel(status?: Booking['meetupStatus']): string {
   }
 }
 
+const CHECKIN_INTERVAL_OPTIONS = [15, 30, 45, 60];
+
 export const BookingConfirmationScreen: React.FC = () => {
   const { tokens } = useTheme();
   const { colors, spacing, typography } = tokens;
@@ -198,6 +202,10 @@ export const BookingConfirmationScreen: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isOpeningChat, setIsOpeningChat] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [isUpdatingEmergencyShare, setIsUpdatingEmergencyShare] = useState(false);
+  const [bookingSafetySettings, setBookingSafetySettings] = useState<BookingSafetySettings | null>(null);
+  const [isSavingBookingSafetySettings, setIsSavingBookingSafetySettings] = useState(false);
+  const { isEmergencyShareActive, startEmergencyShare, stopEmergencyShare, extendEmergencyShare, preferences } = useSafety();
 
   const loadBooking = useCallback(async () => {
     setIsLoading(true);
@@ -223,6 +231,26 @@ export const BookingConfirmationScreen: React.FC = () => {
   useEffect(() => {
     loadBooking();
   }, [loadBooking]);
+
+  useEffect(() => {
+    if (!booking?.id) {
+      setBookingSafetySettings(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      const { settings } = await getBookingSafetySettings(booking.id);
+      if (!cancelled) {
+        setBookingSafetySettings(settings);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [booking?.id]);
 
   const handleBack = useCallback(async () => {
     await haptics.light();
@@ -311,6 +339,116 @@ export const BookingConfirmationScreen: React.FC = () => {
       ]
     );
   }, [booking, loadBooking]);
+
+  const effectiveCheckinsEnabled = bookingSafetySettings?.checkins_enabled_override
+    ?? (preferences?.checkins_enabled ?? true);
+  const effectiveCheckinInterval = bookingSafetySettings?.checkin_interval_minutes_override
+    ?? (preferences?.checkin_interval_minutes ?? 30);
+  const effectiveLiveShareEnabled = bookingSafetySettings?.live_share_enabled_override ?? true;
+
+  const saveBookingSafetySettings = useCallback(async (
+    patch: Partial<{
+      checkinsEnabledOverride: boolean | null;
+      checkinIntervalMinutesOverride: number | null;
+      checkinResponseWindowMinutesOverride: number | null;
+      liveShareEnabledOverride: boolean | null;
+    }>,
+  ) => {
+    if (!booking?.id) {
+      return;
+    }
+
+    setIsSavingBookingSafetySettings(true);
+    try {
+      const { settings, error } = await upsertBookingSafetySettings({
+        bookingId: booking.id,
+        checkinsEnabledOverride: patch.checkinsEnabledOverride ?? bookingSafetySettings?.checkins_enabled_override ?? null,
+        checkinIntervalMinutesOverride: patch.checkinIntervalMinutesOverride ?? bookingSafetySettings?.checkin_interval_minutes_override ?? null,
+        checkinResponseWindowMinutesOverride: patch.checkinResponseWindowMinutesOverride ?? bookingSafetySettings?.checkin_response_window_minutes_override ?? null,
+        liveShareEnabledOverride: patch.liveShareEnabledOverride ?? bookingSafetySettings?.live_share_enabled_override ?? null,
+      });
+
+      if (error || !settings) {
+        Alert.alert('Unable to save booking safety settings', error?.message || 'Please try again.');
+        return;
+      }
+
+      setBookingSafetySettings(settings);
+    } finally {
+      setIsSavingBookingSafetySettings(false);
+    }
+  }, [booking?.id, bookingSafetySettings?.checkin_interval_minutes_override, bookingSafetySettings?.checkin_response_window_minutes_override, bookingSafetySettings?.checkins_enabled_override, bookingSafetySettings?.live_share_enabled_override]);
+
+  const handleToggleBookingCheckins = useCallback((value: boolean) => {
+    void saveBookingSafetySettings({
+      checkinsEnabledOverride: value,
+    });
+  }, [saveBookingSafetySettings]);
+
+  const handleSelectBookingCheckinInterval = useCallback((minutes: number) => {
+    void saveBookingSafetySettings({
+      checkinIntervalMinutesOverride: minutes,
+    });
+  }, [saveBookingSafetySettings]);
+
+  const handleToggleBookingLiveShare = useCallback((value: boolean) => {
+    void saveBookingSafetySettings({
+      liveShareEnabledOverride: value,
+    });
+  }, [saveBookingSafetySettings]);
+
+  const emergencyShareActive = booking ? isEmergencyShareActive(booking.id) : false;
+
+  const handleToggleEmergencyShare = useCallback(async () => {
+    if (!booking) {
+      return;
+    }
+
+    if (!effectiveLiveShareEnabled && !isEmergencyShareActive(booking.id)) {
+      Alert.alert(
+        'Emergency live share disabled',
+        'Turn on emergency live sharing for this booking first.',
+      );
+      return;
+    }
+
+    setIsUpdatingEmergencyShare(true);
+    try {
+      if (isEmergencyShareActive(booking.id)) {
+        const { success, error } = await stopEmergencyShare(booking.id);
+        if (!success) {
+          Alert.alert('Unable to stop sharing', error || 'Please try again.');
+          return;
+        }
+        Alert.alert('Sharing stopped', 'Emergency live location sharing has been turned off.');
+        return;
+      }
+
+      const { success, error } = await startEmergencyShare(booking.id, 120);
+      if (!success) {
+        Alert.alert('Unable to start sharing', error || 'Please try again.');
+        return;
+      }
+
+      Alert.alert('Sharing started', 'Live location sharing is now active for your emergency contacts.');
+    } finally {
+      setIsUpdatingEmergencyShare(false);
+    }
+  }, [booking, effectiveLiveShareEnabled, isEmergencyShareActive, startEmergencyShare, stopEmergencyShare]);
+
+  const handleExtendEmergencyShare = useCallback(async () => {
+    if (!booking) {
+      return;
+    }
+
+    const { success, error } = await extendEmergencyShare(booking.id, 30);
+    if (!success) {
+      Alert.alert('Unable to extend share', error || 'Please try again.');
+      return;
+    }
+
+    Alert.alert('Extended', 'Emergency live location sharing was extended by 30 minutes.');
+  }, [booking, extendEmergencyShare]);
 
   if (isLoading) {
     return (
@@ -454,6 +592,68 @@ export const BookingConfirmationScreen: React.FC = () => {
             Keep communication in-app and share your live location with trusted contacts when needed. All Wingman members are ID and photo verified.
           </Text>
         </View>
+
+        <Card variant="outlined" style={styles.bookingSafetyCard}>
+          <Text style={styles.bookingSafetyTitle}>Booking Safety Controls</Text>
+          <Text style={styles.bookingSafetySubtitle}>
+            Configure check-ins and emergency sharing behavior for this booking only.
+          </Text>
+
+          <View style={styles.bookingSafetyRow}>
+            <View style={styles.bookingSafetyRowText}>
+              <Text style={styles.bookingSafetyLabel}>Check-ins for this booking</Text>
+              <Text style={styles.bookingSafetyHelper}>
+                {effectiveCheckinsEnabled ? 'On' : 'Off'}
+              </Text>
+            </View>
+            <Switch
+              value={effectiveCheckinsEnabled}
+              onValueChange={handleToggleBookingCheckins}
+              disabled={isSavingBookingSafetySettings}
+              trackColor={{ false: colors.background.tertiary, true: colors.accent.primary }}
+              thumbColor={colors.text.inverse}
+            />
+          </View>
+
+          <View style={styles.bookingSafetyRow}>
+            <View style={styles.bookingSafetyRowText}>
+              <Text style={styles.bookingSafetyLabel}>Allow emergency live share</Text>
+              <Text style={styles.bookingSafetyHelper}>
+                {effectiveLiveShareEnabled ? 'On' : 'Off'}
+              </Text>
+            </View>
+            <Switch
+              value={effectiveLiveShareEnabled}
+              onValueChange={handleToggleBookingLiveShare}
+              disabled={isSavingBookingSafetySettings}
+              trackColor={{ false: colors.background.tertiary, true: colors.accent.primary }}
+              thumbColor={colors.text.inverse}
+            />
+          </View>
+
+          {effectiveCheckinsEnabled ? (
+            <>
+              <Text style={styles.bookingSafetyLabel}>Check-in interval</Text>
+              <View style={styles.optionRow}>
+                {CHECKIN_INTERVAL_OPTIONS.map((minutes) => {
+                  const selected = effectiveCheckinInterval === minutes;
+                  return (
+                    <Pressable
+                      key={`booking-interval-${minutes}`}
+                      onPress={() => handleSelectBookingCheckinInterval(minutes)}
+                      style={[styles.optionPill, selected && styles.optionPillSelected]}
+                      disabled={isSavingBookingSafetySettings}
+                    >
+                      <Text style={[styles.optionPillText, selected && styles.optionPillTextSelected]}>
+                        {minutes}m
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </>
+          ) : null}
+        </Card>
       </ScrollView>
 
       <LinearGradient
@@ -476,6 +676,36 @@ export const BookingConfirmationScreen: React.FC = () => {
           size="large"
           fullWidth
           icon="navigate-outline"
+        />
+        <Button
+          title={isUpdatingEmergencyShare
+            ? (emergencyShareActive ? 'Stopping Share...' : 'Starting Share...')
+            : (emergencyShareActive ? 'Stop Emergency Live Share' : 'Share with Emergency Contacts')}
+          onPress={handleToggleEmergencyShare}
+          variant={emergencyShareActive ? 'danger' : 'outline'}
+          size="large"
+          fullWidth
+          icon={emergencyShareActive ? 'radio' : 'shield-outline'}
+          disabled={isUpdatingEmergencyShare}
+        />
+        {emergencyShareActive ? (
+          <Button
+            title="Extend Emergency Share (+30m)"
+            onPress={handleExtendEmergencyShare}
+            variant="ghost"
+            size="large"
+            fullWidth
+            icon="time-outline"
+            disabled={isUpdatingEmergencyShare}
+          />
+        ) : null}
+        <Button
+          title="Open Safety SOS"
+          onPress={() => navigation.navigate('Safety')}
+          variant="ghost"
+          size="large"
+          fullWidth
+          icon="warning-outline"
         />
         {canCancel && (
           <Button
@@ -622,6 +852,63 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     color: colors.text.secondary,
     flex: 1,
     lineHeight: 18,
+  },
+  bookingSafetyCard: {
+    gap: spacing.sm,
+  },
+  bookingSafetyTitle: {
+    ...typography.presets.h4,
+    color: colors.text.primary,
+  },
+  bookingSafetySubtitle: {
+    ...typography.presets.caption,
+    color: colors.text.secondary,
+  },
+  bookingSafetyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
+  bookingSafetyRowText: {
+    flex: 1,
+    gap: spacing.xxs,
+  },
+  bookingSafetyLabel: {
+    ...typography.presets.body,
+    color: colors.text.primary,
+    fontWeight: typography.weights.semibold,
+  },
+  bookingSafetyHelper: {
+    ...typography.presets.caption,
+    color: colors.text.secondary,
+  },
+  optionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+  },
+  optionPill: {
+    minWidth: 56,
+    borderRadius: spacing.radius.round,
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  optionPillSelected: {
+    borderColor: colors.accent.primary,
+    backgroundColor: colors.primary.blueSoft,
+  },
+  optionPillText: {
+    ...typography.presets.caption,
+    color: colors.text.secondary,
+    fontWeight: typography.weights.semibold,
+  },
+  optionPillTextSelected: {
+    color: colors.accent.primary,
   },
   bottomActions: {
     position: 'absolute',

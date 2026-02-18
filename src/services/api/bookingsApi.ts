@@ -397,6 +397,8 @@ export async function createBooking(
       return { booking: null, error: new Error('Not authenticated') };
     }
 
+    const bookingTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+
     if (input.location_name?.trim() || input.place_id?.trim()) {
       const rpcResponse = await supabase
         .rpc('create_booking_with_meetup_v1', {
@@ -420,6 +422,17 @@ export async function createBooking(
         const row = Array.isArray(rpcResponse.data)
           ? rpcResponse.data[0]
           : rpcResponse.data;
+
+        const bookingId = (row as { id?: unknown })?.id;
+        if (typeof bookingId === 'string' && bookingId.trim().length > 0) {
+          await supabase
+            .from('bookings')
+            .update({
+              booking_timezone: bookingTimezone,
+            })
+            .eq('id', bookingId);
+        }
+
         return { booking: normalizeBooking(row), error: null };
       }
 
@@ -461,6 +474,7 @@ export async function createBooking(
           status: 'pending',
           meetup_status: input.location_name?.trim() || input.place_id?.trim() ? 'proposed' : 'none',
           conversation_id: input.conversation_id,
+          booking_timezone: bookingTimezone,
         };
 
         let attempts = 0;

@@ -49,7 +49,17 @@ export type MonitoringEventName =
   | 'profile_photo_capture_failed_spoof_risk'
   | 'profile_photo_trust_promoted'
   | 'profile_photo_trust_revoked'
-  | 'id_verification_start_blocked_identity_not_enabled';
+  | 'id_verification_start_blocked_identity_not_enabled'
+  | 'safety_sos_triggered'
+  | 'safety_sos_trigger_failed'
+  | 'safety_checkin_safe_selected'
+  | 'safety_checkin_unsafe_selected'
+  | 'emergency_contact_added'
+  | 'emergency_contact_removed'
+  | 'emergency_contact_verified'
+  | 'emergency_live_location_started'
+  | 'emergency_live_location_stopped'
+  | 'safety_maintenance_run';
 
 type EventPayload = Record<string, string | number | boolean | null | undefined>;
 

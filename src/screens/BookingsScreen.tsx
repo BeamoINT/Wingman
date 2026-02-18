@@ -10,6 +10,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar, Badge, Card, EmptyState, InlineBanner } from '../components';
 import { useIsConnected } from '../context/NetworkContext';
+import { useSafety } from '../context/SafetyContext';
 import type { BookingData } from '../services/api/bookingsApi';
 import { cancelBooking, fetchUserBookings } from '../services/api/bookingsApi';
 import { getOrCreateConversation } from '../services/api/messages';
@@ -217,6 +218,8 @@ export const BookingsScreen: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [cancellingBookingId, setCancellingBookingId] = useState<string | null>(null);
   const [messagingBookingId, setMessagingBookingId] = useState<string | null>(null);
+  const [sharingBookingId, setSharingBookingId] = useState<string | null>(null);
+  const { isEmergencyShareActive, startEmergencyShare, stopEmergencyShare } = useSafety();
 
   const loadBookings = useCallback(async (showRefresh = false) => {
     if (showRefresh) {
@@ -370,6 +373,31 @@ export const BookingsScreen: React.FC = () => {
     );
   }, [loadBookings]);
 
+  const handleToggleEmergencyShare = useCallback(async (booking: Booking) => {
+    setSharingBookingId(booking.id);
+    try {
+      if (isEmergencyShareActive(booking.id)) {
+        const { success, error } = await stopEmergencyShare(booking.id);
+        if (!success) {
+          Alert.alert('Unable to stop sharing', error || 'Please try again.');
+          return;
+        }
+        Alert.alert('Sharing stopped', 'Emergency live location sharing is now off.');
+        return;
+      }
+
+      const { success, error } = await startEmergencyShare(booking.id, 120);
+      if (!success) {
+        Alert.alert('Unable to start sharing', error || 'Please try again.');
+        return;
+      }
+
+      Alert.alert('Sharing started', 'Emergency contacts can now view your live location.');
+    } finally {
+      setSharingBookingId(null);
+    }
+  }, [isEmergencyShareActive, startEmergencyShare, stopEmergencyShare]);
+
   const renderHeader = (
     <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}>
       <Text style={styles.title}>Bookings</Text>
@@ -467,6 +495,8 @@ export const BookingsScreen: React.FC = () => {
     const canMessage = !!item.companion.user.id;
     const bookingIsCancelling = cancellingBookingId === item.id;
     const bookingIsOpeningChat = messagingBookingId === item.id;
+    const bookingIsSharing = sharingBookingId === item.id;
+    const emergencyShareActive = isEmergencyShareActive(item.id);
 
     return (
       <TouchableOpacity
@@ -540,6 +570,23 @@ export const BookingsScreen: React.FC = () => {
             >
               <Ionicons name="navigate-outline" size={18} color={colors.primary.blue} />
               <Text style={styles.actionLabel}>Directions</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.actionButton, emergencyShareActive && styles.cancelButton]}
+              disabled={bookingIsSharing}
+              onPress={() => handleToggleEmergencyShare(item)}
+            >
+              <Ionicons
+                name={emergencyShareActive ? 'radio' : 'shield-outline'}
+                size={18}
+                color={emergencyShareActive ? colors.status.error : colors.primary.blue}
+              />
+              <Text style={[styles.actionLabel, emergencyShareActive && styles.cancelLabel]}>
+                {bookingIsSharing
+                  ? (emergencyShareActive ? 'Stopping...' : 'Starting...')
+                  : (emergencyShareActive ? 'Stop Share' : 'Emergency Share')}
+              </Text>
             </TouchableOpacity>
 
             {canCancel ? (
@@ -716,11 +763,13 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
   },
   actionRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing.sm,
     marginTop: spacing.lg,
   },
   actionButton: {
     flex: 1,
+    minWidth: '44%',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

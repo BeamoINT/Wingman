@@ -42,6 +42,8 @@ const config: ExpoConfig = {
         'Wingman needs camera access so you can capture images and videos in encrypted chats.',
       NSMicrophoneUsageDescription:
         'Wingman needs microphone access when you record video messages.',
+      NSUserNotificationUsageDescription:
+        'Wingman uses notifications for safety check-ins and urgent booking safety prompts.',
     },
   },
   android: {
@@ -61,6 +63,7 @@ const config: ExpoConfig = {
       'ACCESS_BACKGROUND_LOCATION',
       'FOREGROUND_SERVICE',
       'FOREGROUND_SERVICE_LOCATION',
+      'POST_NOTIFICATIONS',
       'CAMERA',
       'RECORD_AUDIO',
       'READ_MEDIA_IMAGES',
@@ -72,6 +75,7 @@ const config: ExpoConfig = {
   },
   plugins: [
     'expo-font',
+    'expo-notifications',
     [
       'expo-location',
       {

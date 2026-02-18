@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
+import * as Location from 'expo-location';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator, Alert, FlatList, KeyboardAvoidingView,
@@ -13,6 +14,7 @@ import { friendsFeatureFlags } from '../config/featureFlags';
 import { supportsNativeMediaCompression } from '../config/runtime';
 import { useAuth } from '../context/AuthContext';
 import { useIsConnected } from '../context/NetworkContext';
+import { useSafety } from '../context/SafetyContext';
 import { getMeetupPlaceDetails, searchMeetupPlaces } from '../services/api/locationApi';
 import { blockUser } from '../services/api/blocksApi';
 import type { ConversationData, MessageData } from '../services/api/messages';
@@ -237,6 +239,7 @@ const ChatScreenContent: React.FC = () => {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const isConnected = useIsConnected();
+  const { triggerSos, hasAcknowledgedSafetyDisclaimer } = useSafety();
 
   const flatListRef = useRef<FlatList<ChatTimelineItem>>(null);
 
@@ -268,6 +271,7 @@ const ChatScreenContent: React.FC = () => {
   const [counterFromProposal, setCounterFromProposal] = useState<MeetupLocationProposal | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isBlockingParticipant, setIsBlockingParticipant] = useState(false);
+  const [isSendingSos, setIsSendingSos] = useState(false);
 
   const conversationId = route.params.conversationId;
   const meetupEnabled = friendsFeatureFlags.meetupNegotiationEnabled;
@@ -448,6 +452,81 @@ const ChatScreenContent: React.FC = () => {
       ],
     );
   }, [conversation?.kind, isBlockingParticipant, navigation, otherParticipant?.firstName, otherParticipant?.id, otherParticipant?.lastName]);
+
+  const handleQuickSos = useCallback(() => {
+    if (isSendingSos) {
+      return;
+    }
+
+    if (!hasAcknowledgedSafetyDisclaimer) {
+      Alert.alert(
+        'Safety terms required',
+        'Open Safety Center and acknowledge safety terms before using SOS.',
+      );
+      return;
+    }
+
+    Alert.alert(
+      'Send SOS Alert?',
+      'This immediately sends emergency SMS alerts to your verified emergency contacts.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Send SOS',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              setIsSendingSos(true);
+              try {
+                let locationPayload: {
+                  latitude?: number;
+                  longitude?: number;
+                  accuracyM?: number;
+                  capturedAt?: string;
+                } | undefined;
+
+                try {
+                  const permission = await Location.getForegroundPermissionsAsync();
+                  if (permission.status === Location.PermissionStatus.GRANTED) {
+                    const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+                    const accuracyM = typeof location.coords.accuracy === 'number'
+                      && Number.isFinite(location.coords.accuracy)
+                      ? location.coords.accuracy
+                      : undefined;
+                    locationPayload = {
+                      latitude: location.coords.latitude,
+                      longitude: location.coords.longitude,
+                      accuracyM,
+                      capturedAt: new Date(location.timestamp).toISOString(),
+                    };
+                  }
+                } catch {
+                  locationPayload = undefined;
+                }
+
+                const { success, sentCount, failedCount, error: sosError } = await triggerSos({
+                  source: 'sos_button',
+                  location: locationPayload,
+                });
+
+                if (!success) {
+                  Alert.alert('Unable to send SOS', sosError || 'Please try again.');
+                  return;
+                }
+
+                Alert.alert(
+                  'SOS Sent',
+                  `Alert sent to ${sentCount} contact${sentCount === 1 ? '' : 's'}${failedCount > 0 ? ` (${failedCount} failed)` : ''}.`,
+                );
+              } finally {
+                setIsSendingSos(false);
+              }
+            })();
+          },
+        },
+      ],
+    );
+  }, [hasAcknowledgedSafetyDisclaimer, isSendingSos, triggerSos]);
 
   const handleRefresh = useCallback(() => {
     loadChatData(true);
@@ -1009,15 +1088,25 @@ const ChatScreenContent: React.FC = () => {
           </View>
         </View>
 
-        {conversationKind === 'direct' ? (
+        <View style={styles.headerActions}>
           <TouchableOpacity
-            style={styles.headerActionButton}
-            onPress={handleBlockParticipant}
-            disabled={isBlockingParticipant}
+            style={[styles.headerActionButton, styles.headerSosButton]}
+            onPress={handleQuickSos}
+            disabled={isSendingSos}
           >
-            <Ionicons name="ellipsis-vertical" size={18} color={colors.text.primary} />
+            <Ionicons name="warning-outline" size={18} color={colors.status.error} />
           </TouchableOpacity>
-        ) : null}
+
+          {conversationKind === 'direct' ? (
+            <TouchableOpacity
+              style={styles.headerActionButton}
+              onPress={handleBlockParticipant}
+              disabled={isBlockingParticipant}
+            >
+              <Ionicons name="ellipsis-vertical" size={18} color={colors.text.primary} />
+            </TouchableOpacity>
+          ) : null}
+        </View>
       </View>
 
       <View style={styles.safetyTip}>
@@ -1314,6 +1403,15 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     backgroundColor: colors.surface.level1,
     borderWidth: 1,
     borderColor: colors.border.subtle,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  headerSosButton: {
+    borderColor: colors.status.error,
+    backgroundColor: colors.status.errorLight,
   },
   safetyTip: {
     flexDirection: 'row',

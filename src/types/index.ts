@@ -271,7 +271,30 @@ export interface EmergencyContact {
   name: string;
   phone: string;
   relationship: string;
-  isPrimary: boolean;
+  isPrimary?: boolean;
+  isVerified?: boolean;
+  verifiedAt?: string | null;
+}
+
+export interface SafetyPreferences {
+  checkinsEnabled: boolean;
+  checkinIntervalMinutes: number;
+  checkinResponseWindowMinutes: number;
+  sosEnabled: boolean;
+  autoShareLiveLocation: boolean;
+}
+
+export interface SafetySession {
+  sessionId: string;
+  bookingId: string;
+  status: 'scheduled' | 'active' | 'completed' | 'cancelled' | 'expired';
+  checkinIntervalMinutes: number;
+  responseWindowMinutes: number;
+  startedAt?: string | null;
+  endedAt?: string | null;
+  nextCheckinAt?: string | null;
+  pendingCheckinId?: string | null;
+  pendingCheckinRespondBy?: string | null;
 }
 
 // Companion Application Types
@@ -453,6 +476,7 @@ export type RootStackParamList = {
   };
   Settings: undefined;
   BlockedUsers: undefined;
+  EmergencyContacts: undefined;
   ChangePassword: undefined;
   ChangeEmail: undefined;
   EditProfile: undefined;

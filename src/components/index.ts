@@ -24,6 +24,7 @@ export { FilterChip } from './FilterChip';
 export { Input } from './Input';
 export { InlineBanner } from './InlineBanner';
 export { LiveLocationIndicator } from './LiveLocationIndicator';
+export { EmergencySosIndicator } from './EmergencySosIndicator';
 // Loading & Empty State Components
 export { LoadingIndicator, LoadingOverlay, LoadingScreen } from './LoadingOverlay';
 // Location Components
@@ -54,7 +55,6 @@ export {
     VerificationStatusCard,
     VerificationStepItem
 } from './verification';
-
 
 
 

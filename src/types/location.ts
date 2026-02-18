@@ -245,3 +245,41 @@ export interface LiveLocationPoint {
   expiresAt: string;
   updatedAt: string;
 }
+
+/**
+ * Emergency-contact live location sharing lifecycle state.
+ */
+export type EmergencyLiveLocationShareStatus = 'active' | 'stopped' | 'expired';
+
+/**
+ * Current user's emergency-contact live location sharing state per booking.
+ */
+export interface EmergencyLiveLocationShare {
+  id: string;
+  bookingId: string;
+  userId: string;
+  status: EmergencyLiveLocationShareStatus;
+  startedAt: string;
+  expiresAt: string;
+  stoppedAt?: string | null;
+  lastHeartbeatAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Latest emergency-contact live location point for a booking.
+ */
+export interface EmergencyLiveLocationPoint {
+  shareId: string;
+  bookingId: string;
+  userId: string;
+  latitude: number;
+  longitude: number;
+  accuracyM?: number | null;
+  headingDeg?: number | null;
+  speedMps?: number | null;
+  capturedAt: string;
+  expiresAt: string;
+  updatedAt: string;
+}
