@@ -96,14 +96,24 @@ CREATE TRIGGER trg_enrich_booking_schedule_columns_v1
 UPDATE public.bookings b
 SET
   booking_timezone = COALESCE(NULLIF(TRIM(b.booking_timezone), ''), 'UTC'),
-  scheduled_start_at = schedule_values.scheduled_start_at,
-  scheduled_end_at = schedule_values.scheduled_end_at
-FROM public.compute_booking_schedule_v1(
-  b.date,
-  b.start_time,
-  b.duration_hours,
-  COALESCE(NULLIF(TRIM(b.booking_timezone), ''), 'UTC')
-) AS schedule_values
+  scheduled_start_at = (
+    SELECT sv.scheduled_start_at
+    FROM public.compute_booking_schedule_v1(
+      b.date,
+      b.start_time,
+      b.duration_hours,
+      COALESCE(NULLIF(TRIM(b.booking_timezone), ''), 'UTC')
+    ) AS sv
+  ),
+  scheduled_end_at = (
+    SELECT sv.scheduled_end_at
+    FROM public.compute_booking_schedule_v1(
+      b.date,
+      b.start_time,
+      b.duration_hours,
+      COALESCE(NULLIF(TRIM(b.booking_timezone), ''), 'UTC')
+    ) AS sv
+  )
 WHERE b.date IS NOT NULL
   AND b.start_time IS NOT NULL;
 

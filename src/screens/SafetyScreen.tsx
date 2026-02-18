@@ -473,7 +473,7 @@ export const SafetyScreen: React.FC = () => {
         <Card variant="outlined" style={styles.settingsCard}>
           <SafetySettingRow
             icon="location"
-            title="Auto-share emergency location"
+            title="Auto Share emergency location"
             description="When enabled, you can quickly share live location with emergency contacts during bookings."
             value={preferences?.auto_share_live_location ?? false}
             onChange={(value) => { void onToggleSafetySetting(value, 'autoShareLiveLocation'); }}
@@ -481,7 +481,7 @@ export const SafetyScreen: React.FC = () => {
           <View style={styles.divider} />
           <SafetySettingRow
             icon="mic"
-            title="Auto-record safety audio on visits"
+            title="Auto Record safety audio on visits"
             description="Store local-only safety audio automatically when active booking or live-location sessions begin."
             value={autoRecordDefaultEnabled}
             onChange={(value) => { void onToggleSafetyAudioDefault(value); }}
