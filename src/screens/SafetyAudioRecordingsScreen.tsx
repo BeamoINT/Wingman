@@ -51,7 +51,7 @@ function formatDuration(ms: number): string {
     return '0:00';
   }
 
-  const totalSeconds = Math.max(1, Math.round(ms / 1000));
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
@@ -85,7 +85,13 @@ export const SafetyAudioRecordingsScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const styles = useThemedStyles(createStyles);
   const { tokens } = useTheme();
-  const { recordings, refreshRecordings, storageStatus } = useSafetyAudio();
+  const {
+    recordings,
+    refreshRecordings,
+    storageStatus,
+    recordingState,
+    elapsedMs,
+  } = useSafetyAudio();
   const [playingId, setPlayingId] = useState<string | null>(null);
   const soundRef = useRef<Awaited<ReturnType<typeof createSafetyAudioPlayback>> | null>(null);
 
@@ -174,6 +180,26 @@ export const SafetyAudioRecordingsScreen: React.FC = () => {
         variant="info"
       />
 
+      <Card variant="outlined" style={styles.liveStateCard}>
+        <View style={styles.liveStateRow}>
+          <View style={styles.liveStateBadge}>
+            <Ionicons name="radio-outline" size={14} color={tokens.colors.accent.primary} />
+            <Text style={styles.liveStateLabel}>
+              {recordingState === 'recording'
+                ? 'Recording active'
+                : recordingState === 'paused'
+                  ? 'Recording paused'
+                  : recordingState === 'interrupted'
+                    ? 'Recording interrupted'
+                    : recordingState === 'starting'
+                      ? 'Recording starting'
+                      : 'Recording stopped'}
+            </Text>
+          </View>
+          <Text style={styles.liveStateTimer}>{formatDuration(elapsedMs)}</Text>
+        </View>
+      </Card>
+
       <Card variant="outlined" style={styles.storageCard}>
         <SectionHeader title="Storage Health" />
         <Text style={styles.storageText}>{formatFreeStorage(storageStatus.freeBytes)}</Text>
@@ -217,7 +243,10 @@ export const SafetyAudioRecordingsScreen: React.FC = () => {
                 <View style={styles.recordingMeta}>
                   <Text style={styles.recordingTitle}>{formatDateTime(item.createdAt)}</Text>
                   <Text style={styles.recordingSubtitle}>
-                    {formatDuration(item.durationMs)} • {formatBytes(item.sizeBytes)} • Expires {formatDateTime(item.expiresAt)}
+                    {formatDuration(item.durationMs)} • {formatBytes(item.sizeBytes)}
+                  </Text>
+                  <Text style={styles.recordingSubtitle}>
+                    Expires {formatDateTime(item.expiresAt)}
                   </Text>
                 </View>
                 <View style={styles.rowActions}>
@@ -255,6 +284,36 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
   content: {
     gap: spacing.md,
     paddingTop: spacing.xs,
+  },
+  liveStateCard: {
+    gap: spacing.xs,
+  },
+  liveStateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  liveStateBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    borderRadius: spacing.radius.round,
+    borderWidth: 1,
+    borderColor: colors.accent.primary,
+    backgroundColor: colors.primary.blueSoft,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  liveStateLabel: {
+    ...typography.presets.caption,
+    color: colors.text.primary,
+    fontWeight: typography.weights.semibold,
+  },
+  liveStateTimer: {
+    ...typography.presets.body,
+    color: colors.text.primary,
+    fontWeight: typography.weights.semibold,
   },
   storageCard: {
     gap: spacing.xs,
@@ -336,4 +395,3 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     backgroundColor: colors.border.subtle,
   },
 });
-

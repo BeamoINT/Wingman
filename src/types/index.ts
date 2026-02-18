@@ -300,6 +300,19 @@ export interface SafetySession {
 
 export type SafetyAudioContextKey = string;
 export type SafetyAudioOverrideState = 'force_on' | 'force_off' | null;
+export type SafetyAudioRecordingState =
+  | 'starting'
+  | 'recording'
+  | 'paused'
+  | 'stopping'
+  | 'stopped'
+  | 'interrupted';
+export type SafetyAudioInterruptionReason =
+  | 'phone_call'
+  | 'audio_focus_loss'
+  | 'media_services_reset'
+  | 'app_killed'
+  | 'unknown';
 
 export interface SafetyAudioRecording {
   id: string;
@@ -319,6 +332,10 @@ export interface SafetyAudioSession {
   segmentStartedAt: string;
   contextKeys: SafetyAudioContextKey[];
   reason: 'manual' | 'auto';
+  state: SafetyAudioRecordingState;
+  elapsedMsAtLastStateChange: number;
+  lastStateChangedAt: string;
+  lastInterruptionReason?: SafetyAudioInterruptionReason;
 }
 
 export interface SafetyAudioStorageStatus {

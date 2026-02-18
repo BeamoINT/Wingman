@@ -65,6 +65,14 @@ function resolveEmergencyDialNumber(countryName?: string): string {
   return '911';
 }
 
+function formatElapsedDuration(elapsedMs: number): string {
+  const safeMs = Number.isFinite(elapsedMs) ? Math.max(0, elapsedMs) : 0;
+  const totalSeconds = Math.floor(safeMs / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+}
+
 interface SafetySettingRowProps {
   icon: keyof typeof Ionicons.glyphMap;
   title: string;
@@ -132,6 +140,8 @@ export const SafetyScreen: React.FC = () => {
   const {
     isRecording: isSafetyAudioRecording,
     isTransitioning: isSafetyAudioTransitioning,
+    recordingState: safetyAudioRecordingState,
+    elapsedMs: safetyAudioElapsedMs,
     autoRecordDefaultEnabled,
     setAutoRecordDefaultEnabled,
     startRecording: startSafetyAudioRecording,
@@ -149,6 +159,25 @@ export const SafetyScreen: React.FC = () => {
   const [emergencyDialNumber, setEmergencyDialNumber] = useState(
     resolveEmergencyDialNumber(user?.location?.country),
   );
+
+  const safetyAudioStateLabel = useMemo(() => {
+    if (safetyAudioRecordingState === 'recording') {
+      return 'Recording';
+    }
+    if (safetyAudioRecordingState === 'paused') {
+      return 'Paused';
+    }
+    if (safetyAudioRecordingState === 'interrupted') {
+      return 'Interrupted';
+    }
+    if (safetyAudioRecordingState === 'starting') {
+      return 'Starting';
+    }
+    if (safetyAudioRecordingState === 'stopping') {
+      return 'Stopping';
+    }
+    return 'Stopped';
+  }, [safetyAudioRecordingState]);
 
   const verifiedContacts = useMemo(
     () => contacts.filter((contact) => contact.is_verified),
@@ -505,16 +534,28 @@ export const SafetyScreen: React.FC = () => {
         </Card>
 
         <Card variant="outlined" style={styles.audioCard}>
-          <Text style={styles.timingTitle}>Safety Audio Recording</Text>
-          <Text style={styles.timingSubtitle}>
-            Recordings are stored only on this device, never uploaded to Wingman servers, and automatically deleted after 7 days.
-          </Text>
-          <View style={styles.bookingAudioRow}>
-            <View style={styles.bookingSafetyRowText}>
-              <Text style={styles.bookingSafetyLabel}>Recording right now</Text>
-              <Text style={styles.bookingSafetyHelper}>
-                {isSafetyAudioTransitioning ? 'Starting...' : isSafetyAudioRecording ? 'On' : 'Off'}
+          <View style={styles.audioCardHeader}>
+            <View style={styles.audioStatusMeta}>
+              <Text style={styles.timingTitle}>Safety Audio Recording</Text>
+              <Text style={styles.timingSubtitle}>
+                Local only. Never uploaded. Auto-deletes after 7 days.
               </Text>
+            </View>
+            <View style={[
+              styles.audioStateBadge,
+              safetyAudioRecordingState === 'recording' && styles.audioStateBadgeRecording,
+              safetyAudioRecordingState === 'paused' && styles.audioStateBadgePaused,
+              safetyAudioRecordingState === 'interrupted' && styles.audioStateBadgeInterrupted,
+            ]}
+            >
+              <Text style={styles.audioStateText}>{safetyAudioStateLabel}</Text>
+            </View>
+          </View>
+
+          <View style={styles.audioLiveRow}>
+            <View style={styles.audioTimerWrap}>
+              <Ionicons name="timer-outline" size={16} color={colors.text.secondary} />
+              <Text style={styles.audioTimerText}>{formatElapsedDuration(safetyAudioElapsedMs)}</Text>
             </View>
             <Switch
               value={isSafetyAudioRecording}
@@ -524,6 +565,23 @@ export const SafetyScreen: React.FC = () => {
               thumbColor={colors.text.inverse}
             />
           </View>
+
+          <Text style={styles.bookingSafetyHelper}>
+            {isSafetyAudioTransitioning
+              ? 'Applying change...'
+              : isSafetyAudioRecording
+                ? 'Recording is active and will continue in background on supported builds.'
+                : 'Recording is currently off.'}
+          </Text>
+
+          <Button
+            title={isSafetyAudioRecording ? 'Stop Recording' : 'Start Recording'}
+            variant={isSafetyAudioRecording ? 'danger' : 'primary'}
+            size="small"
+            disabled={isSafetyAudioTransitioning || safetyAudioStorageStatus.critical}
+            onPress={() => { void onToggleSafetyAudioNow(!isSafetyAudioRecording); }}
+          />
+
           {safetyAudioStorageStatus.critical ? (
             <Text style={styles.audioCriticalText}>
               Recording is blocked because storage is critically low on this device.
@@ -717,18 +775,55 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
   },
   audioCard: {
     gap: spacing.sm,
+    paddingVertical: spacing.md,
   },
-  bookingAudioRow: {
+  audioCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  audioStatusMeta: {
+    flex: 1,
+    gap: spacing.xxs,
+  },
+  audioStateBadge: {
+    borderRadius: spacing.radius.round,
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
+    backgroundColor: colors.surface.level1,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  audioStateBadgeRecording: {
+    borderColor: colors.status.warning,
+    backgroundColor: colors.status.warningLight,
+  },
+  audioStateBadgePaused: {
+    borderColor: colors.status.warning,
+    backgroundColor: colors.status.warningLight,
+  },
+  audioStateBadgeInterrupted: {
+    borderColor: colors.status.error,
+    backgroundColor: colors.status.errorLight,
+  },
+  audioStateText: {
+    ...typography.presets.caption,
+    color: colors.text.primary,
+    fontWeight: typography.weights.semibold,
+  },
+  audioLiveRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.md,
   },
-  bookingSafetyRowText: {
-    flex: 1,
-    gap: spacing.xxs,
+  audioTimerWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
   },
-  bookingSafetyLabel: {
+  audioTimerText: {
     ...typography.presets.body,
     color: colors.text.primary,
     fontWeight: typography.weights.semibold,

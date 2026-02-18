@@ -32,6 +32,7 @@ import {
   getActiveSafetyAudioSession,
   getSafetyAudioRecorderState,
   isSafetyAudioRecorderRunning,
+  recoverSafetyAudioFromCrash,
   startSafetyAudioRecorder,
   stopSafetyAudioRecorder,
   subscribeSafetyAudioRecorder,
@@ -58,6 +59,8 @@ type SafetyAudioContextTypeDescriptor = {
 interface SafetyAudioContextType {
   isRecording: boolean;
   isTransitioning: boolean;
+  recordingState: SafetyAudioSession['state'];
+  elapsedMs: number;
   activeSession: SafetyAudioSession | null;
   recordings: SafetyAudioRecording[];
   autoRecordDefaultEnabled: boolean;
@@ -90,6 +93,27 @@ type PersistedOverrideMap = Record<string, Exclude<SafetyAudioOverrideState, nul
 function parseTimestamp(value: string): number {
   const parsed = new Date(value).getTime();
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function getElapsedMsForSession(session: SafetyAudioSession | null, nowMs = Date.now()): number {
+  if (!session) {
+    return 0;
+  }
+
+  const baseMs = Number.isFinite(session.elapsedMsAtLastStateChange)
+    ? Math.max(0, session.elapsedMsAtLastStateChange)
+    : 0;
+
+  if (session.state !== 'recording') {
+    return baseMs;
+  }
+
+  const lastChangedAtMs = parseTimestamp(session.lastStateChangedAt);
+  if (!lastChangedAtMs) {
+    return baseMs;
+  }
+
+  return baseMs + Math.max(0, nowMs - lastChangedAtMs);
 }
 
 function unique(values: string[]): string[] {
@@ -212,8 +236,12 @@ export const SafetyAudioProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   const [isRecording, setIsRecording] = useState<boolean>(isSafetyAudioRecorderRunning());
   const [isTransitioning, setIsTransitioning] = useState(false);
-  const [activeSession, setActiveSession] = useState<SafetyAudioSession | null>(
-    getActiveSafetyAudioSession(),
+  const [activeSession, setActiveSession] = useState<SafetyAudioSession | null>(getActiveSafetyAudioSession());
+  const [recordingState, setRecordingState] = useState<SafetyAudioSession['state']>(
+    getActiveSafetyAudioSession()?.state || 'stopped',
+  );
+  const [elapsedMs, setElapsedMs] = useState<number>(
+    getElapsedMsForSession(getActiveSafetyAudioSession()),
   );
   const [recordings, setRecordings] = useState<SafetyAudioRecording[]>([]);
   const [storageStatus, setStorageStatus] = useState<SafetyAudioStorageStatus>(defaultStorageStatus);
@@ -345,15 +373,31 @@ export const SafetyAudioProvider: React.FC<{ children: React.ReactNode }> = ({ c
       if (evaluation.contextKeys.length > 0 && isSafetyAudioRecorderRunning()) {
         await updateSafetyAudioSessionContext(evaluation.contextKeys);
         if (activeSession) {
-          setActiveSession({
+          const updatedSession: SafetyAudioSession = {
             ...activeSession,
             contextKeys: evaluation.contextKeys,
-          });
+          };
+          setActiveSession(updatedSession);
+          setRecordingState(updatedSession.state);
+          setElapsedMs(getElapsedMsForSession(updatedSession));
         }
       }
 
-      if (evaluation.shouldRecord === isSafetyAudioRecorderRunning()) {
-        setIsRecording(isSafetyAudioRecorderRunning());
+      const recorderIsRunning = isSafetyAudioRecorderRunning();
+      const latestRecorderState = getSafetyAudioRecorderState();
+
+      if (evaluation.shouldRecord === recorderIsRunning) {
+        if (!evaluation.shouldRecord && (latestRecorderState === 'paused' || latestRecorderState === 'interrupted')) {
+          await stopSafetyAudioRecorder('reconcile-cleanup');
+          setIsRecording(false);
+          setActiveSession(null);
+          setRecordingState('stopped');
+          setElapsedMs(0);
+          return;
+        }
+
+        setIsRecording(recorderIsRunning);
+        setRecordingState(getActiveSafetyAudioSession()?.state || 'stopped');
         return;
       }
 
@@ -415,6 +459,8 @@ export const SafetyAudioProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
           setIsRecording(true);
           setActiveSession(session);
+          setRecordingState(session.state);
+          setElapsedMs(getElapsedMsForSession(session));
           trackEvent(descriptor.contextType === 'manual' ? 'safety_audio_start' : 'safety_audio_autostart', {
             contextType: descriptor.contextType,
           });
@@ -422,6 +468,8 @@ export const SafetyAudioProvider: React.FC<{ children: React.ReactNode }> = ({ c
           await stopSafetyAudioRecorder('context-not-active');
           setIsRecording(false);
           setActiveSession(null);
+          setRecordingState('stopped');
+          setElapsedMs(0);
           trackEvent('safety_audio_stop', {
             reason: 'context-not-active',
           });
@@ -488,6 +536,22 @@ export const SafetyAudioProvider: React.FC<{ children: React.ReactNode }> = ({ c
   }, [refreshRecordings, refreshStorageStatus, runRetentionCleanup]);
 
   useEffect(() => {
+    void (async () => {
+      if (getSafetyAudioRecorderState() !== 'idle') {
+        return;
+      }
+      const recovery = await recoverSafetyAudioFromCrash();
+      if (recovery.recoveredCount > 0) {
+        await refreshRecordings();
+        trackEvent('safety_audio_recovery_restored', {
+          recoveredCount: recovery.recoveredCount,
+          recoveredDurationMs: recovery.recoveredDurationMs,
+        });
+      }
+    })();
+  }, [refreshRecordings]);
+
+  useEffect(() => {
     const cleanupInterval = setInterval(() => {
       void runRetentionCleanup();
     }, CLEANUP_INTERVAL_MS);
@@ -525,6 +589,32 @@ export const SafetyAudioProvider: React.FC<{ children: React.ReactNode }> = ({ c
       if (event.type === 'started') {
         setIsRecording(true);
         setActiveSession(event.session);
+        setRecordingState(event.session.state);
+        setElapsedMs(getElapsedMsForSession(event.session));
+        return;
+      }
+
+      if (event.type === 'state_changed') {
+        setActiveSession(event.session);
+        setRecordingState(event.session?.state || 'stopped');
+        setElapsedMs(getElapsedMsForSession(event.session));
+        setIsRecording(event.session?.state === 'recording');
+        trackEvent('safety_audio_state_changed', {
+          previousState: event.previousState || 'none',
+          nextState: event.session?.state || 'stopped',
+          reason: event.reason,
+        });
+
+        if (
+          event.session
+          && (event.session.state === 'paused' || event.session.state === 'interrupted')
+          && event.session.lastInterruptionReason
+        ) {
+          trackEvent('safety_audio_interruption_handled', {
+            state: event.session.state,
+            interruptionReason: event.session.lastInterruptionReason,
+          });
+        }
         return;
       }
 
@@ -533,9 +623,16 @@ export const SafetyAudioProvider: React.FC<{ children: React.ReactNode }> = ({ c
         return;
       }
 
+      if (event.type === 'recovered') {
+        setRecordings((previous) => [event.recording, ...previous.filter((item) => item.id !== event.recording.id)]);
+        return;
+      }
+
       if (event.type === 'stopped') {
         setIsRecording(false);
         setActiveSession(null);
+        setRecordingState('stopped');
+        setElapsedMs(0);
         return;
       }
 
@@ -546,6 +643,22 @@ export const SafetyAudioProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
     return unsubscribe;
   }, []);
+
+  useEffect(() => {
+    if (!activeSession || activeSession.state !== 'recording') {
+      setElapsedMs(getElapsedMsForSession(activeSession));
+      return;
+    }
+
+    setElapsedMs(getElapsedMsForSession(activeSession));
+    const timer = setInterval(() => {
+      setElapsedMs(getElapsedMsForSession(activeSession));
+    }, 1000);
+
+    return () => {
+      clearInterval(timer);
+    };
+  }, [activeSession]);
 
   useEffect(() => {
     const next = Date.now();
@@ -613,6 +726,8 @@ export const SafetyAudioProvider: React.FC<{ children: React.ReactNode }> = ({ c
     void stopSafetyAudioRecorder('critical-storage').then(() => {
       setIsRecording(false);
       setActiveSession(null);
+      setRecordingState('stopped');
+      setElapsedMs(0);
       trackEvent('safety_audio_storage_critical_stop', {
         freeBytes: storageStatus.freeBytes ?? -1,
       });
@@ -726,6 +841,8 @@ export const SafetyAudioProvider: React.FC<{ children: React.ReactNode }> = ({ c
     await stopSafetyAudioRecorder(reason);
     setIsRecording(false);
     setActiveSession(null);
+    setRecordingState('stopped');
+    setElapsedMs(0);
     await runRetentionCleanup();
     trackEvent('safety_audio_stop', { reason });
 
@@ -735,6 +852,8 @@ export const SafetyAudioProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const value = useMemo<SafetyAudioContextType>(() => ({
     isRecording,
     isTransitioning,
+    recordingState,
+    elapsedMs,
     activeSession,
     recordings,
     autoRecordDefaultEnabled,
@@ -751,9 +870,11 @@ export const SafetyAudioProvider: React.FC<{ children: React.ReactNode }> = ({ c
     activeContextKeys,
     activeSession,
     autoRecordDefaultEnabled,
+    elapsedMs,
     getContextOverride,
     isRecording,
     isTransitioning,
+    recordingState,
     recordings,
     refreshRecordings,
     setAutoRecordDefaultEnabled,

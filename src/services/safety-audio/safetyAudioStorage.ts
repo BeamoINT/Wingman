@@ -2,10 +2,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
 import type {
   SafetyAudioRecording,
+  SafetyAudioRecordingState,
   SafetyAudioStorageStatus,
 } from '../../types';
 
 const SAFETY_AUDIO_INDEX_KEY = 'wingman.safety_audio.index.v1';
+const SAFETY_AUDIO_ACTIVE_SEGMENT_KEY = 'wingman.safety_audio.active_segment.v1';
 const SAFETY_AUDIO_DIRECTORY_NAME = 'safety-audio';
 const WARNING_THRESHOLD_BYTES = 500 * 1024 * 1024;
 const CRITICAL_THRESHOLD_BYTES = 200 * 1024 * 1024;
@@ -13,6 +15,18 @@ const RETENTION_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 type SafetyAudioContextType = SafetyAudioRecording['contextType'];
 type SafetyAudioSource = SafetyAudioRecording['source'];
+type ActiveSegmentState = Extract<SafetyAudioRecordingState, 'starting' | 'recording' | 'paused' | 'interrupted'>;
+
+export interface ActiveSafetyAudioSegmentMetadata {
+  sessionId: string;
+  tempUri: string;
+  segmentStartedAt: string;
+  state: ActiveSegmentState;
+  updatedAt: string;
+  contextType: SafetyAudioContextType;
+  contextId: string | null;
+  source: SafetyAudioSource;
+}
 
 function getBaseDirectory(): string {
   const base = FileSystem.cacheDirectory || FileSystem.documentDirectory || '';
@@ -64,6 +78,10 @@ function isRecordSource(value: unknown): value is SafetyAudioSource {
   );
 }
 
+function isActiveSegmentState(value: unknown): value is ActiveSegmentState {
+  return value === 'starting' || value === 'recording' || value === 'paused' || value === 'interrupted';
+}
+
 function normalizeRecording(value: unknown): SafetyAudioRecording | null {
   if (!value || typeof value !== 'object') {
     return null;
@@ -90,6 +108,46 @@ function normalizeRecording(value: unknown): SafetyAudioRecording | null {
     expiresAt,
     durationMs: Number.isFinite(durationMs) && durationMs >= 0 ? durationMs : 0,
     sizeBytes: Number.isFinite(sizeBytes) && sizeBytes >= 0 ? sizeBytes : 0,
+    contextType,
+    contextId: typeof row.contextId === 'string' && row.contextId.trim().length > 0
+      ? row.contextId
+      : null,
+    source,
+  };
+}
+
+function normalizeActiveSegmentMetadata(value: unknown): ActiveSafetyAudioSegmentMetadata | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const row = value as Record<string, unknown>;
+  const sessionId = typeof row.sessionId === 'string' ? row.sessionId.trim() : '';
+  const tempUri = typeof row.tempUri === 'string' ? row.tempUri.trim() : '';
+  const segmentStartedAt = typeof row.segmentStartedAt === 'string' ? row.segmentStartedAt : '';
+  const updatedAt = typeof row.updatedAt === 'string' ? row.updatedAt : '';
+  const state = row.state;
+  const contextType = row.contextType;
+  const source = row.source;
+
+  if (
+    !sessionId
+    || !tempUri
+    || !segmentStartedAt
+    || !updatedAt
+    || !isActiveSegmentState(state)
+    || !isRecordContextType(contextType)
+    || !isRecordSource(source)
+  ) {
+    return null;
+  }
+
+  return {
+    sessionId,
+    tempUri,
+    segmentStartedAt,
+    state,
+    updatedAt,
     contextType,
     contextId: typeof row.contextId === 'string' && row.contextId.trim().length > 0
       ? row.contextId
@@ -142,6 +200,31 @@ export async function addSafetyAudioRecording(recording: SafetyAudioRecording): 
   ];
   await writeIndex(next);
   return sortRecordings(next);
+}
+
+export async function readActiveSafetyAudioSegmentMetadata(): Promise<ActiveSafetyAudioSegmentMetadata | null> {
+  try {
+    const raw = await AsyncStorage.getItem(SAFETY_AUDIO_ACTIVE_SEGMENT_KEY);
+    if (!raw) {
+      return null;
+    }
+
+    const parsed = JSON.parse(raw) as unknown;
+    return normalizeActiveSegmentMetadata(parsed);
+  } catch (error) {
+    console.error('Unable to read active safety audio segment metadata', error);
+    return null;
+  }
+}
+
+export async function writeActiveSafetyAudioSegmentMetadata(
+  metadata: ActiveSafetyAudioSegmentMetadata,
+): Promise<void> {
+  await AsyncStorage.setItem(SAFETY_AUDIO_ACTIVE_SEGMENT_KEY, JSON.stringify(metadata));
+}
+
+export async function clearActiveSafetyAudioSegmentMetadata(): Promise<void> {
+  await AsyncStorage.removeItem(SAFETY_AUDIO_ACTIVE_SEGMENT_KEY);
 }
 
 export async function deleteSafetyAudioFile(uri: string): Promise<void> {
@@ -246,6 +329,41 @@ export async function persistSafetyAudioSegmentFromTemp(params: {
   return recording;
 }
 
+export async function recoverSafetyAudioSegmentFromActiveMetadata(): Promise<{
+  recovered: SafetyAudioRecording | null;
+  reason: 'none' | 'metadata_missing' | 'file_missing' | 'file_saved' | 'save_failed';
+}> {
+  const metadata = await readActiveSafetyAudioSegmentMetadata();
+  if (!metadata) {
+    return { recovered: null, reason: 'metadata_missing' };
+  }
+
+  try {
+    const info = await FileSystem.getInfoAsync(metadata.tempUri);
+    if (!info.exists) {
+      await clearActiveSafetyAudioSegmentMetadata();
+      return { recovered: null, reason: 'file_missing' };
+    }
+
+    const recovered = await persistSafetyAudioSegmentFromTemp({
+      tempUri: metadata.tempUri,
+      sessionId: metadata.sessionId,
+      createdAtIso: metadata.segmentStartedAt,
+      durationMs: 0,
+      contextType: metadata.contextType,
+      contextId: metadata.contextId,
+      source: 'restarted',
+    });
+
+    await clearActiveSafetyAudioSegmentMetadata();
+    return { recovered, reason: 'file_saved' };
+  } catch (error) {
+    console.error('Unable to recover active safety audio segment metadata', error);
+    await clearActiveSafetyAudioSegmentMetadata();
+    return { recovered: null, reason: 'save_failed' };
+  }
+}
+
 export async function removeMissingSafetyAudioFiles(): Promise<{
   removedCount: number;
   remaining: SafetyAudioRecording[];
@@ -299,4 +417,3 @@ export async function getSafetyAudioStorageStatus(): Promise<SafetyAudioStorageS
     criticalThresholdBytes: CRITICAL_THRESHOLD_BYTES,
   };
 }
-

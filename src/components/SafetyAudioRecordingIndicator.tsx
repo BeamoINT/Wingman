@@ -13,20 +13,18 @@ import { useTheme } from '../context/ThemeContext';
 import type { ThemeTokens } from '../theme/tokens';
 import { useThemedStyles } from '../theme/useThemedStyles';
 
-function formatSessionDuration(startedAt: string): string {
-  const startedAtMs = new Date(startedAt).getTime();
-  if (!Number.isFinite(startedAtMs)) {
-    return 'active now';
+function formatElapsedDuration(elapsedMs: number): string {
+  const safeMs = Number.isFinite(elapsedMs) ? Math.max(0, elapsedMs) : 0;
+  const totalSeconds = Math.floor(safeMs / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
   }
 
-  const elapsedMinutes = Math.max(1, Math.floor((Date.now() - startedAtMs) / 60_000));
-  if (elapsedMinutes < 60) {
-    return `${elapsedMinutes}m elapsed`;
-  }
-
-  const hours = Math.floor(elapsedMinutes / 60);
-  const minutes = elapsedMinutes % 60;
-  return `${hours}h ${minutes.toString().padStart(2, '0')}m elapsed`;
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
 export const SafetyAudioRecordingIndicator: React.FC = () => {
@@ -34,20 +32,61 @@ export const SafetyAudioRecordingIndicator: React.FC = () => {
   const { tokens } = useTheme();
   const styles = useThemedStyles(createStyles);
   const {
-    isRecording,
     isTransitioning,
+    recordingState,
+    elapsedMs,
     activeSession,
     stopRecording,
   } = useSafetyAudio();
 
-  const helperText = useMemo(() => {
-    if (!activeSession?.startedAt) {
-      return 'local only';
+  const stateLabel = useMemo(() => {
+    if (recordingState === 'recording') {
+      return 'Recording';
     }
-    return `${formatSessionDuration(activeSession.startedAt)} • local only`;
-  }, [activeSession?.startedAt]);
+    if (recordingState === 'paused') {
+      return 'Paused';
+    }
+    if (recordingState === 'interrupted') {
+      return 'Interrupted';
+    }
+    if (recordingState === 'starting') {
+      return 'Starting';
+    }
+    if (recordingState === 'stopping') {
+      return 'Stopping';
+    }
+    return 'Stopped';
+  }, [recordingState]);
 
-  if (!isRecording) {
+  const helperText = useMemo(() => {
+    if (recordingState === 'interrupted' && activeSession?.lastInterruptionReason) {
+      return `${formatElapsedDuration(elapsedMs)} • interrupted • local only`;
+    }
+
+    if (recordingState === 'paused') {
+      return `${formatElapsedDuration(elapsedMs)} • paused • local only`;
+    }
+
+    return `${formatElapsedDuration(elapsedMs)} • local only`;
+  }, [activeSession?.lastInterruptionReason, elapsedMs, recordingState]);
+
+  const stateColor = useMemo(() => {
+    if (recordingState === 'recording') {
+      return tokens.colors.status.warning;
+    }
+    if (recordingState === 'interrupted') {
+      return tokens.colors.status.error;
+    }
+    if (recordingState === 'paused') {
+      return tokens.colors.status.warning;
+    }
+    if (recordingState === 'starting') {
+      return tokens.colors.accent.primary;
+    }
+    return tokens.colors.text.secondary;
+  }, [recordingState, tokens.colors.accent.primary, tokens.colors.status.error, tokens.colors.status.warning, tokens.colors.text.secondary]);
+
+  if (!activeSession || recordingState === 'stopped') {
     return null;
   }
 
@@ -55,11 +94,16 @@ export const SafetyAudioRecordingIndicator: React.FC = () => {
     <View pointerEvents="box-none" style={styles.overlay}>
       <View style={[styles.container, { marginTop: insets.top + tokens.spacing.huge }]}>
         <View style={styles.leftContent}>
-          <Ionicons name="mic" size={14} color={tokens.colors.status.warning} />
+          <View style={[styles.stateDot, { backgroundColor: stateColor }]} />
           <View style={styles.textWrap}>
-            <Text style={styles.title} numberOfLines={1}>
-              Safety audio recording
-            </Text>
+            <View style={styles.titleRow}>
+              <Text style={styles.title} numberOfLines={1}>
+                Safety Audio
+              </Text>
+              <View style={[styles.stateBadge, { borderColor: stateColor }]}>
+                <Text style={[styles.stateText, { color: stateColor }]}>{stateLabel}</Text>
+              </View>
+            </View>
             <Text style={styles.helper} numberOfLines={1}>
               {helperText}
             </Text>
@@ -77,7 +121,7 @@ export const SafetyAudioRecordingIndicator: React.FC = () => {
             <ActivityIndicator size="small" color={tokens.colors.status.error} />
           ) : (
             <>
-              <Ionicons name="stop-circle-outline" size={14} color={tokens.colors.status.error} />
+              <Ionicons name="stop-circle-outline" size={15} color={tokens.colors.status.error} />
               <Text style={styles.stopText}>Stop</Text>
             </>
           )}
@@ -100,38 +144,64 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
   container: {
     width: '100%',
     maxWidth: spacing.contentMaxWidthWide,
-    minHeight: 44,
+    minHeight: 54,
     borderRadius: spacing.radius.full,
     borderWidth: 1,
-    borderColor: colors.status.warning,
+    borderColor: colors.border.subtle,
     backgroundColor: colors.surface.level0,
     paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.sm,
+    shadowColor: colors.shadow.light,
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
   leftContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
+    gap: spacing.sm,
     flex: 1,
+  },
+  stateDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
   },
   textWrap: {
     flex: 1,
+    gap: spacing.xxs,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
   },
   title: {
     ...typography.presets.caption,
     color: colors.text.primary,
     fontWeight: typography.weights.semibold,
   },
+  stateBadge: {
+    borderWidth: 1,
+    borderRadius: spacing.radius.round,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 2,
+  },
+  stateText: {
+    ...typography.presets.caption,
+    fontWeight: typography.weights.semibold,
+  },
   helper: {
     ...typography.presets.caption,
     color: colors.text.secondary,
-    marginTop: 1,
   },
   stopButton: {
-    minHeight: 30,
+    minHeight: 32,
     borderRadius: spacing.radius.full,
     borderWidth: 1,
     borderColor: colors.status.error,
@@ -144,6 +214,6 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
   stopText: {
     ...typography.presets.caption,
     color: colors.status.error,
+    fontWeight: typography.weights.semibold,
   },
 });
-
