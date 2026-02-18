@@ -220,6 +220,7 @@ export const SafetyAudioProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [lastEvalTimestamp, setLastEvalTimestamp] = useState(0);
 
   const isMountedRef = useRef(true);
+  const overridesRef = useRef<PersistedOverrideMap>({});
 
   const activeBookingContextKeys = useMemo(() => (
     sessions
@@ -318,17 +319,17 @@ export const SafetyAudioProvider: React.FC<{ children: React.ReactNode }> = ({ c
   }, []);
 
   const applyOverrides = useCallback(async (updater: (previous: PersistedOverrideMap) => PersistedOverrideMap) => {
-    setOverrides((previous) => {
-      const next = updater(previous);
-      void persistOverrides(next);
-      return next;
-    });
+    const next = updater(overridesRef.current);
+    overridesRef.current = next;
+    setOverrides(next);
+    await persistOverrides(next);
   }, [persistOverrides]);
 
   const reconcileRecordingState = useCallback(async (): Promise<void> => {
+    const currentOverrides = overridesRef.current;
     const evaluation = computeDesiredRecordingState({
       activeContextKeys,
-      overrides,
+      overrides: currentOverrides,
       autoRecordDefaultEnabled,
     });
 
@@ -381,7 +382,7 @@ export const SafetyAudioProvider: React.FC<{ children: React.ReactNode }> = ({ c
         }
 
         const preferredForceOnContext = evaluation.contextKeys.find(
-          (contextKey) => getOverride(overrides, contextKey) === 'force_on',
+          (contextKey) => getOverride(currentOverrides, contextKey) === 'force_on',
         );
         const startContextKey = preferredForceOnContext || evaluation.contextKeys[0] || MANUAL_CONTEXT_KEY;
         const descriptor = resolveDescriptorFromContextKey(startContextKey);
@@ -424,7 +425,6 @@ export const SafetyAudioProvider: React.FC<{ children: React.ReactNode }> = ({ c
     autoRecordDefaultEnabled,
     ensureMicrophonePermission,
     isTransitioning,
-    overrides,
     refreshStorageStatus,
   ]);
 
@@ -449,6 +449,7 @@ export const SafetyAudioProvider: React.FC<{ children: React.ReactNode }> = ({ c
             next[contextKey] = value;
           }
         }
+        overridesRef.current = next;
         setOverrides(next);
       } catch (error) {
         console.error('Unable to restore safety audio overrides', error);
@@ -528,40 +529,40 @@ export const SafetyAudioProvider: React.FC<{ children: React.ReactNode }> = ({ c
   }, [activeContextKeys, autoRecordDefaultEnabled, overrides]);
 
   useEffect(() => {
-    setOverrides((previous) => {
-      const activeSet = new Set(activeContextKeys);
-      let changed = false;
-      const next: PersistedOverrideMap = {};
+    const previous = overridesRef.current;
+    const activeSet = new Set(activeContextKeys);
+    let changed = false;
+    const next: PersistedOverrideMap = {};
 
-      for (const [contextKey, state] of Object.entries(previous)) {
-        if (state === 'force_on') {
-          next[contextKey] = state;
-          continue;
-        }
-
-        if (contextKey === MANUAL_CONTEXT_KEY) {
-          if (activeSet.size > 0) {
-            next[contextKey] = state;
-          } else {
-            changed = true;
-          }
-          continue;
-        }
-
-        if (activeSet.has(contextKey)) {
-          next[contextKey] = state;
-          continue;
-        }
-        changed = true;
+    for (const [contextKey, state] of Object.entries(previous)) {
+      if (state === 'force_on') {
+        next[contextKey] = state;
+        continue;
       }
 
-      if (!changed) {
-        return previous;
+      if (contextKey === MANUAL_CONTEXT_KEY) {
+        if (activeSet.size > 0) {
+          next[contextKey] = state;
+        } else {
+          changed = true;
+        }
+        continue;
       }
 
-      void persistOverrides(next);
-      return next;
-    });
+      if (activeSet.has(contextKey)) {
+        next[contextKey] = state;
+        continue;
+      }
+      changed = true;
+    }
+
+    if (!changed) {
+      return;
+    }
+
+    overridesRef.current = next;
+    setOverrides(next);
+    void persistOverrides(next);
   }, [activeContextKeys, persistOverrides]);
 
   useEffect(() => {
@@ -629,8 +630,8 @@ export const SafetyAudioProvider: React.FC<{ children: React.ReactNode }> = ({ c
   }, [applyOverrides]);
 
   const getContextOverride = useCallback((contextKey: SafetyAudioContextKey): SafetyAudioOverrideState => {
-    return getOverride(overrides, contextKey);
-  }, [overrides]);
+    return getOverride(overridesRef.current, contextKey);
+  }, []);
 
   const startRecording = useCallback(async (context?: {
     contextKey?: SafetyAudioContextKey;
@@ -652,7 +653,7 @@ export const SafetyAudioProvider: React.FC<{ children: React.ReactNode }> = ({ c
   ): Promise<{ success: boolean; error?: string }> => {
     const contextKeysToDisable = unique([
       ...activeContextKeys,
-      ...Object.keys(overrides),
+      ...Object.keys(overridesRef.current),
       MANUAL_CONTEXT_KEY,
     ]);
 
@@ -671,7 +672,7 @@ export const SafetyAudioProvider: React.FC<{ children: React.ReactNode }> = ({ c
     trackEvent('safety_audio_stop', { reason });
 
     return { success: true };
-  }, [activeContextKeys, applyOverrides, overrides, runRetentionCleanup]);
+  }, [activeContextKeys, applyOverrides, runRetentionCleanup]);
 
   const value = useMemo<SafetyAudioContextType>(() => ({
     isRecording,
