@@ -5,7 +5,6 @@ import {
   type AVPlaybackStatus,
 } from 'expo-av';
 import { Platform } from 'react-native';
-import BackgroundService from 'react-native-background-actions';
 import type {
   SafetyAudioRecording,
   SafetyAudioSession,
@@ -17,6 +16,12 @@ export const SAFETY_AUDIO_SEGMENT_DURATION_MS = 5 * 60 * 1000;
 type SafetyAudioContextType = SafetyAudioRecording['contextType'];
 type SafetyAudioSource = SafetyAudioRecording['source'];
 type RecordingStatus = Awaited<ReturnType<Audio.Recording['getStatusAsync']>>;
+
+interface BackgroundServiceLike {
+  start: (task: () => Promise<void>, options: Record<string, unknown>) => Promise<void>;
+  stop: () => Promise<void>;
+  isRunning: () => boolean;
+}
 
 type RecorderLifecycleEvent =
   | { type: 'started'; session: SafetyAudioSession }
@@ -37,6 +42,7 @@ let activeSegmentDescriptor: SegmentDescriptor | null = null;
 let segmentRotationTimer: ReturnType<typeof setTimeout> | null = null;
 let rotationInProgress = false;
 let stopRequested = false;
+let backgroundServiceModule: BackgroundServiceLike | null | undefined;
 const listeners = new Set<(event: RecorderLifecycleEvent) => void>();
 
 const RECORDING_OPTIONS: Audio.RecordingOptions = {
@@ -81,6 +87,23 @@ function toError(error: unknown, fallback: string): Error {
     return new Error(error);
   }
   return new Error(fallback);
+}
+
+function getBackgroundService(): BackgroundServiceLike | null {
+  if (backgroundServiceModule !== undefined) {
+    return backgroundServiceModule;
+  }
+
+  try {
+    const requiredModule = require('react-native-background-actions') as {
+      default?: BackgroundServiceLike;
+    };
+    backgroundServiceModule = requiredModule.default || null;
+  } catch {
+    backgroundServiceModule = null;
+  }
+
+  return backgroundServiceModule;
 }
 
 function clearSegmentTimer(): void {
@@ -134,13 +157,18 @@ async function startBackgroundKeepAlive(): Promise<void> {
     return;
   }
 
+  const backgroundService = getBackgroundService();
+  if (!backgroundService) {
+    return;
+  }
+
   try {
-    if (BackgroundService.isRunning()) {
+    if (backgroundService.isRunning()) {
       return;
     }
 
-    await BackgroundService.start(async () => {
-      while (BackgroundService.isRunning()) {
+    await backgroundService.start(async () => {
+      while (backgroundService.isRunning()) {
         await new Promise<void>((resolve) => {
           setTimeout(resolve, 30_000);
         });
@@ -167,9 +195,14 @@ async function stopBackgroundKeepAlive(): Promise<void> {
     return;
   }
 
+  const backgroundService = getBackgroundService();
+  if (!backgroundService) {
+    return;
+  }
+
   try {
-    if (BackgroundService.isRunning()) {
-      await BackgroundService.stop();
+    if (backgroundService.isRunning()) {
+      await backgroundService.stop();
     }
   } catch (error) {
     console.error('Unable to stop background safety audio keepalive service', error);
