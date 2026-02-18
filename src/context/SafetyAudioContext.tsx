@@ -30,6 +30,7 @@ import {
 import {
   SAFETY_AUDIO_SEGMENT_DURATION_MS,
   getActiveSafetyAudioSession,
+  getSafetyAudioRecorderState,
   isSafetyAudioRecorderRunning,
   startSafetyAudioRecorder,
   stopSafetyAudioRecorder,
@@ -221,6 +222,8 @@ export const SafetyAudioProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   const isMountedRef = useRef(true);
   const overridesRef = useRef<PersistedOverrideMap>({});
+  const isTransitioningRef = useRef(false);
+  const reconcileInFlightRef = useRef<Promise<void> | null>(null);
 
   const activeBookingContextKeys = useMemo(() => (
     sessions
@@ -326,97 +329,117 @@ export const SafetyAudioProvider: React.FC<{ children: React.ReactNode }> = ({ c
   }, [persistOverrides]);
 
   const reconcileRecordingState = useCallback(async (): Promise<void> => {
-    const currentOverrides = overridesRef.current;
-    const evaluation = computeDesiredRecordingState({
-      activeContextKeys,
-      overrides: currentOverrides,
-      autoRecordDefaultEnabled,
-    });
-
-    if (evaluation.contextKeys.length > 0 && isSafetyAudioRecorderRunning()) {
-      await updateSafetyAudioSessionContext(evaluation.contextKeys);
-      if (activeSession) {
-        setActiveSession({
-          ...activeSession,
-          contextKeys: evaluation.contextKeys,
-        });
-      }
-    }
-
-    if (evaluation.shouldRecord === isSafetyAudioRecorderRunning()) {
-      setIsRecording(isSafetyAudioRecorderRunning());
+    if (reconcileInFlightRef.current) {
+      await reconcileInFlightRef.current;
       return;
     }
 
-    if (isTransitioning) {
-      return;
-    }
+    const reconcilePromise = (async () => {
+      const currentOverrides = overridesRef.current;
+      const evaluation = computeDesiredRecordingState({
+        activeContextKeys,
+        overrides: currentOverrides,
+        autoRecordDefaultEnabled,
+      });
 
-    setIsTransitioning(true);
-
-    try {
-      if (evaluation.shouldRecord) {
-        await refreshStorageStatus();
-        const latestStorage = await getSafetyAudioStorageStatus();
-        if (latestStorage.critical) {
-          setStorageStatus(latestStorage);
-          trackEvent('safety_audio_storage_critical_stop', {
-            freeBytes: latestStorage.freeBytes ?? -1,
-          });
-          Alert.alert(
-            'Storage Too Low',
-            'Safety audio recording is off because your device storage is critically low. Free up space and try again.',
-          );
-          return;
-        }
-
-        if (latestStorage.warning) {
-          trackEvent('safety_audio_storage_low_warning', {
-            freeBytes: latestStorage.freeBytes ?? -1,
+      if (evaluation.contextKeys.length > 0 && isSafetyAudioRecorderRunning()) {
+        await updateSafetyAudioSessionContext(evaluation.contextKeys);
+        if (activeSession) {
+          setActiveSession({
+            ...activeSession,
+            contextKeys: evaluation.contextKeys,
           });
         }
-
-        const hasPermission = await ensureMicrophonePermission();
-        if (!hasPermission) {
-          return;
-        }
-
-        const preferredForceOnContext = evaluation.contextKeys.find(
-          (contextKey) => getOverride(currentOverrides, contextKey) === 'force_on',
-        );
-        const startContextKey = preferredForceOnContext || evaluation.contextKeys[0] || MANUAL_CONTEXT_KEY;
-        const descriptor = resolveDescriptorFromContextKey(startContextKey);
-
-        const { session, error } = await startSafetyAudioRecorder({
-          sessionId: activeSession?.sessionId || undefined,
-          contextType: descriptor.contextType,
-          contextId: descriptor.contextId,
-          source: descriptor.source,
-          contextKeys: evaluation.contextKeys,
-          reason: descriptor.contextType === 'manual' ? 'manual' : 'auto',
-        });
-
-        if (error || !session) {
-          Alert.alert('Unable to start recording', error?.message || 'Please try again.');
-          return;
-        }
-
-        setIsRecording(true);
-        setActiveSession(session);
-        trackEvent(descriptor.contextType === 'manual' ? 'safety_audio_start' : 'safety_audio_autostart', {
-          contextType: descriptor.contextType,
-        });
-      } else {
-        await stopSafetyAudioRecorder('context-not-active');
-        setIsRecording(false);
-        setActiveSession(null);
-        trackEvent('safety_audio_stop', {
-          reason: 'context-not-active',
-        });
       }
-    } finally {
+
+      if (evaluation.shouldRecord === isSafetyAudioRecorderRunning()) {
+        setIsRecording(isSafetyAudioRecorderRunning());
+        return;
+      }
+
+      if (isTransitioningRef.current) {
+        return;
+      }
+
+      isTransitioningRef.current = true;
       if (isMountedRef.current) {
-        setIsTransitioning(false);
+        setIsTransitioning(true);
+      }
+
+      try {
+        if (evaluation.shouldRecord) {
+          await refreshStorageStatus();
+          const latestStorage = await getSafetyAudioStorageStatus();
+          if (latestStorage.critical) {
+            setStorageStatus(latestStorage);
+            trackEvent('safety_audio_storage_critical_stop', {
+              freeBytes: latestStorage.freeBytes ?? -1,
+            });
+            Alert.alert(
+              'Storage Too Low',
+              'Safety audio recording is off because your device storage is critically low. Free up space and try again.',
+            );
+            return;
+          }
+
+          if (latestStorage.warning) {
+            trackEvent('safety_audio_storage_low_warning', {
+              freeBytes: latestStorage.freeBytes ?? -1,
+            });
+          }
+
+          const hasPermission = await ensureMicrophonePermission();
+          if (!hasPermission) {
+            return;
+          }
+
+          const preferredForceOnContext = evaluation.contextKeys.find(
+            (contextKey) => getOverride(currentOverrides, contextKey) === 'force_on',
+          );
+          const startContextKey = preferredForceOnContext || evaluation.contextKeys[0] || MANUAL_CONTEXT_KEY;
+          const descriptor = resolveDescriptorFromContextKey(startContextKey);
+
+          const { session, error } = await startSafetyAudioRecorder({
+            sessionId: activeSession?.sessionId || undefined,
+            contextType: descriptor.contextType,
+            contextId: descriptor.contextId,
+            source: descriptor.source,
+            contextKeys: evaluation.contextKeys,
+            reason: descriptor.contextType === 'manual' ? 'manual' : 'auto',
+          });
+
+          if (error || !session) {
+            Alert.alert('Unable to start recording', error?.message || 'Please try again.');
+            return;
+          }
+
+          setIsRecording(true);
+          setActiveSession(session);
+          trackEvent(descriptor.contextType === 'manual' ? 'safety_audio_start' : 'safety_audio_autostart', {
+            contextType: descriptor.contextType,
+          });
+        } else {
+          await stopSafetyAudioRecorder('context-not-active');
+          setIsRecording(false);
+          setActiveSession(null);
+          trackEvent('safety_audio_stop', {
+            reason: 'context-not-active',
+          });
+        }
+      } finally {
+        isTransitioningRef.current = false;
+        if (isMountedRef.current) {
+          setIsTransitioning(false);
+        }
+      }
+    })();
+
+    reconcileInFlightRef.current = reconcilePromise;
+    try {
+      await reconcilePromise;
+    } finally {
+      if (reconcileInFlightRef.current === reconcilePromise) {
+        reconcileInFlightRef.current = null;
       }
     }
   }, [
@@ -424,13 +447,14 @@ export const SafetyAudioProvider: React.FC<{ children: React.ReactNode }> = ({ c
     activeSession,
     autoRecordDefaultEnabled,
     ensureMicrophonePermission,
-    isTransitioning,
     refreshStorageStatus,
   ]);
 
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
+      isTransitioningRef.current = false;
+      reconcileInFlightRef.current = null;
       isMountedRef.current = false;
     };
   }, []);
@@ -637,20 +661,54 @@ export const SafetyAudioProvider: React.FC<{ children: React.ReactNode }> = ({ c
     contextKey?: SafetyAudioContextKey;
   }): Promise<{ success: boolean; error?: string }> => {
     const contextKey = context?.contextKey?.trim() || MANUAL_CONTEXT_KEY;
+    const recorderState = getSafetyAudioRecorderState();
+    trackEvent('safety_audio_start_attempt', {
+      contextKey,
+      recorderState,
+    });
+
+    if (isSafetyAudioRecorderRunning()) {
+      await toggleContextOverride(contextKey, 'force_on');
+      trackEvent('safety_audio_start_result', {
+        result: 'already_in_progress',
+        recorderState: getSafetyAudioRecorderState(),
+      });
+      return { success: true };
+    }
+
     await toggleContextOverride(contextKey, 'force_on');
     await reconcileRecordingState();
 
+    if (!isSafetyAudioRecorderRunning() && getSafetyAudioRecorderState() === 'starting') {
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 250);
+      });
+      await reconcileRecordingState();
+    }
+
     if (!isSafetyAudioRecorderRunning()) {
       await toggleContextOverride(contextKey, null);
+      trackEvent('safety_audio_start_result', {
+        result: 'failed',
+        recorderState: getSafetyAudioRecorderState(),
+      });
       return { success: false, error: 'Unable to start local safety audio recording right now.' };
     }
 
+    trackEvent('safety_audio_start_result', {
+      result: 'started',
+      recorderState: getSafetyAudioRecorderState(),
+    });
     return { success: true };
   }, [reconcileRecordingState, toggleContextOverride]);
 
   const stopRecording = useCallback(async (
     reason = 'manual-stop',
   ): Promise<{ success: boolean; error?: string }> => {
+    if (reconcileInFlightRef.current) {
+      await reconcileInFlightRef.current;
+    }
+
     const contextKeysToDisable = unique([
       ...activeContextKeys,
       ...Object.keys(overridesRef.current),

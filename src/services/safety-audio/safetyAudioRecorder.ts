@@ -13,6 +13,8 @@ import { persistSafetyAudioSegmentFromTemp } from './safetyAudioStorage';
 
 export const SAFETY_AUDIO_SEGMENT_DURATION_MS = 5 * 60 * 1000;
 
+export type SafetyAudioRecorderState = 'idle' | 'starting' | 'running' | 'stopping';
+
 type SafetyAudioContextType = SafetyAudioRecording['contextType'];
 type SafetyAudioSource = SafetyAudioRecording['source'];
 type RecordingStatus = Awaited<ReturnType<Audio.Recording['getStatusAsync']>>;
@@ -35,6 +37,11 @@ interface SegmentDescriptor {
   source: SafetyAudioSource;
 }
 
+interface PreparedSegment {
+  recording: Audio.Recording;
+  segmentStartedAtIso: string;
+}
+
 let activeRecording: Audio.Recording | null = null;
 let activeSession: SafetyAudioSession | null = null;
 let activeSegmentStartedAtIso: string | null = null;
@@ -43,6 +50,8 @@ let segmentRotationTimer: ReturnType<typeof setTimeout> | null = null;
 let rotationInProgress = false;
 let stopRequested = false;
 let backgroundServiceModule: BackgroundServiceLike | null | undefined;
+let recorderState: SafetyAudioRecorderState = 'idle';
+let recorderTransition: Promise<void> = Promise.resolve();
 const listeners = new Set<(event: RecorderLifecycleEvent) => void>();
 
 const RECORDING_OPTIONS: Audio.RecordingOptions = {
@@ -89,6 +98,12 @@ function toError(error: unknown, fallback: string): Error {
   return new Error(fallback);
 }
 
+function runRecorderTransition<T>(operation: () => Promise<T>): Promise<T> {
+  const run = recorderTransition.then(operation, operation);
+  recorderTransition = run.then(() => undefined, () => undefined);
+  return run;
+}
+
 function getBackgroundService(): BackgroundServiceLike | null {
   if (backgroundServiceModule !== undefined) {
     return backgroundServiceModule;
@@ -113,6 +128,16 @@ function clearSegmentTimer(): void {
 
   clearTimeout(segmentRotationTimer);
   segmentRotationTimer = null;
+}
+
+function resetActiveRecorderMemory(): void {
+  clearSegmentTimer();
+  activeRecording = null;
+  activeSession = null;
+  activeSegmentDescriptor = null;
+  activeSegmentStartedAtIso = null;
+  rotationInProgress = false;
+  stopRequested = false;
 }
 
 async function ensureAudioModeForRecording(): Promise<void> {
@@ -150,6 +175,34 @@ function resolveDurationMs(status: RecordingStatus | null): number {
 
   const maybeDuration = Number(status.durationMillis || 0);
   return Number.isFinite(maybeDuration) && maybeDuration > 0 ? maybeDuration : 0;
+}
+
+function applyPreparedSegment(preparedSegment: PreparedSegment): void {
+  activeRecording = preparedSegment.recording;
+  activeSegmentStartedAtIso = preparedSegment.segmentStartedAtIso;
+
+  if (activeSession) {
+    activeSession = {
+      ...activeSession,
+      segmentStartedAt: preparedSegment.segmentStartedAtIso,
+    };
+  }
+
+  clearSegmentTimer();
+  segmentRotationTimer = setTimeout(() => {
+    void finalizeCurrentSegment('segment-rotation', { continueRecording: true });
+  }, SAFETY_AUDIO_SEGMENT_DURATION_MS);
+}
+
+async function createPreparedRecordingSegment(): Promise<PreparedSegment> {
+  const segmentStartedAtIso = new Date().toISOString();
+  const recording = new Audio.Recording();
+  await recording.prepareToRecordAsync(RECORDING_OPTIONS);
+  await recording.startAsync();
+  return {
+    recording,
+    segmentStartedAtIso,
+  };
 }
 
 async function startBackgroundKeepAlive(): Promise<void> {
@@ -214,22 +267,8 @@ async function prepareAndStartSegment(): Promise<void> {
     throw new Error('Safety audio session metadata is missing.');
   }
 
-  const segmentStartedAtIso = new Date().toISOString();
-  const recording = new Audio.Recording();
-  await recording.prepareToRecordAsync(RECORDING_OPTIONS);
-  await recording.startAsync();
-
-  activeRecording = recording;
-  activeSegmentStartedAtIso = segmentStartedAtIso;
-  activeSession = {
-    ...activeSession,
-    segmentStartedAt: segmentStartedAtIso,
-  };
-
-  clearSegmentTimer();
-  segmentRotationTimer = setTimeout(() => {
-    void finalizeCurrentSegment('segment-rotation', { continueRecording: true });
-  }, SAFETY_AUDIO_SEGMENT_DURATION_MS);
+  const preparedSegment = await createPreparedRecordingSegment();
+  applyPreparedSegment(preparedSegment);
 }
 
 async function finalizeCurrentSegment(
@@ -289,15 +328,28 @@ async function finalizeCurrentSegment(
   }
 
   if (options.continueRecording && !stopRequested && activeSession) {
-    try {
-      await prepareAndStartSegment();
-    } catch (error) {
-      emit({
-        type: 'error',
-        error: toError(error, 'Unable to continue local safety audio recording.'),
-      });
-      await stopSafetyAudioRecorder('recording-error');
-    }
+    await runRecorderTransition(async () => {
+      if (stopRequested || !activeSession || !activeSegmentDescriptor) {
+        return;
+      }
+
+      recorderState = 'starting';
+      try {
+        await prepareAndStartSegment();
+        recorderState = 'running';
+      } catch (error) {
+        recorderState = 'idle';
+        emit({
+          type: 'error',
+          error: toError(error, 'Unable to continue local safety audio recording.'),
+        });
+        stopRequested = true;
+        await stopBackgroundKeepAlive();
+        await restoreAudioModeAfterRecording();
+        resetActiveRecorderMemory();
+        emit({ type: 'stopped', reason: 'recording-error' });
+      }
+    });
     return;
   }
 
@@ -317,8 +369,12 @@ export function getActiveSafetyAudioSession(): SafetyAudioSession | null {
   return activeSession;
 }
 
+export function getSafetyAudioRecorderState(): SafetyAudioRecorderState {
+  return recorderState;
+}
+
 export function isSafetyAudioRecorderRunning(): boolean {
-  return !!activeSession && !!activeRecording;
+  return recorderState === 'running' && !!activeSession;
 }
 
 export async function updateSafetyAudioSessionContext(
@@ -346,8 +402,8 @@ export async function startSafetyAudioRecorder(input: {
   session: SafetyAudioSession | null;
   error: Error | null;
 }> {
-  try {
-    if (activeSession && activeRecording) {
+  return await runRecorderTransition(async () => {
+    if (recorderState === 'running' && activeSession) {
       await updateSafetyAudioSessionContext(input.contextKeys);
       return {
         started: false,
@@ -356,71 +412,113 @@ export async function startSafetyAudioRecorder(input: {
       };
     }
 
+    if (recorderState === 'starting' && activeSession) {
+      await updateSafetyAudioSessionContext(input.contextKeys);
+      return {
+        started: false,
+        session: activeSession,
+        error: null,
+      };
+    }
+
+    recorderState = 'starting';
+    stopRequested = false;
+
     const nowIso = new Date().toISOString();
     const sessionId = input.sessionId || `safety-audio-session-${Date.now()}`;
-
-    stopRequested = false;
-    activeSession = {
+    const nextSession: SafetyAudioSession = {
       sessionId,
       startedAt: nowIso,
       segmentStartedAt: nowIso,
       contextKeys: [...input.contextKeys],
       reason: input.reason,
     };
-    activeSegmentDescriptor = {
+    const nextDescriptor: SegmentDescriptor = {
       contextType: input.contextType,
       contextId: input.contextId || null,
       source: input.source,
     };
 
-    await ensureAudioModeForRecording();
-    await prepareAndStartSegment();
-    await startBackgroundKeepAlive();
+    let preparedRecording: Audio.Recording | null = null;
 
-    if (activeSession) {
+    try {
+      await ensureAudioModeForRecording();
+      const preparedSegment = await createPreparedRecordingSegment();
+      preparedRecording = preparedSegment.recording;
+
+      activeSession = {
+        ...nextSession,
+        segmentStartedAt: preparedSegment.segmentStartedAtIso,
+      };
+      activeSegmentDescriptor = nextDescriptor;
+      applyPreparedSegment(preparedSegment);
+      await startBackgroundKeepAlive();
+
+      recorderState = 'running';
       emit({
         type: 'started',
         session: activeSession,
       });
+
+      return {
+        started: true,
+        session: activeSession,
+        error: null,
+      };
+    } catch (error) {
+      const normalizedError = toError(error, 'Unable to start local safety audio recording.');
+      const errorMessage = normalizedError.message.toLowerCase();
+
+      if (errorMessage.includes('recorder is already prepared') && activeSession && activeRecording) {
+        recorderState = 'running';
+        await updateSafetyAudioSessionContext(input.contextKeys);
+        return {
+          started: false,
+          session: activeSession,
+          error: null,
+        };
+      }
+
+      if (preparedRecording) {
+        try {
+          await preparedRecording.stopAndUnloadAsync();
+        } catch {
+          // no-op
+        }
+      }
+
+      await stopBackgroundKeepAlive();
+      await restoreAudioModeAfterRecording();
+      resetActiveRecorderMemory();
+      recorderState = 'idle';
+
+      return {
+        started: false,
+        session: null,
+        error: normalizedError,
+      };
     }
-
-    return {
-      started: true,
-      session: activeSession,
-      error: null,
-    };
-  } catch (error) {
-    await stopBackgroundKeepAlive();
-    await restoreAudioModeAfterRecording();
-    activeRecording = null;
-    activeSession = null;
-    activeSegmentDescriptor = null;
-    activeSegmentStartedAtIso = null;
-    clearSegmentTimer();
-    stopRequested = false;
-
-    return {
-      started: false,
-      session: null,
-      error: toError(error, 'Unable to start local safety audio recording.'),
-    };
-  }
+  });
 }
 
 export async function stopSafetyAudioRecorder(reason = 'manual-stop'): Promise<void> {
-  stopRequested = true;
-  await finalizeCurrentSegment(reason, { continueRecording: false });
+  await runRecorderTransition(async () => {
+    if (recorderState === 'idle' && !activeSession && !activeRecording) {
+      return;
+    }
 
-  clearSegmentTimer();
-  activeRecording = null;
-  activeSegmentStartedAtIso = null;
-  activeSegmentDescriptor = null;
-  activeSession = null;
-  rotationInProgress = false;
-  stopRequested = false;
+    recorderState = 'stopping';
+    stopRequested = true;
 
-  await stopBackgroundKeepAlive();
-  await restoreAudioModeAfterRecording();
+    try {
+      await finalizeCurrentSegment(reason, { continueRecording: false });
+    } finally {
+      await stopBackgroundKeepAlive();
+      await restoreAudioModeAfterRecording();
+      resetActiveRecorderMemory();
+      recorderState = 'idle';
+    }
+  });
 }
 
 export async function createSafetyAudioPlayback(uri: string): Promise<Audio.Sound> {

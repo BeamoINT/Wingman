@@ -513,7 +513,7 @@ export const SafetyScreen: React.FC = () => {
             <View style={styles.bookingSafetyRowText}>
               <Text style={styles.bookingSafetyLabel}>Recording right now</Text>
               <Text style={styles.bookingSafetyHelper}>
-                {isSafetyAudioRecording ? 'On' : 'Off'}
+                {isSafetyAudioTransitioning ? 'Starting...' : isSafetyAudioRecording ? 'On' : 'Off'}
               </Text>
             </View>
             <Switch

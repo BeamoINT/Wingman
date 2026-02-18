@@ -55,6 +55,8 @@ export type MonitoringEventName =
   | 'safety_checkin_safe_selected'
   | 'safety_checkin_unsafe_selected'
   | 'safety_audio_start'
+  | 'safety_audio_start_attempt'
+  | 'safety_audio_start_result'
   | 'safety_audio_stop'
   | 'safety_audio_autostart'
   | 'safety_audio_permission_denied'
