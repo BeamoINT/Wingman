@@ -14,6 +14,7 @@ import { friendsFeatureFlags } from '../config/featureFlags';
 import { supportsNativeMediaCompression } from '../config/runtime';
 import { useAuth } from '../context/AuthContext';
 import { useIsConnected } from '../context/NetworkContext';
+import { useSafetyAudio } from '../context/SafetyAudioContext';
 import { useSafety } from '../context/SafetyContext';
 import { getMeetupPlaceDetails, searchMeetupPlaces } from '../services/api/locationApi';
 import { blockUser } from '../services/api/blocksApi';
@@ -240,6 +241,15 @@ const ChatScreenContent: React.FC = () => {
   const { user } = useAuth();
   const isConnected = useIsConnected();
   const { triggerSos, hasAcknowledgedSafetyDisclaimer } = useSafety();
+  const {
+    isRecording: isSafetyAudioRecording,
+    isTransitioning: isSafetyAudioTransitioning,
+    activeContextKeys: activeSafetyAudioContextKeys,
+    startRecording: startSafetyAudioRecording,
+    stopRecording: stopSafetyAudioRecording,
+    toggleContextOverride,
+    getContextOverride,
+  } = useSafetyAudio();
 
   const flatListRef = useRef<FlatList<ChatTimelineItem>>(null);
 
@@ -272,9 +282,15 @@ const ChatScreenContent: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isBlockingParticipant, setIsBlockingParticipant] = useState(false);
   const [isSendingSos, setIsSendingSos] = useState(false);
+  const [isUpdatingSafetyAudio, setIsUpdatingSafetyAudio] = useState(false);
 
   const conversationId = route.params.conversationId;
+  const safetyAudioContextKey = `live_location:${conversationId}`;
   const meetupEnabled = friendsFeatureFlags.meetupNegotiationEnabled;
+  const safetyAudioOverride = getContextOverride(safetyAudioContextKey);
+  const safetyAudioContextActive = activeSafetyAudioContextKeys.includes(safetyAudioContextKey);
+  const isSafetyAudioActive = safetyAudioOverride === 'force_on'
+    || (isSafetyAudioRecording && safetyAudioContextActive && safetyAudioOverride !== 'force_off');
 
   const otherParticipant = useMemo(() => {
     if (!conversation) return null;
@@ -527,6 +543,39 @@ const ChatScreenContent: React.FC = () => {
       ],
     );
   }, [hasAcknowledgedSafetyDisclaimer, isSendingSos, triggerSos]);
+
+  const handleToggleSafetyAudio = useCallback(() => {
+    if (isUpdatingSafetyAudio || isSafetyAudioTransitioning) {
+      return;
+    }
+
+    setIsUpdatingSafetyAudio(true);
+    void (async () => {
+      try {
+        if (isSafetyAudioActive) {
+          await toggleContextOverride(safetyAudioContextKey, 'force_off');
+          await stopSafetyAudioRecording('chat-toggle-stop');
+          return;
+        }
+
+        await toggleContextOverride(safetyAudioContextKey, 'force_on');
+        const result = await startSafetyAudioRecording({ contextKey: safetyAudioContextKey });
+        if (!result.success) {
+          Alert.alert('Unable to start recording', result.error || 'Please try again.');
+        }
+      } finally {
+        setIsUpdatingSafetyAudio(false);
+      }
+    })();
+  }, [
+    isSafetyAudioActive,
+    isSafetyAudioTransitioning,
+    isUpdatingSafetyAudio,
+    safetyAudioContextKey,
+    startSafetyAudioRecording,
+    stopSafetyAudioRecording,
+    toggleContextOverride,
+  ]);
 
   const handleRefresh = useCallback(() => {
     loadChatData(true);
@@ -1090,6 +1139,18 @@ const ChatScreenContent: React.FC = () => {
 
         <View style={styles.headerActions}>
           <TouchableOpacity
+            style={[styles.headerActionButton, isSafetyAudioActive && styles.headerAudioActiveButton]}
+            onPress={handleToggleSafetyAudio}
+            disabled={isUpdatingSafetyAudio || isSafetyAudioTransitioning}
+          >
+            <Ionicons
+              name={isSafetyAudioActive ? 'mic' : 'mic-outline'}
+              size={18}
+              color={isSafetyAudioActive ? colors.status.warning : colors.text.primary}
+            />
+          </TouchableOpacity>
+
+          <TouchableOpacity
             style={[styles.headerActionButton, styles.headerSosButton]}
             onPress={handleQuickSos}
             disabled={isSendingSos}
@@ -1412,6 +1473,10 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
   headerSosButton: {
     borderColor: colors.status.error,
     backgroundColor: colors.status.errorLight,
+  },
+  headerAudioActiveButton: {
+    borderColor: colors.status.warning,
+    backgroundColor: colors.status.warningLight,
   },
   safetyTip: {
     flexDirection: 'row',

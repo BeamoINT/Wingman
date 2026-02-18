@@ -31,6 +31,7 @@ import { MetroMapPickerScreen } from '../screens/MetroMapPickerScreen';
 import { MetroPreferencesScreen } from '../screens/MetroPreferencesScreen';
 import { NotificationsScreen } from '../screens/NotificationsScreen';
 import { EmergencyContactsScreen } from '../screens/EmergencyContactsScreen';
+import { SafetyAudioRecordingsScreen } from '../screens/SafetyAudioRecordingsScreen';
 import { SafetyScreen } from '../screens/SafetyScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { SubscriptionScreen } from '../screens/SubscriptionScreen';
@@ -102,6 +103,7 @@ const ProtectedDirectionsScreen = withAuthGuard(DirectionsScreen, 'Directions');
 const ProtectedSettingsScreen = withAuthGuard(SettingsScreen, 'Settings');
 const ProtectedBlockedUsersScreen = withAuthGuard(BlockedUsersScreen, 'BlockedUsers');
 const ProtectedEmergencyContactsScreen = withAuthGuard(EmergencyContactsScreen, 'EmergencyContacts');
+const ProtectedSafetyAudioRecordingsScreen = withAuthGuard(SafetyAudioRecordingsScreen, 'SafetyAudioRecordings');
 const ProtectedSubscriptionScreen = withAuthGuard(SubscriptionScreen, 'Subscription');
 const ProtectedSafetyScreen = withAuthGuard(SafetyScreen, 'Safety');
 const ProtectedVerificationScreen = withAuthGuard(VerificationScreen, 'Verification');
@@ -258,6 +260,7 @@ export const RootNavigator: React.FC = () => {
         <Stack.Screen name="Settings" component={ProtectedSettingsScreen} />
         <Stack.Screen name="BlockedUsers" component={ProtectedBlockedUsersScreen} />
         <Stack.Screen name="EmergencyContacts" component={ProtectedEmergencyContactsScreen} />
+        <Stack.Screen name="SafetyAudioRecordings" component={ProtectedSafetyAudioRecordingsScreen} />
         <Stack.Screen name="MetroPreferences" component={ProtectedMetroPreferencesScreen} />
         <Stack.Screen
           name="MetroMapPicker"

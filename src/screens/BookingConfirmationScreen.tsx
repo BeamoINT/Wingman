@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar, Badge, Button, Card, EmptyState } from '../components';
+import { useSafetyAudio } from '../context/SafetyAudioContext';
 import { useSafety } from '../context/SafetyContext';
 import type { BookingData } from '../services/api/bookingsApi';
 import { cancelBooking, fetchBookingById } from '../services/api/bookingsApi';
@@ -203,9 +204,20 @@ export const BookingConfirmationScreen: React.FC = () => {
   const [isOpeningChat, setIsOpeningChat] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [isUpdatingEmergencyShare, setIsUpdatingEmergencyShare] = useState(false);
+  const [isUpdatingSafetyAudio, setIsUpdatingSafetyAudio] = useState(false);
   const [bookingSafetySettings, setBookingSafetySettings] = useState<BookingSafetySettings | null>(null);
   const [isSavingBookingSafetySettings, setIsSavingBookingSafetySettings] = useState(false);
   const { isEmergencyShareActive, startEmergencyShare, stopEmergencyShare, extendEmergencyShare, preferences } = useSafety();
+  const {
+    isRecording: isSafetyAudioRecording,
+    isTransitioning: isSafetyAudioTransitioning,
+    activeContextKeys: activeSafetyAudioContextKeys,
+    autoRecordDefaultEnabled,
+    startRecording: startSafetyAudioRecording,
+    stopRecording: stopSafetyAudioRecording,
+    toggleContextOverride,
+    getContextOverride,
+  } = useSafetyAudio();
 
   const loadBooking = useCallback(async () => {
     setIsLoading(true);
@@ -398,6 +410,14 @@ export const BookingConfirmationScreen: React.FC = () => {
   }, [saveBookingSafetySettings]);
 
   const emergencyShareActive = booking ? isEmergencyShareActive(booking.id) : false;
+  const safetyAudioContextKey = booking ? `booking:${booking.id}` : '';
+  const safetyAudioOverride = safetyAudioContextKey ? getContextOverride(safetyAudioContextKey) : null;
+  const safetyAudioContextActive = safetyAudioContextKey
+    ? activeSafetyAudioContextKeys.includes(safetyAudioContextKey)
+    : false;
+  const safetyAudioActive = safetyAudioOverride === 'force_on'
+    || (isSafetyAudioRecording && safetyAudioContextActive && safetyAudioOverride !== 'force_off')
+    || (!isSafetyAudioRecording && autoRecordDefaultEnabled && safetyAudioContextActive && safetyAudioOverride !== 'force_off');
 
   const handleToggleEmergencyShare = useCallback(async () => {
     if (!booking) {
@@ -435,6 +455,45 @@ export const BookingConfirmationScreen: React.FC = () => {
       setIsUpdatingEmergencyShare(false);
     }
   }, [booking, effectiveLiveShareEnabled, isEmergencyShareActive, startEmergencyShare, stopEmergencyShare]);
+
+  const handleToggleSafetyAudio = useCallback(async () => {
+    if (!booking?.id || isUpdatingSafetyAudio || isSafetyAudioTransitioning) {
+      return;
+    }
+
+    const contextKey = `booking:${booking.id}`;
+    const currentOverride = getContextOverride(contextKey);
+    const isContextActive = activeSafetyAudioContextKeys.includes(contextKey);
+    const currentlyActive = currentOverride === 'force_on'
+      || (isSafetyAudioRecording && isContextActive && currentOverride !== 'force_off');
+
+    setIsUpdatingSafetyAudio(true);
+    try {
+      if (currentlyActive) {
+        await toggleContextOverride(contextKey, 'force_off');
+        await stopSafetyAudioRecording('booking-confirmation-toggle-stop');
+        return;
+      }
+
+      await toggleContextOverride(contextKey, 'force_on');
+      const result = await startSafetyAudioRecording({ contextKey });
+      if (!result.success) {
+        Alert.alert('Unable to start recording', result.error || 'Please try again.');
+      }
+    } finally {
+      setIsUpdatingSafetyAudio(false);
+    }
+  }, [
+    activeSafetyAudioContextKeys,
+    booking?.id,
+    getContextOverride,
+    isSafetyAudioRecording,
+    isSafetyAudioTransitioning,
+    isUpdatingSafetyAudio,
+    startSafetyAudioRecording,
+    stopSafetyAudioRecording,
+    toggleContextOverride,
+  ]);
 
   const handleExtendEmergencyShare = useCallback(async () => {
     if (!booking) {
@@ -631,6 +690,22 @@ export const BookingConfirmationScreen: React.FC = () => {
             />
           </View>
 
+          <View style={styles.bookingSafetyRow}>
+            <View style={styles.bookingSafetyRowText}>
+              <Text style={styles.bookingSafetyLabel}>Safety audio for this booking</Text>
+              <Text style={styles.bookingSafetyHelper}>
+                {safetyAudioActive ? 'On (local only)' : 'Off'}
+              </Text>
+            </View>
+            <Switch
+              value={safetyAudioActive}
+              onValueChange={() => { void handleToggleSafetyAudio(); }}
+              disabled={isUpdatingSafetyAudio || isSafetyAudioTransitioning}
+              trackColor={{ false: colors.background.tertiary, true: colors.accent.primary }}
+              thumbColor={colors.text.inverse}
+            />
+          </View>
+
           {effectiveCheckinsEnabled ? (
             <>
               <Text style={styles.bookingSafetyLabel}>Check-in interval</Text>
@@ -687,6 +762,17 @@ export const BookingConfirmationScreen: React.FC = () => {
           fullWidth
           icon={emergencyShareActive ? 'radio' : 'shield-outline'}
           disabled={isUpdatingEmergencyShare}
+        />
+        <Button
+          title={isUpdatingSafetyAudio
+            ? (safetyAudioActive ? 'Stopping Audio...' : 'Starting Audio...')
+            : (safetyAudioActive ? 'Stop Safety Audio Recording' : 'Start Safety Audio Recording')}
+          onPress={handleToggleSafetyAudio}
+          variant={safetyAudioActive ? 'danger' : 'outline'}
+          size="large"
+          fullWidth
+          icon={safetyAudioActive ? 'mic' : 'mic-outline'}
+          disabled={isUpdatingSafetyAudio || isSafetyAudioTransitioning}
         />
         {emergencyShareActive ? (
           <Button

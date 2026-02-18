@@ -43,6 +43,7 @@ supabase db push
 ```
 Important: `20260301_wingman_onboarding_stripe_agreement.sql` introduces immediate hard enforcement for wingmen.
 Users with expired/unverified ID or missing current agreement acceptance will be blocked from companion profile writes until re-compliant.
+`20260304_local_safety_audio_recording.sql` extends `safety_preferences` and adds v2 RPCs used by the on-device safety audio toggle.
 3. Deploy edge functions:
 ```bash
 supabase functions deploy create-media-upload-url
@@ -157,3 +158,4 @@ Expected result after enablement: account setting shows Identity active and sess
 15. `trigger-emergency-alert` sends SMS only to verified emergency contacts and logs dispatch outcomes.
 16. `safety-maintenance` activates sessions, creates check-ins, escalates timeouts, and cleans emergency live-location state.
 17. `emergency-live-location-view` serves tokenized external viewer links and returns inactive/expired states safely.
+18. `get_safety_preferences_v2` and `update_safety_preferences_v2` are callable by authenticated users and persist `auto_record_safety_audio_on_visit`.

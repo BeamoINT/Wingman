@@ -10,6 +10,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar, Badge, Card, EmptyState, InlineBanner } from '../components';
 import { useIsConnected } from '../context/NetworkContext';
+import { useSafetyAudio } from '../context/SafetyAudioContext';
 import { useSafety } from '../context/SafetyContext';
 import type { BookingData } from '../services/api/bookingsApi';
 import { cancelBooking, fetchUserBookings } from '../services/api/bookingsApi';
@@ -219,7 +220,18 @@ export const BookingsScreen: React.FC = () => {
   const [cancellingBookingId, setCancellingBookingId] = useState<string | null>(null);
   const [messagingBookingId, setMessagingBookingId] = useState<string | null>(null);
   const [sharingBookingId, setSharingBookingId] = useState<string | null>(null);
+  const [audioBookingId, setAudioBookingId] = useState<string | null>(null);
   const { isEmergencyShareActive, startEmergencyShare, stopEmergencyShare } = useSafety();
+  const {
+    isRecording: isSafetyAudioRecording,
+    isTransitioning: isSafetyAudioTransitioning,
+    activeContextKeys: activeSafetyAudioContextKeys,
+    autoRecordDefaultEnabled,
+    startRecording: startSafetyAudioRecording,
+    stopRecording: stopSafetyAudioRecording,
+    toggleContextOverride,
+    getContextOverride,
+  } = useSafetyAudio();
 
   const loadBookings = useCallback(async (showRefresh = false) => {
     if (showRefresh) {
@@ -398,6 +410,38 @@ export const BookingsScreen: React.FC = () => {
     }
   }, [isEmergencyShareActive, startEmergencyShare, stopEmergencyShare]);
 
+  const handleToggleBookingAudio = useCallback(async (booking: Booking) => {
+    const contextKey = `booking:${booking.id}`;
+    const currentOverride = getContextOverride(contextKey);
+    const isContextActive = activeSafetyAudioContextKeys.includes(contextKey);
+    const isAudioActiveForBooking = currentOverride === 'force_on'
+      || (isSafetyAudioRecording && isContextActive && currentOverride !== 'force_off');
+
+    setAudioBookingId(booking.id);
+    try {
+      if (isAudioActiveForBooking) {
+        await toggleContextOverride(contextKey, 'force_off');
+        await stopSafetyAudioRecording('bookings-screen-toggle-stop');
+        return;
+      }
+
+      await toggleContextOverride(contextKey, 'force_on');
+      const result = await startSafetyAudioRecording({ contextKey });
+      if (!result.success) {
+        Alert.alert('Unable to start recording', result.error || 'Please try again.');
+      }
+    } finally {
+      setAudioBookingId(null);
+    }
+  }, [
+    activeSafetyAudioContextKeys,
+    getContextOverride,
+    isSafetyAudioRecording,
+    startSafetyAudioRecording,
+    stopSafetyAudioRecording,
+    toggleContextOverride,
+  ]);
+
   const renderHeader = (
     <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}>
       <Text style={styles.title}>Bookings</Text>
@@ -496,7 +540,14 @@ export const BookingsScreen: React.FC = () => {
     const bookingIsCancelling = cancellingBookingId === item.id;
     const bookingIsOpeningChat = messagingBookingId === item.id;
     const bookingIsSharing = sharingBookingId === item.id;
+    const bookingIsAudioBusy = audioBookingId === item.id || isSafetyAudioTransitioning;
     const emergencyShareActive = isEmergencyShareActive(item.id);
+    const audioContextKey = `booking:${item.id}`;
+    const audioOverride = getContextOverride(audioContextKey);
+    const isAudioContextActive = activeSafetyAudioContextKeys.includes(audioContextKey);
+    const safetyAudioActive = audioOverride === 'force_on'
+      || (isSafetyAudioRecording && isAudioContextActive && audioOverride !== 'force_off')
+      || (!isSafetyAudioRecording && autoRecordDefaultEnabled && isAudioContextActive && audioOverride !== 'force_off');
 
     return (
       <TouchableOpacity
@@ -586,6 +637,23 @@ export const BookingsScreen: React.FC = () => {
                 {bookingIsSharing
                   ? (emergencyShareActive ? 'Stopping...' : 'Starting...')
                   : (emergencyShareActive ? 'Stop Share' : 'Emergency Share')}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.actionButton, safetyAudioActive && styles.cancelButton]}
+              disabled={bookingIsAudioBusy}
+              onPress={() => handleToggleBookingAudio(item)}
+            >
+              <Ionicons
+                name={safetyAudioActive ? 'mic' : 'mic-outline'}
+                size={18}
+                color={safetyAudioActive ? colors.status.error : colors.primary.blue}
+              />
+              <Text style={[styles.actionLabel, safetyAudioActive && styles.cancelLabel]}>
+                {bookingIsAudioBusy
+                  ? (safetyAudioActive ? 'Stopping...' : 'Starting...')
+                  : (safetyAudioActive ? 'Stop Audio' : 'Safety Audio')}
               </Text>
             </TouchableOpacity>
 

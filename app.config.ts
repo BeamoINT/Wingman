@@ -29,7 +29,7 @@ const config: ExpoConfig = {
       googleMapsApiKey: googleMapsApiKeyIos,
     },
     infoPlist: {
-      UIBackgroundModes: ['fetch', 'remote-notification', 'location'],
+      UIBackgroundModes: ['fetch', 'remote-notification', 'location', 'audio'],
       NSLocationWhenInUseUsageDescription:
         'Wingman uses your location to show in-app directions and help you coordinate meetup arrivals.',
       NSLocationAlwaysAndWhenInUseUsageDescription:
@@ -41,7 +41,7 @@ const config: ExpoConfig = {
       NSCameraUsageDescription:
         'Wingman needs camera access so you can capture images and videos in encrypted chats.',
       NSMicrophoneUsageDescription:
-        'Wingman needs microphone access when you record video messages.',
+        'Wingman uses microphone access for video messages and optional on-device safety audio recording.',
       NSUserNotificationUsageDescription:
         'Wingman uses notifications for safety check-ins and urgent booking safety prompts.',
     },
@@ -63,6 +63,7 @@ const config: ExpoConfig = {
       'ACCESS_BACKGROUND_LOCATION',
       'FOREGROUND_SERVICE',
       'FOREGROUND_SERVICE_LOCATION',
+      'FOREGROUND_SERVICE_MICROPHONE',
       'POST_NOTIFICATIONS',
       'CAMERA',
       'RECORD_AUDIO',

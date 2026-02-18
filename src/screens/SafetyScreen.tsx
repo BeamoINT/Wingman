@@ -21,6 +21,7 @@ import {
   SectionHeader,
 } from '../components';
 import { useAuth } from '../context/AuthContext';
+import { useSafetyAudio } from '../context/SafetyAudioContext';
 import { useSafety } from '../context/SafetyContext';
 import { useTheme } from '../context/ThemeContext';
 import type { ThemeTokens } from '../theme/tokens';
@@ -128,6 +129,15 @@ export const SafetyScreen: React.FC = () => {
     triggerSos,
     refreshSafetyState,
   } = useSafety();
+  const {
+    isRecording: isSafetyAudioRecording,
+    isTransitioning: isSafetyAudioTransitioning,
+    autoRecordDefaultEnabled,
+    setAutoRecordDefaultEnabled,
+    startRecording: startSafetyAudioRecording,
+    stopRecording: stopSafetyAudioRecording,
+    storageStatus: safetyAudioStorageStatus,
+  } = useSafetyAudio();
 
   const [sosHolding, setSosHolding] = useState(false);
   const [sosProgress, setSosProgress] = useState(0);
@@ -260,13 +270,36 @@ export const SafetyScreen: React.FC = () => {
 
   const onToggleSafetySetting = useCallback(async (
     nextValue: boolean,
-    key: 'checkinsEnabled' | 'autoShareLiveLocation' | 'sosEnabled',
+    key: 'checkinsEnabled' | 'autoShareLiveLocation' | 'sosEnabled' | 'autoRecordSafetyAudioOnVisit',
   ) => {
     const result = await updatePreferences({ [key]: nextValue });
     if (!result.success) {
       Alert.alert('Unable to save setting', result.error || 'Please try again.');
     }
   }, [updatePreferences]);
+
+  const onToggleSafetyAudioDefault = useCallback(async (nextValue: boolean) => {
+    const result = await setAutoRecordDefaultEnabled(nextValue);
+    if (!result.success) {
+      Alert.alert('Unable to save setting', result.error || 'Please try again.');
+    }
+  }, [setAutoRecordDefaultEnabled]);
+
+  const onToggleSafetyAudioNow = useCallback(async (nextValue: boolean) => {
+    if (isSafetyAudioTransitioning) {
+      return;
+    }
+
+    if (nextValue) {
+      const result = await startSafetyAudioRecording();
+      if (!result.success) {
+        Alert.alert('Unable to start recording', result.error || 'Please try again.');
+      }
+      return;
+    }
+
+    await stopSafetyAudioRecording('safety-screen-toggle');
+  }, [isSafetyAudioTransitioning, startSafetyAudioRecording, stopSafetyAudioRecording]);
 
   const onSelectCheckinInterval = useCallback(async (minutes: number) => {
     const result = await updatePreferences({ checkinIntervalMinutes: minutes });
@@ -447,6 +480,14 @@ export const SafetyScreen: React.FC = () => {
           />
           <View style={styles.divider} />
           <SafetySettingRow
+            icon="mic"
+            title="Auto-record safety audio on visits"
+            description="Store local-only safety audio automatically when active booking or live-location sessions begin."
+            value={autoRecordDefaultEnabled}
+            onChange={(value) => { void onToggleSafetyAudioDefault(value); }}
+          />
+          <View style={styles.divider} />
+          <SafetySettingRow
             icon="notifications"
             title="Safety check-ins"
             description="Receive periodic safety prompts during active bookings."
@@ -460,6 +501,44 @@ export const SafetyScreen: React.FC = () => {
             description="Keep hold-to-confirm SOS action available."
             value={preferences?.sos_enabled ?? true}
             onChange={(value) => { void onToggleSafetySetting(value, 'sosEnabled'); }}
+          />
+        </Card>
+
+        <Card variant="outlined" style={styles.audioCard}>
+          <Text style={styles.timingTitle}>Safety Audio Recording</Text>
+          <Text style={styles.timingSubtitle}>
+            Recordings are stored only on this device, never uploaded to Wingman servers, and automatically deleted after 7 days.
+          </Text>
+          <View style={styles.bookingAudioRow}>
+            <View style={styles.bookingSafetyRowText}>
+              <Text style={styles.bookingSafetyLabel}>Recording right now</Text>
+              <Text style={styles.bookingSafetyHelper}>
+                {isSafetyAudioRecording ? 'On' : 'Off'}
+              </Text>
+            </View>
+            <Switch
+              value={isSafetyAudioRecording}
+              onValueChange={(value) => { void onToggleSafetyAudioNow(value); }}
+              disabled={isSafetyAudioTransitioning || safetyAudioStorageStatus.critical}
+              trackColor={{ false: colors.background.tertiary, true: colors.accent.primary }}
+              thumbColor={colors.text.inverse}
+            />
+          </View>
+          {safetyAudioStorageStatus.critical ? (
+            <Text style={styles.audioCriticalText}>
+              Recording is blocked because storage is critically low on this device.
+            </Text>
+          ) : null}
+          {safetyAudioStorageStatus.warning && !safetyAudioStorageStatus.critical ? (
+            <Text style={styles.audioWarningText}>
+              Storage is running low. Consider deleting old local recordings soon.
+            </Text>
+          ) : null}
+          <Button
+            title="Manage Local Recordings"
+            variant="outline"
+            size="small"
+            onPress={() => navigation.navigate('SafetyAudioRecordings')}
           />
         </Card>
 
@@ -635,6 +714,36 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
   },
   timingCard: {
     gap: spacing.sm,
+  },
+  audioCard: {
+    gap: spacing.sm,
+  },
+  bookingAudioRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
+  bookingSafetyRowText: {
+    flex: 1,
+    gap: spacing.xxs,
+  },
+  bookingSafetyLabel: {
+    ...typography.presets.body,
+    color: colors.text.primary,
+    fontWeight: typography.weights.semibold,
+  },
+  bookingSafetyHelper: {
+    ...typography.presets.caption,
+    color: colors.text.secondary,
+  },
+  audioWarningText: {
+    ...typography.presets.caption,
+    color: colors.status.warning,
+  },
+  audioCriticalText: {
+    ...typography.presets.caption,
+    color: colors.status.error,
   },
   timingTitle: {
     ...typography.presets.body,

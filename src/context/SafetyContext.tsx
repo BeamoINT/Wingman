@@ -74,6 +74,7 @@ interface SafetyContextType {
     checkinResponseWindowMinutes?: number;
     sosEnabled?: boolean;
     autoShareLiveLocation?: boolean;
+    autoRecordSafetyAudioOnVisit?: boolean;
   }) => Promise<{ success: boolean; error?: string }>;
   acknowledgeSafetyDisclaimer: () => Promise<{ success: boolean; error?: string }>;
   respondCheckin: (checkinId: string, response: 'safe' | 'unsafe') => Promise<{ success: boolean; error?: string }>;
@@ -203,6 +204,7 @@ export const SafetyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     checkinResponseWindowMinutes?: number;
     sosEnabled?: boolean;
     autoShareLiveLocation?: boolean;
+    autoRecordSafetyAudioOnVisit?: boolean;
   }): Promise<{ success: boolean; error?: string }> => {
     const { preferences: nextPreferences, error } = await updateSafetyPreferences(input);
 

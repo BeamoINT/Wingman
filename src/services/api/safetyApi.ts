@@ -1,5 +1,10 @@
 import { getAuthToken, supabase } from '../supabase';
 
+type QueryError = {
+  code?: string | null;
+  message?: string | null;
+};
+
 export interface SafetyPreferences {
   user_id: string;
   checkins_enabled: boolean;
@@ -7,6 +12,9 @@ export interface SafetyPreferences {
   checkin_response_window_minutes: number;
   sos_enabled: boolean;
   auto_share_live_location: boolean;
+  auto_record_safety_audio_on_visit: boolean;
+  safety_audio_policy_ack_version: string | null;
+  safety_audio_policy_ack_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -85,22 +93,89 @@ function normalizeSingleRow<T>(value: unknown): T | null {
   return null;
 }
 
+function isMissingSafetyPreferencesRpc(error: unknown, rpcName: string): boolean {
+  const typedError = error as QueryError | null | undefined;
+  const code = String(typedError?.code || '');
+  const message = String(typedError?.message || '').toLowerCase();
+  return (
+    (code.startsWith('PGRST') || code === '42883')
+    && message.includes(`function public.${rpcName}`)
+    && (
+      message.includes('does not exist')
+      || message.includes('could not find the function')
+      || message.includes('schema cache')
+    )
+  );
+}
+
+function normalizeSafetyPreferences(value: unknown): SafetyPreferences | null {
+  const row = normalizeSingleRow<Record<string, unknown>>(value);
+  if (!row) {
+    return null;
+  }
+
+  return {
+    user_id: String(row.user_id || ''),
+    checkins_enabled: row.checkins_enabled !== false,
+    checkin_interval_minutes: Number(row.checkin_interval_minutes || 30),
+    checkin_response_window_minutes: Number(row.checkin_response_window_minutes || 10),
+    sos_enabled: row.sos_enabled !== false,
+    auto_share_live_location: row.auto_share_live_location === true,
+    auto_record_safety_audio_on_visit: row.auto_record_safety_audio_on_visit === true,
+    safety_audio_policy_ack_version: typeof row.safety_audio_policy_ack_version === 'string'
+      ? row.safety_audio_policy_ack_version
+      : null,
+    safety_audio_policy_ack_at: typeof row.safety_audio_policy_ack_at === 'string'
+      ? row.safety_audio_policy_ack_at
+      : null,
+    created_at: String(row.created_at || new Date().toISOString()),
+    updated_at: String(row.updated_at || new Date().toISOString()),
+  };
+}
+
+async function getSafetyPreferencesV1Fallback(): Promise<{
+  preferences: SafetyPreferences | null;
+  error: Error | null;
+}> {
+  const { data, error } = await supabase.rpc('get_safety_preferences_v1');
+
+  if (error) {
+    return {
+      preferences: null,
+      error: toError(error, 'Unable to load safety preferences.'),
+    };
+  }
+
+  return {
+    preferences: normalizeSafetyPreferences(data),
+    error: null,
+  };
+}
+
 export async function getSafetyPreferences(): Promise<{
   preferences: SafetyPreferences | null;
   error: Error | null;
 }> {
   try {
-    const { data, error } = await supabase.rpc('get_safety_preferences_v1');
+    const { data, error } = await supabase.rpc('get_safety_preferences_v2');
 
     if (error) {
+      if (isMissingSafetyPreferencesRpc(error, 'get_safety_preferences_v2')) {
+        return await getSafetyPreferencesV1Fallback();
+      }
+
       return { preferences: null, error: toError(error, 'Unable to load safety preferences.') };
     }
 
     return {
-      preferences: normalizeSingleRow<SafetyPreferences>(data),
+      preferences: normalizeSafetyPreferences(data),
       error: null,
     };
   } catch (error) {
+    if (isMissingSafetyPreferencesRpc(error, 'get_safety_preferences_v2')) {
+      return await getSafetyPreferencesV1Fallback();
+    }
+
     return {
       preferences: null,
       error: toError(error, 'Unable to load safety preferences.'),
@@ -169,28 +244,85 @@ export async function updateSafetyPreferences(input: {
   checkinResponseWindowMinutes?: number;
   sosEnabled?: boolean;
   autoShareLiveLocation?: boolean;
+  autoRecordSafetyAudioOnVisit?: boolean;
+  safetyAudioPolicyAckVersion?: string | null;
+  acknowledgeSafetyAudioPolicy?: boolean;
 }): Promise<{
   preferences: SafetyPreferences | null;
   error: Error | null;
 }> {
   try {
-    const { data, error } = await supabase.rpc('update_safety_preferences_v1', {
+    const { data, error } = await supabase.rpc('update_safety_preferences_v2', {
       p_checkins_enabled: input.checkinsEnabled ?? null,
       p_checkin_interval_minutes: input.checkinIntervalMinutes ?? null,
       p_checkin_response_window_minutes: input.checkinResponseWindowMinutes ?? null,
       p_sos_enabled: input.sosEnabled ?? null,
       p_auto_share_live_location: input.autoShareLiveLocation ?? null,
+      p_auto_record_safety_audio_on_visit: input.autoRecordSafetyAudioOnVisit ?? null,
+      p_safety_audio_policy_ack_version: input.safetyAudioPolicyAckVersion ?? null,
+      p_acknowledge_safety_audio_policy: input.acknowledgeSafetyAudioPolicy ?? false,
     });
 
     if (error) {
+      if (isMissingSafetyPreferencesRpc(error, 'update_safety_preferences_v2')) {
+        const fallback = await supabase.rpc('update_safety_preferences_v1', {
+          p_checkins_enabled: input.checkinsEnabled ?? null,
+          p_checkin_interval_minutes: input.checkinIntervalMinutes ?? null,
+          p_checkin_response_window_minutes: input.checkinResponseWindowMinutes ?? null,
+          p_sos_enabled: input.sosEnabled ?? null,
+          p_auto_share_live_location: input.autoShareLiveLocation ?? null,
+        });
+
+        if (fallback.error) {
+          return {
+            preferences: null,
+            error: toError(fallback.error, 'Unable to update safety preferences.'),
+          };
+        }
+
+        return {
+          preferences: normalizeSafetyPreferences(fallback.data),
+          error: null,
+        };
+      }
+
       return { preferences: null, error: toError(error, 'Unable to update safety preferences.') };
     }
 
     return {
-      preferences: normalizeSingleRow<SafetyPreferences>(data),
+      preferences: normalizeSafetyPreferences(data),
       error: null,
     };
   } catch (error) {
+    if (isMissingSafetyPreferencesRpc(error, 'update_safety_preferences_v2')) {
+      try {
+        const fallback = await supabase.rpc('update_safety_preferences_v1', {
+          p_checkins_enabled: input.checkinsEnabled ?? null,
+          p_checkin_interval_minutes: input.checkinIntervalMinutes ?? null,
+          p_checkin_response_window_minutes: input.checkinResponseWindowMinutes ?? null,
+          p_sos_enabled: input.sosEnabled ?? null,
+          p_auto_share_live_location: input.autoShareLiveLocation ?? null,
+        });
+
+        if (fallback.error) {
+          return {
+            preferences: null,
+            error: toError(fallback.error, 'Unable to update safety preferences.'),
+          };
+        }
+
+        return {
+          preferences: normalizeSafetyPreferences(fallback.data),
+          error: null,
+        };
+      } catch (fallbackError) {
+        return {
+          preferences: null,
+          error: toError(fallbackError, 'Unable to update safety preferences.'),
+        };
+      }
+    }
+
     return {
       preferences: null,
       error: toError(error, 'Unable to update safety preferences.'),

@@ -16,11 +16,13 @@ import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { LiveLocationProvider } from './src/context/LiveLocationContext';
 import { NetworkProvider } from './src/context/NetworkContext';
 import { RequirementsProvider } from './src/context/RequirementsContext';
+import { SafetyAudioProvider } from './src/context/SafetyAudioContext';
 import { SafetyProvider } from './src/context/SafetyContext';
 import { ThemeProvider, useTheme } from './src/context/ThemeContext';
 import { VerificationProvider } from './src/context/VerificationContext';
 import { LiveLocationIndicator } from './src/components/LiveLocationIndicator';
 import { EmergencySosIndicator } from './src/components/EmergencySosIndicator';
+import { SafetyAudioRecordingIndicator } from './src/components/SafetyAudioRecordingIndicator';
 import { RootNavigator } from './src/navigation';
 import { captureError, initializeSentry } from './src/services/monitoring/sentry';
 
@@ -96,6 +98,7 @@ function AppContent({ onPhaseChange }: { onPhaseChange: (phase: AppStartupPhase)
       <RootNavigator />
       <LiveLocationIndicator />
       <EmergencySosIndicator />
+      <SafetyAudioRecordingIndicator />
     </>
   );
 }
@@ -159,7 +162,9 @@ export default function App() {
                     <RequirementsProvider>
                       <SafetyProvider>
                         <LiveLocationProvider>
-                          <AppContent onPhaseChange={setStartupPhase} />
+                          <SafetyAudioProvider>
+                            <AppContent onPhaseChange={setStartupPhase} />
+                          </SafetyAudioProvider>
                         </LiveLocationProvider>
                       </SafetyProvider>
                     </RequirementsProvider>

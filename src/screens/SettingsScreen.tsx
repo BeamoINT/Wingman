@@ -242,6 +242,13 @@ export const SettingsScreen: React.FC = () => {
           type: 'link',
           onPress: () => navigation.navigate('EmergencyContacts'),
         },
+        {
+          id: 'safety-audio',
+          icon: 'mic-outline',
+          label: 'Safety Audio Recording',
+          type: 'link',
+          onPress: () => navigation.navigate('SafetyAudioRecordings'),
+        },
       ],
     },
     {

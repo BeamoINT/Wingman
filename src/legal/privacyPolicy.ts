@@ -80,6 +80,12 @@ g) Accessibility Information:
 - Accessibility needs and preferences
 - Accommodation requirements
 
+h) Safety Audio Recording (Optional):
+- Local safety audio recordings created on your device
+- Stored only on your device in app-private storage
+- Never uploaded to ${COMPANY_INFO.appName} servers
+- Automatically deleted from your device after 7 days
+
 2.2 INFORMATION COLLECTED AUTOMATICALLY
 
 a) Device Information:
@@ -247,6 +253,10 @@ e) Analytics Providers
 f) Customer Support Tools
 - Support ticket information
 - Communication history
+
+g) Local Safety Audio Exception
+- Safety audio recordings are not shared with us or any third party
+- These recordings remain local to your device and are never uploaded by ${COMPANY_INFO.appName}
 
 5.3 FOR LEGAL REASONS
 We may disclose information:

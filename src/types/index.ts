@@ -282,6 +282,7 @@ export interface SafetyPreferences {
   checkinResponseWindowMinutes: number;
   sosEnabled: boolean;
   autoShareLiveLocation: boolean;
+  autoRecordSafetyAudioOnVisit: boolean;
 }
 
 export interface SafetySession {
@@ -295,6 +296,37 @@ export interface SafetySession {
   nextCheckinAt?: string | null;
   pendingCheckinId?: string | null;
   pendingCheckinRespondBy?: string | null;
+}
+
+export type SafetyAudioContextKey = string;
+export type SafetyAudioOverrideState = 'force_on' | 'force_off' | null;
+
+export interface SafetyAudioRecording {
+  id: string;
+  uri: string;
+  createdAt: string;
+  expiresAt: string;
+  durationMs: number;
+  sizeBytes: number;
+  contextType: 'booking' | 'live_location' | 'manual';
+  contextId: string | null;
+  source: 'manual' | 'auto_booking' | 'auto_live_location' | 'restarted';
+}
+
+export interface SafetyAudioSession {
+  sessionId: string;
+  startedAt: string;
+  segmentStartedAt: string;
+  contextKeys: SafetyAudioContextKey[];
+  reason: 'manual' | 'auto';
+}
+
+export interface SafetyAudioStorageStatus {
+  freeBytes: number | null;
+  warning: boolean;
+  critical: boolean;
+  warningThresholdBytes: number;
+  criticalThresholdBytes: number;
 }
 
 // Companion Application Types
@@ -477,6 +509,7 @@ export type RootStackParamList = {
   Settings: undefined;
   BlockedUsers: undefined;
   EmergencyContacts: undefined;
+  SafetyAudioRecordings: undefined;
   ChangePassword: undefined;
   ChangeEmail: undefined;
   EditProfile: undefined;
