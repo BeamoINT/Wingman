@@ -91,6 +91,9 @@ export const SafetyAudioRecordingsScreen: React.FC = () => {
     storageStatus,
     recordingState,
     elapsedMs,
+    isCloudUploadProEnabled,
+    hasCloudReadAccess,
+    cloudSync,
   } = useSafetyAudio();
   const [playingId, setPlayingId] = useState<string | null>(null);
   const soundRef = useRef<Awaited<ReturnType<typeof createSafetyAudioPlayback>> | null>(null);
@@ -176,9 +179,31 @@ export const SafetyAudioRecordingsScreen: React.FC = () => {
 
       <InlineBanner
         title="Local only recording"
-        message="Safety audio files stay on this device, are never uploaded to Wingman servers, and auto-delete after 7 days."
+        message={isCloudUploadProEnabled
+          ? 'Local files auto-delete after 7 days. Pro cloud upload is enabled separately with a 3-month retention maximum.'
+          : 'Safety audio files stay on this device and auto-delete after 7 days. Cloud storage is available with Wingman Pro.'}
         variant="info"
       />
+
+      {hasCloudReadAccess ? (
+        <Card variant="outlined" style={styles.cloudEntryCard}>
+          <SectionHeader
+            title="Cloud Safety Audio"
+            subtitle={isCloudUploadProEnabled
+              ? (cloudSync.state === 'uploading'
+                ? `Uploading ${Math.round(cloudSync.activeUploadProgress * 100)}%`
+                : `${cloudSync.queueCount} upload${cloudSync.queueCount === 1 ? '' : 's'} queued`)
+              : 'Read-only grace mode'}
+            actionLabel="Open"
+            onPressAction={() => navigation.navigate('CloudSafetyAudioRecordings')}
+          />
+          <Text style={styles.storageText}>
+            {isCloudUploadProEnabled
+              ? 'Stream, download, and delete your private cloud recordings.'
+              : 'Grace access is active. Download or delete cloud files before grace ends.'}
+          </Text>
+        </Card>
+      ) : null}
 
       <Card variant="outlined" style={styles.liveStateCard}>
         <View style={styles.liveStateRow}>
@@ -316,6 +341,9 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
     fontWeight: typography.weights.semibold,
   },
   storageCard: {
+    gap: spacing.xs,
+  },
+  cloudEntryCard: {
     gap: spacing.xs,
   },
   storageText: {

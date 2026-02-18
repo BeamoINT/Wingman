@@ -75,6 +75,7 @@ function isRecordSource(value: unknown): value is SafetyAudioSource {
     || value === 'auto_booking'
     || value === 'auto_live_location'
     || value === 'restarted'
+    || value === 'cloud_download'
   );
 }
 
@@ -113,6 +114,18 @@ function normalizeRecording(value: unknown): SafetyAudioRecording | null {
       ? row.contextId
       : null,
     source,
+    cloudRecordingId: typeof row.cloudRecordingId === 'string' && row.cloudRecordingId.trim().length > 0
+      ? row.cloudRecordingId
+      : null,
+    cloudSyncState: row.cloudSyncState === 'pending'
+      || row.cloudSyncState === 'uploading'
+      || row.cloudSyncState === 'uploaded'
+      || row.cloudSyncState === 'failed'
+      || row.cloudSyncState === 'paused'
+      ? row.cloudSyncState
+      : undefined,
+    cloudUploadedAt: typeof row.cloudUploadedAt === 'string' ? row.cloudUploadedAt : null,
+    cloudLastError: typeof row.cloudLastError === 'string' ? row.cloudLastError : null,
   };
 }
 
@@ -200,6 +213,39 @@ export async function addSafetyAudioRecording(recording: SafetyAudioRecording): 
   ];
   await writeIndex(next);
   return sortRecordings(next);
+}
+
+export async function updateSafetyAudioRecordingCloudSync(
+  recordingId: string,
+  patch: {
+    cloudRecordingId?: string | null;
+    cloudSyncState?: 'pending' | 'uploading' | 'uploaded' | 'failed' | 'paused' | null;
+    cloudUploadedAt?: string | null;
+    cloudLastError?: string | null;
+  },
+): Promise<SafetyAudioRecording | null> {
+  const existing = await readSafetyAudioIndex();
+  const target = existing.find((recording) => recording.id === recordingId) || null;
+  if (!target) {
+    return null;
+  }
+
+  const updated: SafetyAudioRecording = {
+    ...target,
+    ...(patch.cloudRecordingId !== undefined ? { cloudRecordingId: patch.cloudRecordingId } : {}),
+    ...(patch.cloudSyncState !== undefined
+      ? { cloudSyncState: patch.cloudSyncState || undefined }
+      : {}),
+    ...(patch.cloudUploadedAt !== undefined ? { cloudUploadedAt: patch.cloudUploadedAt } : {}),
+    ...(patch.cloudLastError !== undefined ? { cloudLastError: patch.cloudLastError } : {}),
+  };
+
+  const next = [
+    updated,
+    ...existing.filter((recording) => recording.id !== recordingId),
+  ];
+  await writeIndex(next);
+  return updated;
 }
 
 export async function readActiveSafetyAudioSegmentMetadata(): Promise<ActiveSafetyAudioSegmentMetadata | null> {

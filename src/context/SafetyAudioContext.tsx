@@ -14,13 +14,17 @@ import {
   type AppStateStatus,
 } from 'react-native';
 import type {
+  SafetyAudioCloudNotice,
+  SafetyAudioCloudSyncSnapshot,
   SafetyAudioContextKey,
   SafetyAudioOverrideState,
   SafetyAudioRecording,
   SafetyAudioSession,
   SafetyAudioStorageStatus,
 } from '../types';
+import { useAuth } from './AuthContext';
 import { useLiveLocation } from './LiveLocationContext';
+import { useNetwork } from './NetworkContext';
 import { useSafety } from './SafetyContext';
 import {
   getSafetyAudioPermissionState,
@@ -39,6 +43,17 @@ import {
   updateSafetyAudioSessionContext,
 } from '../services/safety-audio/safetyAudioRecorder';
 import { cleanupSafetyAudioRetention } from '../services/safety-audio/safetyAudioRetention';
+import {
+  getSafetyAudioCloudNotices,
+  markSafetyAudioCloudNoticeRead,
+} from '../services/api/safetyAudioCloudApi';
+import {
+  configureSafetyAudioCloudSync,
+  getSafetyAudioCloudSyncSnapshot,
+  processSafetyAudioCloudAutoDownloads,
+  reconcileSafetyAudioCloudUploadQueue,
+  subscribeSafetyAudioCloudSync,
+} from '../services/safety-audio/safetyAudioCloudSync';
 import {
   getSafetyAudioStorageStatus,
   listSafetyAudioRecordings,
@@ -66,6 +81,10 @@ interface SafetyAudioContextType {
   autoRecordDefaultEnabled: boolean;
   storageStatus: SafetyAudioStorageStatus;
   activeContextKeys: SafetyAudioContextKey[];
+  isCloudUploadProEnabled: boolean;
+  hasCloudReadAccess: boolean;
+  cloudSync: SafetyAudioCloudSyncSnapshot;
+  cloudNotices: SafetyAudioCloudNotice[];
   segmentDurationMs: typeof SAFETY_AUDIO_SEGMENT_DURATION_MS;
   setAutoRecordDefaultEnabled: (enabled: boolean) => Promise<{ success: boolean; error?: string }>;
   startRecording: (context?: { contextKey?: SafetyAudioContextKey }) => Promise<{ success: boolean; error?: string }>;
@@ -76,6 +95,8 @@ interface SafetyAudioContextType {
   ) => Promise<void>;
   getContextOverride: (contextKey: SafetyAudioContextKey) => SafetyAudioOverrideState;
   refreshRecordings: () => Promise<void>;
+  refreshCloudNotices: () => Promise<void>;
+  markCloudNoticeRead: (noticeId: string) => Promise<void>;
 }
 
 const defaultStorageStatus: SafetyAudioStorageStatus = {
@@ -84,6 +105,15 @@ const defaultStorageStatus: SafetyAudioStorageStatus = {
   critical: false,
   warningThresholdBytes: 500 * 1024 * 1024,
   criticalThresholdBytes: 200 * 1024 * 1024,
+};
+
+const defaultCloudSyncSnapshot: SafetyAudioCloudSyncSnapshot = {
+  state: 'idle',
+  queueCount: 0,
+  uploadingCount: 0,
+  activeUploadLocalRecordingId: null,
+  activeUploadProgress: 0,
+  lastError: null,
 };
 
 const SafetyAudioContext = createContext<SafetyAudioContextType | undefined>(undefined);
@@ -231,6 +261,8 @@ async function confirmPermissionExplanation(): Promise<boolean> {
 }
 
 export const SafetyAudioProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user } = useAuth();
+  const network = useNetwork();
   const { preferences, sessions, updatePreferences } = useSafety();
   const { activeShares } = useLiveLocation();
 
@@ -245,6 +277,8 @@ export const SafetyAudioProvider: React.FC<{ children: React.ReactNode }> = ({ c
   );
   const [recordings, setRecordings] = useState<SafetyAudioRecording[]>([]);
   const [storageStatus, setStorageStatus] = useState<SafetyAudioStorageStatus>(defaultStorageStatus);
+  const [cloudSync, setCloudSync] = useState<SafetyAudioCloudSyncSnapshot>(defaultCloudSyncSnapshot);
+  const [cloudNotices, setCloudNotices] = useState<SafetyAudioCloudNotice[]>([]);
   const [overrides, setOverrides] = useState<PersistedOverrideMap>({});
   const [lastEvalTimestamp, setLastEvalTimestamp] = useState(0);
 
@@ -271,6 +305,19 @@ export const SafetyAudioProvider: React.FC<{ children: React.ReactNode }> = ({ c
   ]), [activeBookingContextKeys, activeLiveLocationContextKeys]);
 
   const autoRecordDefaultEnabled = preferences?.auto_record_safety_audio_on_visit === true;
+  const isCloudUploadProEnabled = user?.subscriptionTier === 'pro' && user?.proStatus === 'active';
+  const hasCloudReadAccess = useMemo(() => {
+    if (isCloudUploadProEnabled) {
+      return true;
+    }
+
+    const graceUntilIso = user?.safetyAudioCloudGraceUntil;
+    if (!graceUntilIso) {
+      return false;
+    }
+
+    return parseTimestamp(graceUntilIso) > Date.now();
+  }, [isCloudUploadProEnabled, user?.safetyAudioCloudGraceUntil]);
 
   const persistOverrides = useCallback(async (next: PersistedOverrideMap): Promise<void> => {
     try {
@@ -294,6 +341,55 @@ export const SafetyAudioProvider: React.FC<{ children: React.ReactNode }> = ({ c
       return;
     }
     setStorageStatus(next);
+  }, []);
+
+  const refreshCloudNotices = useCallback(async () => {
+    if (!hasCloudReadAccess) {
+      if (isMountedRef.current) {
+        setCloudNotices([]);
+      }
+      return;
+    }
+
+    const { notices, error } = await getSafetyAudioCloudNotices(true);
+    if (error) {
+      console.error('Unable to refresh cloud safety audio notices', error);
+      return;
+    }
+
+    if (!isMountedRef.current) {
+      return;
+    }
+
+    setCloudNotices(notices);
+    if (notices.length > 0) {
+      trackEvent('safety_audio_cloud_notice_shown', {
+        unreadCount: notices.length,
+      });
+
+      if (notices.some((notice) => notice.notice_type === 'grace_warning')) {
+        trackEvent('safety_audio_cloud_grace_warning_shown', {
+          unreadCount: notices.length,
+        });
+      }
+    }
+  }, [hasCloudReadAccess]);
+
+  const markCloudNoticeRead = useCallback(async (noticeId: string) => {
+    if (!noticeId.trim()) {
+      return;
+    }
+
+    const { success } = await markSafetyAudioCloudNoticeRead(noticeId);
+    if (!success) {
+      return;
+    }
+
+    if (!isMountedRef.current) {
+      return;
+    }
+
+    setCloudNotices((previous) => previous.filter((notice) => notice.id !== noticeId));
   }, []);
 
   const runRetentionCleanup = useCallback(async () => {
@@ -533,7 +629,57 @@ export const SafetyAudioProvider: React.FC<{ children: React.ReactNode }> = ({ c
     void refreshRecordings();
     void refreshStorageStatus();
     void runRetentionCleanup();
-  }, [refreshRecordings, refreshStorageStatus, runRetentionCleanup]);
+    void refreshCloudNotices();
+  }, [refreshCloudNotices, refreshRecordings, refreshStorageStatus, runRetentionCleanup]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeSafetyAudioCloudSync((snapshot) => {
+      if (!isMountedRef.current) {
+        return;
+      }
+      setCloudSync(snapshot);
+    });
+
+    setCloudSync(getSafetyAudioCloudSyncSnapshot());
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    void configureSafetyAudioCloudSync({
+      isProActive: isCloudUploadProEnabled,
+      hasCloudReadAccess,
+      wifiOnlyUpload: preferences?.cloud_audio_wifi_only_upload === true,
+      isConnected: network.isConnected && (network.isInternetReachable !== false),
+      isWifi: network.isWifi,
+    });
+  }, [
+    hasCloudReadAccess,
+    isCloudUploadProEnabled,
+    network.isConnected,
+    network.isInternetReachable,
+    network.isWifi,
+    preferences?.cloud_audio_wifi_only_upload,
+  ]);
+
+  useEffect(() => {
+    if (!isCloudUploadProEnabled) {
+      return;
+    }
+
+    void reconcileSafetyAudioCloudUploadQueue(recordings);
+  }, [isCloudUploadProEnabled, recordings]);
+
+  useEffect(() => {
+    if (!hasCloudReadAccess) {
+      return;
+    }
+
+    void processSafetyAudioCloudAutoDownloads().then((result) => {
+      if (result.downloadedCount > 0) {
+        void refreshRecordings();
+      }
+    });
+  }, [hasCloudReadAccess, refreshRecordings]);
 
   useEffect(() => {
     void (async () => {
@@ -576,13 +722,19 @@ export const SafetyAudioProvider: React.FC<{ children: React.ReactNode }> = ({ c
       if (state === 'active') {
         void runRetentionCleanup();
         void refreshStorageStatus();
+        void refreshCloudNotices();
+        void processSafetyAudioCloudAutoDownloads().then((result) => {
+          if (result.downloadedCount > 0) {
+            void refreshRecordings();
+          }
+        });
       }
     });
 
     return () => {
       appStateListener.remove();
     };
-  }, [refreshStorageStatus, runRetentionCleanup]);
+  }, [refreshCloudNotices, refreshRecordings, refreshStorageStatus, runRetentionCleanup]);
 
   useEffect(() => {
     const unsubscribe = subscribeSafetyAudioRecorder((event) => {
@@ -859,6 +1011,10 @@ export const SafetyAudioProvider: React.FC<{ children: React.ReactNode }> = ({ c
     autoRecordDefaultEnabled,
     storageStatus,
     activeContextKeys,
+    isCloudUploadProEnabled,
+    hasCloudReadAccess,
+    cloudSync,
+    cloudNotices,
     segmentDurationMs: SAFETY_AUDIO_SEGMENT_DURATION_MS,
     setAutoRecordDefaultEnabled,
     startRecording,
@@ -866,16 +1022,24 @@ export const SafetyAudioProvider: React.FC<{ children: React.ReactNode }> = ({ c
     toggleContextOverride,
     getContextOverride,
     refreshRecordings,
+    refreshCloudNotices,
+    markCloudNoticeRead,
   }), [
     activeContextKeys,
     activeSession,
     autoRecordDefaultEnabled,
+    cloudNotices,
+    cloudSync,
     elapsedMs,
     getContextOverride,
+    hasCloudReadAccess,
+    isCloudUploadProEnabled,
     isRecording,
     isTransitioning,
+    markCloudNoticeRead,
     recordingState,
     recordings,
+    refreshCloudNotices,
     refreshRecordings,
     setAutoRecordDefaultEnabled,
     startRecording,

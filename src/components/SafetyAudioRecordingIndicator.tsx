@@ -36,6 +36,7 @@ export const SafetyAudioRecordingIndicator: React.FC = () => {
     recordingState,
     elapsedMs,
     activeSession,
+    isCloudUploadProEnabled,
     stopRecording,
   } = useSafetyAudio();
 
@@ -60,15 +61,15 @@ export const SafetyAudioRecordingIndicator: React.FC = () => {
 
   const helperText = useMemo(() => {
     if (recordingState === 'interrupted' && activeSession?.lastInterruptionReason) {
-      return `${formatElapsedDuration(elapsedMs)} • interrupted • local only`;
+      return `${formatElapsedDuration(elapsedMs)} • interrupted • ${isCloudUploadProEnabled ? 'local + cloud' : 'local only'}`;
     }
 
     if (recordingState === 'paused') {
-      return `${formatElapsedDuration(elapsedMs)} • paused • local only`;
+      return `${formatElapsedDuration(elapsedMs)} • paused • ${isCloudUploadProEnabled ? 'local + cloud' : 'local only'}`;
     }
 
-    return `${formatElapsedDuration(elapsedMs)} • local only`;
-  }, [activeSession?.lastInterruptionReason, elapsedMs, recordingState]);
+    return `${formatElapsedDuration(elapsedMs)} • ${isCloudUploadProEnabled ? 'local + cloud' : 'local only'}`;
+  }, [activeSession?.lastInterruptionReason, elapsedMs, isCloudUploadProEnabled, recordingState]);
 
   const stateColor = useMemo(() => {
     if (recordingState === 'recording') {

@@ -82,9 +82,10 @@ g) Accessibility Information:
 
 h) Safety Audio Recording (Optional):
 - Local safety audio recordings created on your device
-- Stored only on your device in app-private storage
-- Never uploaded to ${COMPANY_INFO.appName} servers
-- Automatically deleted from your device after 7 days
+- Free users: stored only on your device in app-private storage and auto-deleted after 7 days
+- Wingman Pro users: optional encrypted cloud copies may be uploaded to private account-scoped storage
+- Cloud copies are retained for a maximum of 3 months and then auto-delete or auto-download (based on your selected preference)
+- Cloud access is restricted to your authenticated account only
 
 2.2 INFORMATION COLLECTED AUTOMATICALLY
 
@@ -255,8 +256,9 @@ f) Customer Support Tools
 - Communication history
 
 g) Local Safety Audio Exception
-- Safety audio recordings are not shared with us or any third party
-- These recordings remain local to your device and are never uploaded by ${COMPANY_INFO.appName}
+- Free users: safety audio recordings remain local to your device and are not uploaded by ${COMPANY_INFO.appName}
+- Wingman Pro users: you may enable private cloud storage of safety audio recordings
+- Cloud safety audio remains account-scoped, private, and is never shared with other users
 
 5.3 FOR LEGAL REASONS
 We may disclose information:

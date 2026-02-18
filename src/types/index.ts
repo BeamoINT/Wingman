@@ -29,6 +29,8 @@ export interface User {
   idVerifiedAt?: string | null;
   idVerificationFailureCode?: string | null;
   idVerificationFailureMessage?: string | null;
+  safetyAudioCloudGraceUntil?: string | null;
+  safetyAudioCloudDowngradedAt?: string | null;
   createdAt: string;
   lastActive?: string;
 }
@@ -283,6 +285,8 @@ export interface SafetyPreferences {
   sosEnabled: boolean;
   autoShareLiveLocation: boolean;
   autoRecordSafetyAudioOnVisit: boolean;
+  cloudAudioRetentionAction: SafetyAudioCloudRetentionAction;
+  cloudAudioWifiOnlyUpload: boolean;
 }
 
 export interface SafetySession {
@@ -323,7 +327,11 @@ export interface SafetyAudioRecording {
   sizeBytes: number;
   contextType: 'booking' | 'live_location' | 'manual';
   contextId: string | null;
-  source: 'manual' | 'auto_booking' | 'auto_live_location' | 'restarted';
+  source: 'manual' | 'auto_booking' | 'auto_live_location' | 'restarted' | 'cloud_download';
+  cloudRecordingId?: string | null;
+  cloudSyncState?: 'pending' | 'uploading' | 'uploaded' | 'failed' | 'paused';
+  cloudUploadedAt?: string | null;
+  cloudLastError?: string | null;
 }
 
 export interface SafetyAudioSession {
@@ -344,6 +352,68 @@ export interface SafetyAudioStorageStatus {
   critical: boolean;
   warningThresholdBytes: number;
   criticalThresholdBytes: number;
+}
+
+export type SafetyAudioCloudRetentionAction = 'auto_delete' | 'auto_download';
+
+export type SafetyAudioCloudRecordingStatus =
+  | 'uploading'
+  | 'uploaded'
+  | 'upload_failed'
+  | 'pending_auto_download'
+  | 'deleted'
+  | 'grace_deleted'
+  | 'auto_downloaded';
+
+export interface SafetyAudioCloudRecording {
+  id: string;
+  user_id: string;
+  local_recording_id: string | null;
+  bucket: string;
+  object_path: string;
+  file_name: string | null;
+  mime_type: string | null;
+  size_bytes: number | null;
+  duration_ms: number | null;
+  recorded_at: string;
+  uploaded_at: string | null;
+  expires_at: string;
+  status: SafetyAudioCloudRecordingStatus;
+  auto_action: SafetyAudioCloudRetentionAction | null;
+  retry_count: number;
+  last_error_code: string | null;
+  last_error_message: string | null;
+}
+
+export interface SafetyAudioCloudNotice {
+  id: string;
+  user_id: string;
+  recording_id: string | null;
+  notice_type: 'retention_warning' | 'retention_action' | 'grace_warning' | 'grace_expired';
+  threshold_days: number | null;
+  title: string;
+  message: string;
+  metadata: Record<string, unknown>;
+  read_at: string | null;
+  expires_at: string | null;
+  created_at: string;
+}
+
+export type SafetyAudioCloudSyncState =
+  | 'idle'
+  | 'uploading'
+  | 'paused_network'
+  | 'paused_wifi_only'
+  | 'paused_non_pro'
+  | 'error';
+
+export interface SafetyAudioCloudSyncSnapshot {
+  state: SafetyAudioCloudSyncState;
+  queueCount: number;
+  uploadingCount: number;
+  activeUploadLocalRecordingId: string | null;
+  activeUploadProgress: number;
+  lastError: string | null;
 }
 
 // Companion Application Types
@@ -527,6 +597,7 @@ export type RootStackParamList = {
   BlockedUsers: undefined;
   EmergencyContacts: undefined;
   SafetyAudioRecordings: undefined;
+  CloudSafetyAudioRecordings: undefined;
   ChangePassword: undefined;
   ChangeEmail: undefined;
   EditProfile: undefined;

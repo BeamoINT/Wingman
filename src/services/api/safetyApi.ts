@@ -13,6 +13,8 @@ export interface SafetyPreferences {
   sos_enabled: boolean;
   auto_share_live_location: boolean;
   auto_record_safety_audio_on_visit: boolean;
+  cloud_audio_retention_action: 'auto_delete' | 'auto_download';
+  cloud_audio_wifi_only_upload: boolean;
   safety_audio_policy_ack_version: string | null;
   safety_audio_policy_ack_at: string | null;
   created_at: string;
@@ -122,6 +124,10 @@ function normalizeSafetyPreferences(value: unknown): SafetyPreferences | null {
     sos_enabled: row.sos_enabled !== false,
     auto_share_live_location: row.auto_share_live_location === true,
     auto_record_safety_audio_on_visit: row.auto_record_safety_audio_on_visit === true,
+    cloud_audio_retention_action: row.cloud_audio_retention_action === 'auto_download'
+      ? 'auto_download'
+      : 'auto_delete',
+    cloud_audio_wifi_only_upload: row.cloud_audio_wifi_only_upload === true,
     safety_audio_policy_ack_version: typeof row.safety_audio_policy_ack_version === 'string'
       ? row.safety_audio_policy_ack_version
       : null,
@@ -245,6 +251,8 @@ export async function updateSafetyPreferences(input: {
   sosEnabled?: boolean;
   autoShareLiveLocation?: boolean;
   autoRecordSafetyAudioOnVisit?: boolean;
+  cloudAudioRetentionAction?: 'auto_delete' | 'auto_download';
+  cloudAudioWifiOnlyUpload?: boolean;
   safetyAudioPolicyAckVersion?: string | null;
   acknowledgeSafetyAudioPolicy?: boolean;
 }): Promise<{
@@ -252,7 +260,7 @@ export async function updateSafetyPreferences(input: {
   error: Error | null;
 }> {
   try {
-    const { data, error } = await supabase.rpc('update_safety_preferences_v2', {
+    const { data, error } = await supabase.rpc('update_safety_preferences_v3', {
       p_checkins_enabled: input.checkinsEnabled ?? null,
       p_checkin_interval_minutes: input.checkinIntervalMinutes ?? null,
       p_checkin_response_window_minutes: input.checkinResponseWindowMinutes ?? null,
@@ -261,10 +269,37 @@ export async function updateSafetyPreferences(input: {
       p_auto_record_safety_audio_on_visit: input.autoRecordSafetyAudioOnVisit ?? null,
       p_safety_audio_policy_ack_version: input.safetyAudioPolicyAckVersion ?? null,
       p_acknowledge_safety_audio_policy: input.acknowledgeSafetyAudioPolicy ?? false,
+      p_cloud_audio_retention_action: input.cloudAudioRetentionAction ?? null,
+      p_cloud_audio_wifi_only_upload: input.cloudAudioWifiOnlyUpload ?? null,
     });
 
     if (error) {
-      if (isMissingSafetyPreferencesRpc(error, 'update_safety_preferences_v2')) {
+      if (isMissingSafetyPreferencesRpc(error, 'update_safety_preferences_v3')) {
+        const v2Result = await supabase.rpc('update_safety_preferences_v2', {
+          p_checkins_enabled: input.checkinsEnabled ?? null,
+          p_checkin_interval_minutes: input.checkinIntervalMinutes ?? null,
+          p_checkin_response_window_minutes: input.checkinResponseWindowMinutes ?? null,
+          p_sos_enabled: input.sosEnabled ?? null,
+          p_auto_share_live_location: input.autoShareLiveLocation ?? null,
+          p_auto_record_safety_audio_on_visit: input.autoRecordSafetyAudioOnVisit ?? null,
+          p_safety_audio_policy_ack_version: input.safetyAudioPolicyAckVersion ?? null,
+          p_acknowledge_safety_audio_policy: input.acknowledgeSafetyAudioPolicy ?? false,
+        });
+
+        if (!v2Result.error) {
+          return {
+            preferences: normalizeSafetyPreferences(v2Result.data),
+            error: null,
+          };
+        }
+
+        if (!isMissingSafetyPreferencesRpc(v2Result.error, 'update_safety_preferences_v2')) {
+          return {
+            preferences: null,
+            error: toError(v2Result.error, 'Unable to update safety preferences.'),
+          };
+        }
+
         const fallback = await supabase.rpc('update_safety_preferences_v1', {
           p_checkins_enabled: input.checkinsEnabled ?? null,
           p_checkin_interval_minutes: input.checkinIntervalMinutes ?? null,
@@ -294,8 +329,33 @@ export async function updateSafetyPreferences(input: {
       error: null,
     };
   } catch (error) {
-    if (isMissingSafetyPreferencesRpc(error, 'update_safety_preferences_v2')) {
+    if (isMissingSafetyPreferencesRpc(error, 'update_safety_preferences_v3')) {
       try {
+        const v2Result = await supabase.rpc('update_safety_preferences_v2', {
+          p_checkins_enabled: input.checkinsEnabled ?? null,
+          p_checkin_interval_minutes: input.checkinIntervalMinutes ?? null,
+          p_checkin_response_window_minutes: input.checkinResponseWindowMinutes ?? null,
+          p_sos_enabled: input.sosEnabled ?? null,
+          p_auto_share_live_location: input.autoShareLiveLocation ?? null,
+          p_auto_record_safety_audio_on_visit: input.autoRecordSafetyAudioOnVisit ?? null,
+          p_safety_audio_policy_ack_version: input.safetyAudioPolicyAckVersion ?? null,
+          p_acknowledge_safety_audio_policy: input.acknowledgeSafetyAudioPolicy ?? false,
+        });
+
+        if (!v2Result.error) {
+          return {
+            preferences: normalizeSafetyPreferences(v2Result.data),
+            error: null,
+          };
+        }
+
+        if (!isMissingSafetyPreferencesRpc(v2Result.error, 'update_safety_preferences_v2')) {
+          return {
+            preferences: null,
+            error: toError(v2Result.error, 'Unable to update safety preferences.'),
+          };
+        }
+
         const fallback = await supabase.rpc('update_safety_preferences_v1', {
           p_checkins_enabled: input.checkinsEnabled ?? null,
           p_checkin_interval_minutes: input.checkinIntervalMinutes ?? null,

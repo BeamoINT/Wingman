@@ -59,9 +59,9 @@ By using the safety features of ${COMPANY_INFO.appName}, you acknowledge that yo
 
 1.7 OPTIONAL LOCAL SAFETY AUDIO
 - Users may enable optional safety audio recording during active visits
-- Recordings are stored only on the user's device
-- ${COMPANY_INFO.appName} does not upload or store these audio files on company servers
-- Local safety audio recordings auto-delete after 7 days`,
+- Free users: recordings are stored only on-device and auto-delete after 7 days
+- Wingman Pro users: optional encrypted cloud storage may be enabled in-app
+- Cloud safety audio copies are private to the user's account and retained for a maximum of 3 months`,
     },
     {
       id: 'limitations',

@@ -25,6 +25,8 @@
 - `SAFETY_MAINTENANCE_SECRET` (recommended for scheduled safety maintenance endpoint)
 - `EMERGENCY_LINK_SIGNING_SECRET` (required for secure external emergency live-location links)
 - `GOOGLE_MAPS_WEB_API_KEY` (optional, only for map tiles in external emergency viewer)
+- `SAFETY_AUDIO_CLOUD_MAINTENANCE_SECRET` (recommended for scheduled cloud-audio retention maintenance)
+- `SAFETY_AUDIO_CLOUD_BUCKET` (optional override, defaults to `safety-audio-cloud`)
 
 Security note: if a RevenueCat `sk_` secret key is ever shared in plaintext, rotate it after deployment and update `REVENUECAT_SECRET_API_KEY` immediately.
 
@@ -44,6 +46,7 @@ supabase db push
 Important: `20260301_wingman_onboarding_stripe_agreement.sql` introduces immediate hard enforcement for wingmen.
 Users with expired/unverified ID or missing current agreement acceptance will be blocked from companion profile writes until re-compliant.
 `20260304_local_safety_audio_recording.sql` extends `safety_preferences` and adds v2 RPCs used by the on-device safety audio toggle.
+`20260306_pro_cloud_safety_audio.sql` adds Pro cloud safety-audio storage, retention notices, downgrade grace lifecycle, and v3 safety preference RPCs.
 3. Deploy edge functions:
 ```bash
 supabase functions deploy create-media-upload-url
@@ -61,6 +64,9 @@ supabase functions deploy verify-emergency-contact-otp --no-verify-jwt
 supabase functions deploy trigger-emergency-alert --no-verify-jwt
 supabase functions deploy safety-maintenance
 supabase functions deploy emergency-live-location-view
+supabase functions deploy create-safety-audio-upload-url
+supabase functions deploy get-safety-audio-download-url
+supabase functions deploy safety-audio-cloud-maintenance
 ```
 4. Set secrets:
 ```bash
@@ -85,6 +91,8 @@ supabase secrets set TWILIO_FROM_NUMBER=...
 supabase secrets set SAFETY_MAINTENANCE_SECRET=...
 supabase secrets set EMERGENCY_LINK_SIGNING_SECRET=...
 supabase secrets set GOOGLE_MAPS_WEB_API_KEY=...
+supabase secrets set SAFETY_AUDIO_CLOUD_MAINTENANCE_SECRET=...
+supabase secrets set SAFETY_AUDIO_CLOUD_BUCKET=safety-audio-cloud
 ```
 5. Configure Stripe Identity webhook endpoint:
 ```bash
@@ -117,8 +125,13 @@ Expected result after enablement: account setting shows Identity active and sess
 # POST https://<project-ref>.functions.supabase.co/safety-maintenance
 # Header: x-maintenance-secret: <SAFETY_MAINTENANCE_SECRET>
 ```
-10. Verify function health with authenticated calls from a staging build.
-11. Verify companion onboarding RPCs:
+10. Configure a daily scheduler for cloud safety-audio retention:
+```bash
+# POST https://<project-ref>.functions.supabase.co/safety-audio-cloud-maintenance
+# Header: x-maintenance-secret: <SAFETY_AUDIO_CLOUD_MAINTENANCE_SECRET>
+```
+11. Verify function health with authenticated calls from a staging build.
+12. Verify companion onboarding RPCs:
 ```bash
 # Authenticated RPC smoke tests
 # public.get_wingman_onboarding_state_v1()
@@ -159,3 +172,6 @@ Expected result after enablement: account setting shows Identity active and sess
 16. `safety-maintenance` activates sessions, creates check-ins, escalates timeouts, and cleans emergency live-location state.
 17. `emergency-live-location-view` serves tokenized external viewer links and returns inactive/expired states safely.
 18. `get_safety_preferences_v2` and `update_safety_preferences_v2` are callable by authenticated users and persist `auto_record_safety_audio_on_visit`.
+19. `create-safety-audio-upload-url` rejects non-Pro writes and returns signed upload URL + recording metadata row for Pro users.
+20. `get-safety-audio-download-url` returns short-lived signed URLs only for owner-scoped Pro/grace users.
+21. `safety-audio-cloud-maintenance` emits 30/7/1 notices, enforces 3-month auto-delete/auto-download lifecycle, and clears expired downgrade grace data.

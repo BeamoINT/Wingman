@@ -249,6 +249,13 @@ export const SettingsScreen: React.FC = () => {
           type: 'link',
           onPress: () => navigation.navigate('SafetyAudioRecordings'),
         },
+        {
+          id: 'cloud-safety-audio',
+          icon: 'cloud-outline',
+          label: 'Cloud Safety Audio',
+          type: 'link',
+          onPress: () => navigation.navigate('CloudSafetyAudioRecordings'),
+        },
       ],
     },
     {

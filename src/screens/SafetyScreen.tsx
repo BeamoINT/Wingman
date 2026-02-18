@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Location from 'expo-location';
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Linking,
@@ -143,10 +143,16 @@ export const SafetyScreen: React.FC = () => {
     recordingState: safetyAudioRecordingState,
     elapsedMs: safetyAudioElapsedMs,
     autoRecordDefaultEnabled,
+    isCloudUploadProEnabled,
+    hasCloudReadAccess,
+    cloudSync,
+    cloudNotices,
     setAutoRecordDefaultEnabled,
     startRecording: startSafetyAudioRecording,
     stopRecording: stopSafetyAudioRecording,
     storageStatus: safetyAudioStorageStatus,
+    refreshCloudNotices,
+    markCloudNoticeRead,
   } = useSafetyAudio();
 
   const [sosHolding, setSosHolding] = useState(false);
@@ -183,6 +189,31 @@ export const SafetyScreen: React.FC = () => {
     () => contacts.filter((contact) => contact.is_verified),
     [contacts],
   );
+
+  const cloudRetentionAction = preferences?.cloud_audio_retention_action === 'auto_download'
+    ? 'auto_download'
+    : 'auto_delete';
+  const cloudWifiOnlyUpload = preferences?.cloud_audio_wifi_only_upload === true;
+  const cloudGraceDaysRemaining = useMemo(() => {
+    if (isCloudUploadProEnabled) {
+      return null;
+    }
+
+    const graceUntilRaw = user?.safetyAudioCloudGraceUntil;
+    if (!graceUntilRaw) {
+      return null;
+    }
+
+    const expiresAt = new Date(graceUntilRaw);
+    if (Number.isNaN(expiresAt.getTime())) {
+      return null;
+    }
+
+    const today = new Date();
+    const todayUtc = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+    const expiresUtc = Date.UTC(expiresAt.getUTCFullYear(), expiresAt.getUTCMonth(), expiresAt.getUTCDate());
+    return Math.floor((expiresUtc - todayUtc) / (24 * 60 * 60 * 1000));
+  }, [isCloudUploadProEnabled, user?.safetyAudioCloudGraceUntil]);
 
   const cleanupHoldState = useCallback(() => {
     if (holdTimeoutRef.current) {
@@ -314,6 +345,26 @@ export const SafetyScreen: React.FC = () => {
     }
   }, [setAutoRecordDefaultEnabled]);
 
+  const onToggleCloudWifiOnlyUpload = useCallback(async (nextValue: boolean) => {
+    const result = await updatePreferences({
+      cloudAudioWifiOnlyUpload: nextValue,
+    });
+
+    if (!result.success) {
+      Alert.alert('Unable to save setting', result.error || 'Please try again.');
+    }
+  }, [updatePreferences]);
+
+  const onSelectCloudRetentionAction = useCallback(async (nextAction: 'auto_delete' | 'auto_download') => {
+    const result = await updatePreferences({
+      cloudAudioRetentionAction: nextAction,
+    });
+
+    if (!result.success) {
+      Alert.alert('Unable to save setting', result.error || 'Please try again.');
+    }
+  }, [updatePreferences]);
+
   const onToggleSafetyAudioNow = useCallback(async (nextValue: boolean) => {
     if (isSafetyAudioTransitioning) {
       return;
@@ -398,6 +449,10 @@ export const SafetyScreen: React.FC = () => {
 
     Alert.alert('Acknowledged', 'Emergency safety terms have been recorded for your account.');
   }, [acknowledgeSafetyDisclaimer, isAcknowledgingDisclaimer]);
+
+  useEffect(() => {
+    void refreshCloudNotices();
+  }, [refreshCloudNotices]);
 
   return (
     <ScreenScaffold scrollable contentContainerStyle={styles.contentContainer}>
@@ -538,7 +593,9 @@ export const SafetyScreen: React.FC = () => {
             <View style={styles.audioStatusMeta}>
               <Text style={styles.timingTitle}>Safety Audio Recording</Text>
               <Text style={styles.timingSubtitle}>
-                Local only. Never uploaded. Auto-deletes after 7 days.
+                {isCloudUploadProEnabled
+                  ? 'Always stored on-device first. Pro uploads encrypted cloud copies with a 3-month maximum retention.'
+                  : 'Local-only for Free users. Auto-deletes from this device after 7 days.'}
               </Text>
             </View>
             <View style={[
@@ -598,6 +655,133 @@ export const SafetyScreen: React.FC = () => {
             size="small"
             onPress={() => navigation.navigate('SafetyAudioRecordings')}
           />
+        </Card>
+
+        <Card variant="outlined" style={styles.cloudCard}>
+          <View style={styles.audioCardHeader}>
+            <View style={styles.audioStatusMeta}>
+              <Text style={styles.timingTitle}>Cloud Safety Audio</Text>
+              <Text style={styles.timingSubtitle}>
+                {isCloudUploadProEnabled
+                  ? 'Auto-uploads local safety recordings to your private cloud vault.'
+                  : hasCloudReadAccess
+                    ? 'Read-only grace mode after downgrade. Download or delete before grace ends.'
+                    : 'Cloud storage is a Wingman Pro feature.'}
+              </Text>
+            </View>
+            <View style={[
+              styles.audioStateBadge,
+              isCloudUploadProEnabled && styles.audioStateBadgeRecording,
+              !isCloudUploadProEnabled && hasCloudReadAccess && styles.audioStateBadgePaused,
+            ]}
+            >
+              <Text style={styles.audioStateText}>
+                {isCloudUploadProEnabled ? 'Pro Active' : hasCloudReadAccess ? 'Grace' : 'Pro Only'}
+              </Text>
+            </View>
+          </View>
+
+          {hasCloudReadAccess ? (
+            <>
+              {cloudGraceDaysRemaining != null && cloudGraceDaysRemaining >= 0 ? (
+                <InlineBanner
+                  title="Cloud grace window active"
+                  message={`Grace ends in ${cloudGraceDaysRemaining} day${cloudGraceDaysRemaining === 1 ? '' : 's'}. Uploads are disabled until Pro is reactivated.`}
+                  variant="warning"
+                />
+              ) : null}
+
+              <Text style={styles.timingTitle}>3-Month Retention Action</Text>
+              <Text style={styles.timingSubtitle}>
+                When cloud recordings reach 3 months, choose whether Wingman auto-deletes or auto-downloads then deletes.
+              </Text>
+
+              <View style={styles.optionRow}>
+                {([
+                  { id: 'auto_delete', label: 'Auto-delete' },
+                  { id: 'auto_download', label: 'Auto-download' },
+                ] as const).map((option) => {
+                  const selected = cloudRetentionAction === option.id;
+                  return (
+                    <Pressable
+                      key={option.id}
+                      onPress={() => { void onSelectCloudRetentionAction(option.id); }}
+                      style={[styles.optionPill, selected && styles.optionPillSelected]}
+                      disabled={!isCloudUploadProEnabled}
+                    >
+                      <Text style={[styles.optionPillText, selected && styles.optionPillTextSelected]}>
+                        {option.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <SafetySettingRow
+                icon="wifi"
+                title="Wi-Fi only upload"
+                description="Pause cloud safety audio uploads on cellular networks."
+                value={cloudWifiOnlyUpload}
+                onChange={(value) => { void onToggleCloudWifiOnlyUpload(value); }}
+              />
+
+              <View style={styles.cloudQueueRow}>
+                <Text style={styles.timingSubtitle}>
+                  {cloudSync.state === 'uploading'
+                    ? `Uploading ${Math.round(cloudSync.activeUploadProgress * 100)}%`
+                    : cloudSync.state === 'paused_wifi_only'
+                      ? 'Uploads paused on cellular (Wi-Fi only enabled)'
+                      : cloudSync.state === 'paused_network'
+                        ? 'Uploads paused while offline'
+                        : cloudSync.state === 'paused_non_pro'
+                          ? 'Uploads paused (Pro required)'
+                          : cloudSync.state === 'error'
+                            ? (cloudSync.lastError || 'Upload queue needs attention')
+                            : 'Upload queue idle'}
+                </Text>
+                <Text style={styles.cloudQueueCount}>
+                  {cloudSync.queueCount} queued
+                </Text>
+              </View>
+
+              <Button
+                title="Manage Cloud Recordings"
+                variant="outline"
+                size="small"
+                onPress={() => navigation.navigate('CloudSafetyAudioRecordings')}
+              />
+            </>
+          ) : (
+            <>
+              <Text style={styles.timingSubtitle}>
+                Upgrade to Pro to automatically store cloud copies, browse cloud recordings, stream playback, and download or delete anytime.
+              </Text>
+              <Button
+                title="Upgrade to Wingman Pro"
+                variant="primary"
+                size="small"
+                onPress={() => navigation.navigate('Subscription')}
+              />
+            </>
+          )}
+
+          {cloudNotices.length > 0 ? (
+            <View style={styles.noticeList}>
+              {cloudNotices.slice(0, 3).map((notice) => (
+                <Pressable
+                  key={notice.id}
+                  onPress={() => { void markCloudNoticeRead(notice.id); }}
+                  style={styles.noticeRow}
+                >
+                  <View style={styles.noticeTextWrap}>
+                    <Text style={styles.noticeTitle}>{notice.title}</Text>
+                    <Text style={styles.noticeBody}>{notice.message}</Text>
+                  </View>
+                  <Ionicons name="close" size={14} color={colors.text.tertiary} />
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
         </Card>
 
         <Card variant="outlined" style={styles.timingCard}>
@@ -839,6 +1023,49 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
   audioCriticalText: {
     ...typography.presets.caption,
     color: colors.status.error,
+  },
+  cloudCard: {
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+  },
+  cloudQueueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  cloudQueueCount: {
+    ...typography.presets.caption,
+    color: colors.text.secondary,
+    fontWeight: typography.weights.semibold,
+  },
+  noticeList: {
+    gap: spacing.xs,
+  },
+  noticeRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    borderRadius: spacing.radius.md,
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
+    backgroundColor: colors.surface.level1,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+  },
+  noticeTextWrap: {
+    flex: 1,
+    gap: spacing.xxs,
+  },
+  noticeTitle: {
+    ...typography.presets.caption,
+    color: colors.text.primary,
+    fontWeight: typography.weights.semibold,
+  },
+  noticeBody: {
+    ...typography.presets.caption,
+    color: colors.text.secondary,
   },
   timingTitle: {
     ...typography.presets.body,

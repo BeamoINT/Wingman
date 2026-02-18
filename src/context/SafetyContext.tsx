@@ -75,6 +75,8 @@ interface SafetyContextType {
     sosEnabled?: boolean;
     autoShareLiveLocation?: boolean;
     autoRecordSafetyAudioOnVisit?: boolean;
+    cloudAudioRetentionAction?: 'auto_delete' | 'auto_download';
+    cloudAudioWifiOnlyUpload?: boolean;
   }) => Promise<{ success: boolean; error?: string }>;
   acknowledgeSafetyDisclaimer: () => Promise<{ success: boolean; error?: string }>;
   respondCheckin: (checkinId: string, response: 'safe' | 'unsafe') => Promise<{ success: boolean; error?: string }>;
@@ -205,6 +207,8 @@ export const SafetyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     sosEnabled?: boolean;
     autoShareLiveLocation?: boolean;
     autoRecordSafetyAudioOnVisit?: boolean;
+    cloudAudioRetentionAction?: 'auto_delete' | 'auto_download';
+    cloudAudioWifiOnlyUpload?: boolean;
   }): Promise<{ success: boolean; error?: string }> => {
     const { preferences: nextPreferences, error } = await updateSafetyPreferences(input);
 
