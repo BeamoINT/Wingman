@@ -86,6 +86,9 @@
         "exclude": [
           "react-native-background-actions"
         ]
+      },
+      "appConfigFieldsNotSyncedCheck": {
+        "enabled": false
       }
     }
   },
