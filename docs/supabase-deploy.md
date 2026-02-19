@@ -175,3 +175,8 @@ Expected result after enablement: account setting shows Identity active and sess
 19. `create-safety-audio-upload-url` rejects non-Pro writes and returns signed upload URL + recording metadata row for Pro users.
 20. `get-safety-audio-download-url` returns short-lived signed URLs only for owner-scoped Pro/grace users.
 21. `safety-audio-cloud-maintenance` emits 30/7/1 notices, enforces 3-month auto-delete/auto-download lifecycle, and clears expired downgrade grace data.
+
+## iOS native warning runbook
+For iOS build warning policy, suppression boundaries, and warning-audit usage, see:
+- `docs/ios-warning-policy.md`
+- `docs/ios-warning-matrix.md`

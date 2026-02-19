@@ -1,0 +1,219 @@
+require File.join(File.dirname(`node --print "require.resolve('expo/package.json')"`), "scripts/autolinking")
+require File.join(File.dirname(`node --print "require.resolve('react-native/package.json')"`), "scripts/react_native_pods")
+
+require 'json'
+podfile_properties = JSON.parse(File.read(File.join(__dir__, 'Podfile.properties.json'))) rescue {}
+
+def ccache_enabled?(podfile_properties)
+  # Environment variable takes precedence
+  return ENV['USE_CCACHE'] == '1' if ENV['USE_CCACHE']
+  
+  # Fall back to Podfile properties
+  podfile_properties['apple.ccacheEnabled'] == 'true'
+end
+
+ENV['RCT_NEW_ARCH_ENABLED'] ||= '0' if podfile_properties['newArchEnabled'] == 'false'
+ENV['EX_DEV_CLIENT_NETWORK_INSPECTOR'] ||= podfile_properties['EX_DEV_CLIENT_NETWORK_INSPECTOR']
+if podfile_properties['ios.buildReactNativeFromSource'] == 'true'
+  ENV['RCT_USE_RN_DEP'] = '0'
+  ENV['RCT_USE_PREBUILT_RNCORE'] = '0'
+else
+  ENV['RCT_USE_RN_DEP'] ||= '1' if podfile_properties['newArchEnabled'] != 'false'
+  ENV['RCT_USE_PREBUILT_RNCORE'] ||= '1' if podfile_properties['newArchEnabled'] != 'false'
+end
+platform :ios, podfile_properties['ios.deploymentTarget'] || '15.1'
+
+prepare_react_native_project!
+
+def normalize_deployment_target!(build_settings, minimum_version)
+  key = 'IPHONEOS_DEPLOYMENT_TARGET'
+  current = build_settings[key]
+  if current.nil? || current.empty?
+    build_settings[key] = minimum_version
+    return
+  end
+  return unless Gem::Version.new(current) < Gem::Version.new(minimum_version)
+  build_settings[key] = minimum_version
+end
+
+def add_warning_suppression!(build_settings, *flags)
+  existing = build_settings['OTHER_CFLAGS']
+  values = case existing
+  when Array then existing.dup
+  when String then existing.split(/\s+/).reject(&:empty?)
+  else ['$(inherited)']
+  end
+  values << '$(inherited)' if values.empty?
+  flags.each { |flag| values << flag unless values.include?(flag) }
+  build_settings['OTHER_CFLAGS'] = values
+  build_settings['OTHER_CPLUSPLUSFLAGS'] = values
+end
+
+def remove_numbered_duplicate_sources!(target)
+  return unless target.respond_to?(:source_build_phase)
+  return if target.source_build_phase.nil?
+
+  build_files = target.source_build_phase.files.dup
+  source_paths = build_files.map { |build_file| build_file.file_ref&.path }.compact
+
+  build_files.each do |build_file|
+    file_ref = build_file.file_ref
+    next if file_ref.nil? || file_ref.path.nil?
+
+    match = file_ref.path.match(/^(.*) \d+(\.[^.]+)$/)
+    next if match.nil?
+
+    canonical_path = "#{match[1]}#{match[2]}"
+    next unless source_paths.include?(canonical_path)
+
+    target.source_build_phase.remove_build_file(build_file)
+  end
+end
+
+target 'Wingman' do
+  use_expo_modules!
+
+  if ENV['EXPO_USE_COMMUNITY_AUTOLINKING'] == '1'
+    config_command = ['node', '-e', "process.argv=['', '', 'config'];require('@react-native-community/cli').run()"];
+  else
+    config_command = [
+      'node',
+      '--no-warnings',
+      '--eval',
+      'require(\'expo/bin/autolinking\')',
+      'expo-modules-autolinking',
+      'react-native-config',
+      '--json',
+      '--platform',
+      'ios'
+    ]
+  end
+
+  config = use_native_modules!(config_command)
+
+  use_frameworks! :linkage => podfile_properties['ios.useFrameworks'].to_sym if podfile_properties['ios.useFrameworks']
+  use_frameworks! :linkage => ENV['USE_FRAMEWORKS'].to_sym if ENV['USE_FRAMEWORKS']
+
+  use_react_native!(
+    :path => config[:reactNativePath],
+    :hermes_enabled => podfile_properties['expo.jsEngine'] == nil || podfile_properties['expo.jsEngine'] == 'hermes',
+    # An absolute path to your application root.
+    :app_path => "#{Pod::Config.instance.installation_root}/..",
+    :privacy_file_aggregation_enabled => podfile_properties['apple.privacyManifestAggregationEnabled'] != 'false',
+  )
+
+  post_install do |installer|
+    react_native_post_install(
+      installer,
+      config[:reactNativePath],
+      :mac_catalyst_enabled => false,
+      :ccache_enabled => ccache_enabled?(podfile_properties),
+    )
+
+    minimum_ios_version = '12.0'
+    nullability_targets = %w[
+      ExpoModulesCore
+      ExpoFileSystem
+      RNSentry
+      RNReanimated
+    ]
+    deprecated_api_targets = %w[
+      ExpoCrypto
+      ExpoFileSystem
+      ExpoImagePicker
+      ExpoLocation
+      ExpoModulesCore
+      ExpoSecureStore
+      ExpoWebBrowser
+      EXTaskManager
+      react-native-maps
+      react-native-netinfo
+      RNGestureHandler
+      RNReanimated
+      RNScreens
+      RNPurchases
+    ]
+    documentation_targets = %w[
+      React-Fabric
+      React-renderercss
+      RNGestureHandler
+      RNScreens
+    ]
+    precision_targets = %w[
+      RNWorklets
+      RNReanimated
+      RNScreens
+    ]
+    pointer_targets = %w[
+      ExpoModulesCore
+    ]
+    enum_targets = %w[
+      RNGestureHandler
+    ]
+    objc_protocol_targets = %w[
+      RNDateTimePicker
+    ]
+    nonnull_targets = %w[
+      EXAV
+    ]
+    swift_warning_targets = %w[
+      react-native-compressor
+    ]
+
+    installer.pods_project.targets.each do |target|
+      remove_numbered_duplicate_sources!(target)
+
+      target.build_configurations.each do |build_configuration|
+        settings = build_configuration.build_settings
+        normalize_deployment_target!(settings, minimum_ios_version)
+
+        if nullability_targets.include?(target.name)
+          add_warning_suppression!(settings, '-Wno-nullability-completeness')
+        end
+        if deprecated_api_targets.include?(target.name)
+          add_warning_suppression!(settings, '-Wno-deprecated-declarations')
+        end
+        if documentation_targets.include?(target.name)
+          add_warning_suppression!(settings, '-Wno-documentation', '-Wno-documentation-deprecated-sync')
+        end
+        if precision_targets.include?(target.name)
+          add_warning_suppression!(settings, '-Wno-shorten-64-to-32')
+        end
+        if pointer_targets.include?(target.name)
+          add_warning_suppression!(settings, '-Wno-incompatible-pointer-types')
+        end
+        if enum_targets.include?(target.name)
+          add_warning_suppression!(settings, '-Wno-enum-conversion', '-Wno-enum-compare', '-Wno-mismatched-return-types')
+        end
+        if objc_protocol_targets.include?(target.name)
+          add_warning_suppression!(settings, '-Wno-objc-protocol-method-implementation', '-Wno-objc-protocol-property-synthesis')
+        end
+        if nonnull_targets.include?(target.name)
+          add_warning_suppression!(settings, '-Wno-nonnull')
+        end
+        if swift_warning_targets.include?(target.name)
+          settings['SWIFT_SUPPRESS_WARNINGS'] = 'YES'
+        end
+      end
+    end
+
+    installer.pods_project.targets.each do |target|
+      next unless target.name == 'hermes-engine'
+      target.shell_script_build_phases.each do |phase|
+        next unless phase.name&.include?('[Hermes] Replace Hermes for the right configuration, if needed')
+        phase.always_out_of_date = '0' if phase.respond_to?(:always_out_of_date=)
+        if phase.output_paths.nil? || phase.output_paths.empty?
+          phase.output_paths = ['$(DERIVED_FILE_DIR)/hermes-replace.stamp']
+        end
+        unless phase.shell_script.include?('SCRIPT_OUTPUT_FILE_0')
+          phase.shell_script = <<~SCRIPT
+            #{phase.shell_script}
+            if [ -n "$SCRIPT_OUTPUT_FILE_0" ]; then
+              touch "$SCRIPT_OUTPUT_FILE_0"
+            fi
+          SCRIPT
+        end
+      end
+    end
+  end
+end

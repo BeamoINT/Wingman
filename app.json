@@ -1,0 +1,68 @@
+{
+  "expo": {
+    "name": "Wingman",
+    "slug": "wingman",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0A0A0F"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.wingman.app",
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "fetch",
+          "remote-notification"
+        ],
+        "NSLocationWhenInUseUsageDescription": "Wingman needs your location to find companions near you and auto-fill your location during signup.",
+        "NSPhotoLibraryUsageDescription": "Wingman needs access to your photo library so you can send images and videos in encrypted chats.",
+        "NSPhotoLibraryAddUsageDescription": "Wingman needs permission to save selected media for secure encrypted uploads.",
+        "NSCameraUsageDescription": "Wingman needs camera access so you can capture images and videos in encrypted chats.",
+        "NSMicrophoneUsageDescription": "Wingman needs microphone access when you record video messages."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0A0A0F"
+      },
+      "package": "com.wingman.app",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "CAMERA",
+        "RECORD_AUDIO",
+        "READ_MEDIA_IMAGES",
+        "READ_MEDIA_VIDEO"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-font",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Wingman needs your location to find companions near you and auto-fill your location during signup."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Wingman needs photo library access so you can send encrypted images and videos.",
+          "cameraPermission": "Wingman needs camera access so you can capture encrypted images and videos.",
+          "microphonePermission": "Wingman needs microphone access when you record encrypted video messages."
+        }
+      ]
+    ]
+  }
+}

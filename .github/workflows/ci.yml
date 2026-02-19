@@ -9,6 +9,28 @@ on:
   pull_request:
 
 jobs:
+  detect-native-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      ios: ${{ steps.filter.outputs.ios }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect iOS/native changes
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            ios:
+              - 'ios/**'
+              - 'app.config.ts'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'scripts/ios/**'
+              - 'docs/ios-warning-policy.md'
+              - 'docs/ios-warning-matrix.md'
+
   validate:
     runs-on: ubuntu-latest
     steps:
@@ -32,3 +54,31 @@ jobs:
 
       - name: Expo doctor
         run: npx expo-doctor
+
+  ios-warning-audit:
+    needs: detect-native-changes
+    if: needs.detect-native-changes.outputs.ios == 'true'
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify iOS warnings
+        run: npm run ios:verify-warnings
+
+      - name: Upload iOS warning artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-warning-audit
+          path: artifacts/ios-warning-audit
+          if-no-files-found: ignore

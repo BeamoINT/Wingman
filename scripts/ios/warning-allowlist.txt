@@ -1,0 +1,43 @@
+# Allowed third-party warning patterns during critical-first stabilization.
+# Keep these scoped and remove entries as upstream fixes are adopted.
+
+Run script build phase '\[CP-User\] \[Hermes\] Replace Hermes for the right configuration, if needed'
+Pods\.xcodeproj: warning: The iOS Simulator deployment target 'IPHONEOS_DEPLOYMENT_TARGET' is set to 11\.0
+\[-Wnullability-completeness\]
+\[-Wdocumentation\]
+\[-Wdocumentation-deprecated-sync\]
+\[-Wdeprecated-declarations\]
+\[-Wdeprecated-implementations\]
+\[-Wshorten-64-to-32\]
+\[-Wimplicit-retain-self\]
+\[-Wunused-function\]
+\[-Wunused-variable\]
+\[-Wswitch\]
+\[-Wformat\]
+\[-Wprotocol\]
+\[-Wnonnull\]
+\[-Wincompatible-pointer-types\]
+\[-Wmismatched-return-types\]
+\[-Wenum-conversion\]
+\[-Wenum-compare\]
+\[-Wobjc-protocol-method-implementation\]
+\[-Wobjc-protocol-property-synthesis\]
+\[-Wobjc-missing-super-calls\]
+\[-W#warnings\]
+\[-Wincomplete-implementation\]
+node_modules/react-native-compressor/ios/
+node_modules/expo-modules-core/ios/
+node_modules/expo-apple-authentication/ios/
+node_modules/expo-file-system/ios/
+node_modules/expo-image-picker/ios/
+node_modules/expo-web-browser/ios/
+node_modules/expo-secure-store/ios/
+node_modules/expo-crypto/ios/
+node_modules/expo-location/ios/
+node_modules/expo-notifications/ios/
+node_modules/expo-constants/ios/
+node_modules/expo-task-manager/ios/
+node_modules/expo/ios/
+ios/Pods/Headers/Public/ExpoModulesCore/
+ios/Pods/Headers/Public/ExpoFileSystem/
+ios/Pods/Headers/Public/EXAV/
