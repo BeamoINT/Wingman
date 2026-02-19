@@ -22,6 +22,7 @@ import { TutorialScreen } from '../screens/tutorial/TutorialScreen';
 // Main App Screens
 import { BookingConfirmationScreen } from '../screens/BookingConfirmationScreen';
 import { BlockedUsersScreen } from '../screens/BlockedUsersScreen';
+import { BookingsScreen } from '../screens/BookingsScreen';
 import { BookingScreen } from '../screens/BookingScreen';
 import { ChatScreen } from '../screens/ChatScreen';
 import { CompanionProfileScreen } from '../screens/CompanionProfileScreen';
@@ -97,6 +98,7 @@ const withAuthGuard = <P extends object>(
 // Create auth-guarded versions of protected screens
 const ProtectedMainTabNavigator = withAuthGuard(MainTabNavigator, 'Main');
 const ProtectedCompanionProfileScreen = withAuthGuard(CompanionProfileScreen, 'CompanionProfile');
+const ProtectedBookingsScreen = withAuthGuard(BookingsScreen, 'Bookings');
 const ProtectedBookingScreen = withAuthGuard(BookingScreen, 'Booking');
 const ProtectedBookingConfirmationScreen = withAuthGuard(BookingConfirmationScreen, 'BookingConfirmation');
 const ProtectedChatScreen = withAuthGuard(ChatScreen, 'Chat');
@@ -241,6 +243,10 @@ export const RootNavigator: React.FC = () => {
           name="CompanionProfile"
           component={ProtectedCompanionProfileScreen}
           options={{ animation: modalAnimation }}
+        />
+        <Stack.Screen
+          name="Bookings"
+          component={ProtectedBookingsScreen}
         />
         <Stack.Screen
           name="Booking"

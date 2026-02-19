@@ -210,6 +210,13 @@ export const ProfileScreen: React.FC = () => {
       onPress: () => navigation.navigate('Verification', { source: 'profile' }),
     },
     {
+      id: 'bookings',
+      icon: 'calendar',
+      label: 'My Bookings',
+      subtitle: 'Upcoming and past bookings',
+      onPress: () => navigation.navigate('Bookings'),
+    },
+    {
       id: 'safety',
       icon: 'shield',
       label: 'Safety Center',

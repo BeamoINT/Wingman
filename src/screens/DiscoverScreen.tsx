@@ -20,6 +20,7 @@ import { isIdVerificationActive, normalizeIdVerificationStatus } from '../utils/
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 type SpecialtyFilter = 'all' | CompanionSpecialty;
 type SortOption = 'top-rated' | 'most-reviewed' | 'price-low' | 'price-high';
+type FriendShortcutRoute = 'FriendMatching' | 'FriendRequests' | 'Groups' | 'Events';
 
 const specialtyFilters: Array<{
   id: SpecialtyFilter;
@@ -45,6 +46,13 @@ const sortOptions: Array<{
   { id: 'most-reviewed', label: 'Most Reviewed' },
   { id: 'price-low', label: 'Price: Low to High' },
   { id: 'price-high', label: 'Price: High to Low' },
+];
+
+const friendShortcuts: Array<{ label: string; route: FriendShortcutRoute }> = [
+  { label: 'Match', route: 'FriendMatching' },
+  { label: 'Requests', route: 'FriendRequests' },
+  { label: 'Groups', route: 'Groups' },
+  { label: 'Events', route: 'Events' },
 ];
 
 function toNumber(value: unknown, fallback = 0): number {
@@ -249,6 +257,16 @@ export const DiscoverScreen: React.FC = () => {
     loadCompanions(true);
   }, [loadCompanions]);
 
+  const handleOpenFriendsHub = useCallback(async () => {
+    await haptics.light();
+    navigation.navigate('Friends');
+  }, [navigation]);
+
+  const handleOpenFriendShortcut = useCallback(async (route: FriendShortcutRoute) => {
+    await haptics.selection();
+    navigation.navigate(route);
+  }, [navigation]);
+
   const resetFilters = useCallback(async () => {
     await haptics.selection();
     setSearchQuery('');
@@ -305,6 +323,41 @@ export const DiscoverScreen: React.FC = () => {
 
   const listHeader = (
     <View style={styles.controls}>
+      <View style={styles.friendsHubCard}>
+        <View style={styles.friendsHubHeader}>
+          <View style={styles.friendsHubTitleWrap}>
+            <View style={styles.friendsHubIconWrap}>
+              <Ionicons name="people" size={18} color={colors.accent.primary} />
+            </View>
+            <View style={styles.friendsHubTextWrap}>
+              <Text style={styles.friendsHubTitle}>Friends Hub</Text>
+              <Text style={styles.friendsHubSubtitle}>
+                Find matches, manage requests, and jump into groups or events.
+              </Text>
+            </View>
+          </View>
+          <TouchableOpacity
+            style={styles.friendsHubPrimaryButton}
+            onPress={handleOpenFriendsHub}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.friendsHubPrimaryButtonText}>Open</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={styles.friendsHubShortcuts}>
+          {friendShortcuts.map((shortcut) => (
+            <TouchableOpacity
+              key={shortcut.route}
+              style={styles.friendsHubShortcutChip}
+              onPress={() => handleOpenFriendShortcut(shortcut.route)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.friendsHubShortcutChipLabel}>{shortcut.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -515,6 +568,77 @@ const createStyles = ({ colors, spacing, typography }: ThemeTokens) => StyleShee
   },
   controls: {
     marginBottom: spacing.md,
+  },
+  friendsHubCard: {
+    backgroundColor: colors.surface.level1,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+    borderRadius: spacing.radius.xl,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    gap: spacing.md,
+  },
+  friendsHubHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  friendsHubTitleWrap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+  },
+  friendsHubIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: spacing.radius.round,
+    backgroundColor: colors.accent.soft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  friendsHubTextWrap: {
+    flex: 1,
+    gap: 2,
+  },
+  friendsHubTitle: {
+    ...typography.presets.h4,
+    color: colors.text.primary,
+  },
+  friendsHubSubtitle: {
+    ...typography.presets.caption,
+    color: colors.text.secondary,
+    lineHeight: 18,
+  },
+  friendsHubPrimaryButton: {
+    minHeight: 36,
+    borderRadius: spacing.radius.full,
+    backgroundColor: colors.accent.primary,
+    paddingHorizontal: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  friendsHubPrimaryButtonText: {
+    ...typography.presets.button,
+    color: colors.text.onAccent,
+  },
+  friendsHubShortcuts: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+  },
+  friendsHubShortcutChip: {
+    borderRadius: spacing.radius.round,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+    backgroundColor: colors.surface.level0,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  friendsHubShortcutChipLabel: {
+    ...typography.presets.caption,
+    color: colors.text.secondary,
+    fontWeight: typography.weights.medium as any,
   },
   chipRow: {
     paddingBottom: spacing.sm,

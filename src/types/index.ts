@@ -581,6 +581,7 @@ export type RootStackParamList = {
   Tutorial: undefined;
   Main: undefined;
   CompanionProfile: { companionId: string };
+  Bookings: undefined;
   Booking: { companionId: string; conversationId?: string };
   BookingConfirmation: { bookingId: string };
   Chat: { conversationId: string };
@@ -632,8 +633,6 @@ export type RootStackParamList = {
 export type MainTabParamList = {
   Home: undefined;
   Discover: undefined;
-  Friends: undefined;
-  Bookings: undefined;
   Messages: undefined;
   Profile: undefined;
 };
