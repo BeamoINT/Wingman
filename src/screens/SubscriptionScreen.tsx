@@ -18,6 +18,7 @@ import {
   SectionHeader,
   SubscriptionCard,
 } from '../components';
+import { runtimeEnv } from '../config/env';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { trackEvent } from '../services/monitoring/events';
@@ -71,6 +72,7 @@ export const SubscriptionScreen: React.FC = () => {
   const [selectedBillingPeriod, setSelectedBillingPeriod] = useState<ProBillingPeriod>('monthly');
 
   const isPro = user?.subscriptionTier === 'pro';
+  const isTestBillingMode = runtimeEnv.appEnv !== 'production';
   const selectedPlan = selectedBillingPeriod === 'yearly' ? PRO_YEARLY_PLAN : PRO_MONTHLY_PLAN;
   const yearlySavings = (PRO_MONTHLY_PLAN.price * 12) - PRO_YEARLY_PLAN.price;
 
@@ -189,11 +191,21 @@ export const SubscriptionScreen: React.FC = () => {
           <View style={styles.heroText}>
             <Text style={styles.heroTitle}>Wingman Pro</Text>
             <Text style={styles.heroSubtitle}>
-              ${selectedPlan.price}/{selectedPlan.billingPeriod === 'yearly' ? 'year' : 'month'}. Unlock the full Friends experience.
+              {isTestBillingMode
+                ? 'Free in this test build. Unlock the full Friends experience.'
+                : `$${selectedPlan.price}/${selectedPlan.billingPeriod === 'yearly' ? 'year' : 'month'}. Unlock the full Friends experience.`}
             </Text>
             <Text style={styles.heroMeta}>{currentStatusText}</Text>
           </View>
         </View>
+
+        {isTestBillingMode ? (
+          <InlineBanner
+            title="Test mode billing"
+            message="Pro unlock is free in non-production builds. Production builds still require payment."
+            variant="warning"
+          />
+        ) : null}
 
         <InlineBanner
           title="Bookings stay free for everyone"
@@ -243,8 +255,12 @@ export const SubscriptionScreen: React.FC = () => {
           title={isPro
             ? 'Pro Active'
             : (isPurchasing
-              ? `Starting Pro ${selectedBillingPeriod === 'yearly' ? 'Yearly' : 'Monthly'}...`
-              : `Start Pro ${selectedBillingPeriod === 'yearly' ? 'Yearly' : 'Monthly'}`)}
+              ? (isTestBillingMode
+                ? 'Unlocking Pro (Test)...'
+                : `Starting Pro ${selectedBillingPeriod === 'yearly' ? 'Yearly' : 'Monthly'}...`)
+              : (isTestBillingMode
+                ? 'Unlock Pro Free (Test)'
+                : `Start Pro ${selectedBillingPeriod === 'yearly' ? 'Yearly' : 'Monthly'}`))}
           onPress={handleStartPro}
           variant="primary"
           size="large"

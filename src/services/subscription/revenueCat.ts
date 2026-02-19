@@ -19,6 +19,8 @@ export interface ProEntitlementStatus {
   store: string | null;
 }
 
+const isProductionBilling = runtimeEnv.appEnv === 'production';
+
 type PurchasesModuleType = typeof import('react-native-purchases');
 type PurchasesPackageLike = {
   identifier?: string;
@@ -140,7 +142,130 @@ function ensureMobileRuntime(): RevenueCatResult | null {
   return null;
 }
 
+async function activateProForTesting(): Promise<RevenueCatResult> {
+  if (isProductionBilling) {
+    return {
+      success: false,
+      error: 'Test Pro unlock is disabled in production.',
+    };
+  }
+
+  if (Platform.OS === 'web') {
+    return {
+      success: false,
+      error: 'Test Pro unlock is only available in the iOS or Android app.',
+    };
+  }
+
+  try {
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    if (userError || !userData.user) {
+      return {
+        success: false,
+        error: 'Please sign in before activating Pro test access.',
+      };
+    }
+
+    const now = new Date();
+    const nowIso = now.toISOString();
+    const renewalIso = new Date(now.getTime() + (31 * 24 * 60 * 60 * 1000)).toISOString();
+    const proPlatform = Platform.OS === 'android' ? 'android' : 'ios';
+
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update({
+        subscription_tier: 'pro',
+        pro_status: 'active',
+        pro_platform: proPlatform,
+        pro_product_id: 'dev.free-pro-unlock',
+        pro_started_at: nowIso,
+        pro_renews_at: renewalIso,
+        pro_expires_at: renewalIso,
+        pro_entitlement_updated_at: nowIso,
+        updated_at: nowIso,
+      })
+      .eq('id', userData.user.id);
+
+    if (updateError) {
+      safeLog('Failed to activate Pro test access', { error: String(updateError) });
+      return {
+        success: false,
+        error: 'Unable to activate Pro test access right now.',
+      };
+    }
+
+    return { success: true, error: null };
+  } catch (error) {
+    safeLog('Unexpected error while activating Pro test access', { error: String(error) });
+    return {
+      success: false,
+      error: 'Unable to activate Pro test access right now.',
+    };
+  }
+}
+
+async function getProfileBackedEntitlementStatus(entitlementId: string): Promise<{
+  status: ProEntitlementStatus;
+  error: string | null;
+}> {
+  const defaultStatus: ProEntitlementStatus = {
+    isPro: false,
+    entitlementId,
+    productId: null,
+    expiresAt: null,
+    store: null,
+  };
+
+  try {
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    if (userError || !userData.user) {
+      return {
+        status: defaultStatus,
+        error: 'Please sign in to check subscription status.',
+      };
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('subscription_tier, pro_status, pro_product_id, pro_expires_at, pro_platform')
+      .eq('id', userData.user.id)
+      .single();
+
+    if (profileError || !profile) {
+      return {
+        status: defaultStatus,
+        error: 'Unable to fetch subscription status right now.',
+      };
+    }
+
+    const normalizedStatus = String(profile.pro_status || '').trim();
+    const isPro = profile.subscription_tier === 'pro'
+      && (normalizedStatus === 'active' || normalizedStatus === 'grace' || normalizedStatus === 'past_due');
+
+    return {
+      status: {
+        isPro,
+        entitlementId,
+        productId: profile.pro_product_id || null,
+        expiresAt: profile.pro_expires_at || null,
+        store: profile.pro_platform || null,
+      },
+      error: null,
+    };
+  } catch (error) {
+    safeLog('Failed to fetch profile-backed entitlement status', { error: String(error) });
+    return {
+      status: defaultStatus,
+      error: 'Unable to fetch subscription status right now.',
+    };
+  }
+}
+
 export async function initRevenueCat(userId: string): Promise<RevenueCatResult> {
+  if (!isProductionBilling) {
+    return { success: true, error: null };
+  }
+
   const runtimeError = ensureMobileRuntime();
   if (runtimeError) return runtimeError;
 
@@ -219,6 +344,10 @@ function resolveProPackage(
 }
 
 export async function purchaseProPlan(billingPeriod: ProBillingPeriod): Promise<RevenueCatResult> {
+  if (!isProductionBilling) {
+    return activateProForTesting();
+  }
+
   const runtimeError = ensureMobileRuntime();
   if (runtimeError) return runtimeError;
 
@@ -265,6 +394,10 @@ export async function purchaseProMonthly(): Promise<RevenueCatResult> {
 }
 
 export async function restorePurchases(): Promise<RevenueCatResult> {
+  if (!isProductionBilling) {
+    return { success: true, error: null };
+  }
+
   const runtimeError = ensureMobileRuntime();
   if (runtimeError) return runtimeError;
 
@@ -292,6 +425,10 @@ export async function getEntitlementStatus(): Promise<{
   error: string | null;
 }> {
   const entitlementId = getProEntitlementId();
+
+  if (!isProductionBilling && Platform.OS !== 'web') {
+    return getProfileBackedEntitlementStatus(entitlementId);
+  }
 
   if (Platform.OS === 'web') {
     return {
