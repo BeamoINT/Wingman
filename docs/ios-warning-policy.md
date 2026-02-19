@@ -16,6 +16,10 @@ This project follows a stability-first warning policy for iOS native builds.
 4. Suppressions must be scoped by pod target and warning class.
 5. Any new warning class not listed in the allowlist is considered unsanctioned and fails `ios:verify-warnings`.
 
+Current RN-specific sanctioned classes include:
+- `-Wgnu-folding-constant`
+- `-Wobjc-designated-initializers`
+
 ## Canonical Audit Command
 ```bash
 npm run ios:verify-warnings

@@ -22,7 +22,9 @@ Pods\.xcodeproj: warning: The iOS Simulator deployment target 'IPHONEOS_DEPLOYME
 \[-Wenum-compare\]
 \[-Wobjc-protocol-method-implementation\]
 \[-Wobjc-protocol-property-synthesis\]
+\[-Wobjc-designated-initializers\]
 \[-Wobjc-missing-super-calls\]
+\[-Wgnu-folding-constant\]
 \[-W#warnings\]
 \[-Wincomplete-implementation\]
 node_modules/react-native-compressor/ios/

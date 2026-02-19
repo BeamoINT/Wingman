@@ -18,5 +18,6 @@ Status legend:
 | Integer precision conversion warnings | Reanimated, Worklets, Screens | `suppress` | Third-party warning noise; no active crash evidence in current flow. |
 | Implicit retain self / unused function warnings | Gesture Handler, Sentry, others | `suppress` | Localized third-party style warnings without correctness impact. |
 | Strict prototype warnings (`-Wstrict-prototypes`) | `react-native-purchases` | `suppress` | Third-party Objective-C warning noise; scoped to pod target only to keep app target strict. |
+| React Native clang warning drift (`-Wgnu-folding-constant`, `-Wobjc-designated-initializers`) | React Native core (`React/Base`, `Libraries/AppDelegate`) | `suppress` | Upstream RN warning noise under current Xcode toolchain; no app-owned runtime behavior change. |
 | Protocol conformance and switch exhaustiveness warnings | React Native Screens | `monitor` | Requires upstream-native code changes; avoid invasive local patching in critical-first pass. |
 | Pointer incompatibility warnings in maps/file-task delegates | react-native-maps / expo-file-system legacy | `monitor` | Potentially actionable but patch risk is high; revisit if runtime issues are observed. |
