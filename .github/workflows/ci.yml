@@ -76,10 +76,30 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Ensure CocoaPods 1.16.2
+        run: |
+          if ! command -v pod >/dev/null 2>&1; then
+            sudo gem install cocoapods -v 1.16.2 --no-document
+          fi
+          current_pod_version="$(pod --version)"
+          echo "Current CocoaPods version: $current_pod_version"
+          if [ "$current_pod_version" != "1.16.2" ]; then
+            sudo gem install cocoapods -v 1.16.2 --no-document
+          fi
+          final_pod_version="$(pod --version)"
+          echo "Using CocoaPods version: $final_pod_version"
+          if [ "$final_pod_version" != "1.16.2" ]; then
+            echo "Failed to pin CocoaPods to 1.16.2"
+            exit 1
+          fi
+
       - name: Verify iOS warnings
         env:
           IOS_WARNING_AUDIT_POD_MODE: deployment
           IOS_WARNING_AUDIT_POD_RETRIES: '2'
+          IOS_WARNING_AUDIT_POD_ALLOW_FALLBACK: '1'
+          IOS_WARNING_AUDIT_POD_FALLBACK_MODE: repo-update
+          IOS_WARNING_AUDIT_POD_FALLBACK_RETRIES: '1'
         run: npm run ios:verify-warnings
 
       - name: Show iOS warning diagnostics

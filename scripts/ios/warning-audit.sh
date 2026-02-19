@@ -27,6 +27,23 @@ elif [ "${CI:-}" = "true" ]; then
 else
   POD_RETRIES="1"
 fi
+if [ -n "${IOS_WARNING_AUDIT_POD_ALLOW_FALLBACK:-}" ]; then
+  POD_ALLOW_FALLBACK="${IOS_WARNING_AUDIT_POD_ALLOW_FALLBACK}"
+elif [ "${CI:-}" = "true" ]; then
+  POD_ALLOW_FALLBACK="1"
+else
+  POD_ALLOW_FALLBACK="0"
+fi
+if [ -n "${IOS_WARNING_AUDIT_POD_FALLBACK_MODE:-}" ]; then
+  POD_FALLBACK_MODE="${IOS_WARNING_AUDIT_POD_FALLBACK_MODE}"
+else
+  POD_FALLBACK_MODE="repo-update"
+fi
+if [ -n "${IOS_WARNING_AUDIT_POD_FALLBACK_RETRIES:-}" ]; then
+  POD_FALLBACK_RETRIES="${IOS_WARNING_AUDIT_POD_FALLBACK_RETRIES}"
+else
+  POD_FALLBACK_RETRIES="1"
+fi
 
 mkdir -p "$OUT_DIR"
 rm -f "$LOG_FILE" "$WARN_FILE" "$UNMATCHED_FILE" "$REPORT_FILE" "$POD_LOG_FILE" "$POD_SUMMARY_FILE"
@@ -40,68 +57,150 @@ if ! [[ "$POD_RETRIES" =~ ^[0-9]+$ ]] || [ "$POD_RETRIES" -lt 1 ]; then
   echo "Invalid IOS_WARNING_AUDIT_POD_RETRIES value: $POD_RETRIES"
   exit 1
 fi
+if ! [[ "$POD_FALLBACK_RETRIES" =~ ^[0-9]+$ ]] || [ "$POD_FALLBACK_RETRIES" -lt 1 ]; then
+  echo "Invalid IOS_WARNING_AUDIT_POD_FALLBACK_RETRIES value: $POD_FALLBACK_RETRIES"
+  exit 1
+fi
+if ! [[ "$POD_ALLOW_FALLBACK" =~ ^[01]$ ]]; then
+  echo "Invalid IOS_WARNING_AUDIT_POD_ALLOW_FALLBACK value: $POD_ALLOW_FALLBACK"
+  echo "Expected one of: 0, 1"
+  exit 1
+fi
+if ! command -v pod >/dev/null 2>&1; then
+  echo "CocoaPods is not installed or not available in PATH."
+  exit 1
+fi
 
-pod_install_args=("install")
-case "$POD_MODE" in
-  deployment)
-    pod_install_args+=("--deployment")
-    ;;
-  repo-update)
-    pod_install_args+=("--repo-update")
-    ;;
-  *)
-    echo "Invalid IOS_WARNING_AUDIT_POD_MODE value: $POD_MODE"
-    echo "Expected one of: deployment, repo-update"
-    exit 1
-    ;;
-esac
+POD_EXECUTABLE_VERSION="$(pod --version 2>/dev/null || echo unknown)"
 
-echo "Installing CocoaPods dependencies (mode=$POD_MODE retries=$POD_RETRIES)..."
-pod_status=1
-pod_attempt=1
-pod_attempts_used=0
-while [ "$pod_attempt" -le "$POD_RETRIES" ]; do
-  pod_attempts_used="$pod_attempt"
-  echo "pod install attempt $pod_attempt/$POD_RETRIES"
-  {
-    echo "=== pod install attempt $pod_attempt/$POD_RETRIES ==="
-    echo "mode=$POD_MODE"
-    echo "timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  } >> "$POD_LOG_FILE"
+pod_args_for_mode() {
+  local mode="$1"
+  case "$mode" in
+    deployment)
+      echo "install --deployment"
+      ;;
+    repo-update)
+      echo "install --repo-update"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
 
-  set +e
-  (
-    cd "$ROOT_DIR/ios"
-    pod "${pod_install_args[@]}"
-  ) >> "$POD_LOG_FILE" 2>&1
-  pod_status=$?
-  set -e
+run_pod_install() {
+  local mode="$1"
+  local retries="$2"
+  local status=1
+  local attempt=1
+  local attempts_used=0
+  local raw_args
+  raw_args="$(pod_args_for_mode "$mode")" || return 2
+  IFS=' ' read -r -a pod_install_args <<< "$raw_args"
+  while [ "$attempt" -le "$retries" ]; do
+    attempts_used="$attempt"
+    echo "pod install ($mode) attempt $attempt/$retries"
+    {
+      echo "=== pod install ($mode) attempt $attempt/$retries ==="
+      echo "mode=$mode"
+      echo "timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      echo "pod_version=$POD_EXECUTABLE_VERSION"
+    } >> "$POD_LOG_FILE"
 
-  if [ "$pod_status" -eq 0 ]; then
-    break
-  fi
+    set +e
+    (
+      cd "$ROOT_DIR/ios"
+      pod "${pod_install_args[@]}"
+    ) >> "$POD_LOG_FILE" 2>&1
+    status=$?
+    set -e
 
-  if [ "$pod_attempt" -lt "$POD_RETRIES" ]; then
-    sleep_seconds=$((pod_attempt * 2))
-    echo "pod install failed with status $pod_status; retrying in ${sleep_seconds}s..."
-    sleep "$sleep_seconds"
-  fi
+    if [ "$status" -eq 0 ]; then
+      break
+    fi
 
-  pod_attempt=$((pod_attempt + 1))
-done
+    if [ "$attempt" -lt "$retries" ]; then
+      local sleep_seconds=$((attempt * 2))
+      echo "pod install ($mode) failed with status $status; retrying in ${sleep_seconds}s..."
+      sleep "$sleep_seconds"
+    fi
+
+    attempt=$((attempt + 1))
+  done
+
+  POD_LAST_MODE="$mode"
+  POD_LAST_STATUS="$status"
+  POD_LAST_ATTEMPTS="$attempts_used"
+}
+
+if ! pod_args_for_mode "$POD_MODE" >/dev/null; then
+  echo "Invalid IOS_WARNING_AUDIT_POD_MODE value: $POD_MODE"
+  echo "Expected one of: deployment, repo-update"
+  exit 1
+fi
+if ! pod_args_for_mode "$POD_FALLBACK_MODE" >/dev/null; then
+  echo "Invalid IOS_WARNING_AUDIT_POD_FALLBACK_MODE value: $POD_FALLBACK_MODE"
+  echo "Expected one of: deployment, repo-update"
+  exit 1
+fi
+
+echo "Installing CocoaPods dependencies (mode=$POD_MODE retries=$POD_RETRIES fallback=$POD_ALLOW_FALLBACK pod=$POD_EXECUTABLE_VERSION)..."
+POD_LAST_MODE=""
+POD_LAST_STATUS=1
+POD_LAST_ATTEMPTS=0
+PRIMARY_POD_STATUS=1
+PRIMARY_POD_ATTEMPTS=0
+FALLBACK_POD_STATUS="not-run"
+FALLBACK_POD_ATTEMPTS=0
+FALLBACK_USED="0"
+
+run_pod_install "$POD_MODE" "$POD_RETRIES"
+PRIMARY_POD_STATUS="$POD_LAST_STATUS"
+PRIMARY_POD_ATTEMPTS="$POD_LAST_ATTEMPTS"
+
+if [ "$PRIMARY_POD_STATUS" -ne 0 ] && [ "$POD_ALLOW_FALLBACK" = "1" ] && [ "$POD_FALLBACK_MODE" != "$POD_MODE" ]; then
+  FALLBACK_USED="1"
+  echo "Primary pod install failed; attempting fallback mode '$POD_FALLBACK_MODE'..."
+  run_pod_install "$POD_FALLBACK_MODE" "$POD_FALLBACK_RETRIES"
+  FALLBACK_POD_STATUS="$POD_LAST_STATUS"
+  FALLBACK_POD_ATTEMPTS="$POD_LAST_ATTEMPTS"
+fi
+
+pod_status="$POD_LAST_STATUS"
+pod_mode_used="$POD_LAST_MODE"
+pod_attempts_used="$POD_LAST_ATTEMPTS"
+
+if [ "$PRIMARY_POD_STATUS" -eq 0 ]; then
+  FALLBACK_POD_STATUS="not-needed"
+  FALLBACK_POD_ATTEMPTS=0
+fi
 
 {
-  echo "mode=$POD_MODE"
-  echo "retries=$POD_RETRIES"
-  echo "attempts=$pod_attempts_used"
-  echo "exit_code=$pod_status"
+  echo "pod_version=$POD_EXECUTABLE_VERSION"
+  echo "configured_mode=$POD_MODE"
+  echo "configured_retries=$POD_RETRIES"
+  echo "fallback_enabled=$POD_ALLOW_FALLBACK"
+  echo "fallback_mode=$POD_FALLBACK_MODE"
+  echo "fallback_retries=$POD_FALLBACK_RETRIES"
+  echo "primary_exit_code=$PRIMARY_POD_STATUS"
+  echo "primary_attempts=$PRIMARY_POD_ATTEMPTS"
+  echo "fallback_used=$FALLBACK_USED"
+  echo "fallback_exit_code=$FALLBACK_POD_STATUS"
+  echo "fallback_attempts=$FALLBACK_POD_ATTEMPTS"
+  echo "final_mode=$pod_mode_used"
+  echo "final_attempts=$pod_attempts_used"
+  echo "final_exit_code=$pod_status"
 } > "$POD_SUMMARY_FILE"
 
 if [ "$pod_status" -ne 0 ]; then
-  echo "Failing audit: pod install failed with status $pod_status (mode=$POD_MODE, attempts=$pod_attempts_used/$POD_RETRIES)."
+  echo "Failing audit: pod install failed with status $pod_status (final mode=$pod_mode_used, attempts=$pod_attempts_used)."
   echo "Recent pod install output:"
   tail -n 120 "$POD_LOG_FILE" || true
   exit "$pod_status"
+fi
+
+if [ "$FALLBACK_USED" = "1" ] && [ "$pod_mode_used" = "$POD_FALLBACK_MODE" ]; then
+  echo "CocoaPods fallback mode '$POD_FALLBACK_MODE' succeeded after primary mode '$POD_MODE' failed."
 fi
 
 echo "Running canonical iOS warning audit build..."
@@ -142,8 +241,12 @@ unmatched_count=$(wc -l < "$UNMATCHED_FILE" | tr -d ' ')
   echo
   echo "- Scheme: \`$SCHEME\`"
   echo "- Destination: \`$DESTINATION\`"
-  echo "- Pod install mode: \`$POD_MODE\`"
-  echo "- Pod install retries: \`$POD_RETRIES\`"
+  echo "- CocoaPods version: \`$POD_EXECUTABLE_VERSION\`"
+  echo "- Pod install configured mode: \`$POD_MODE\`"
+  echo "- Pod install configured retries: \`$POD_RETRIES\`"
+  echo "- Pod install fallback used: \`$FALLBACK_USED\`"
+  echo "- Pod install final mode: \`$pod_mode_used\`"
+  echo "- Pod install final attempts: \`$pod_attempts_used\`"
   echo "- Build status: **$build_status**"
   echo "- Total warnings: **$total_warnings**"
   echo "- App-owned warnings: **$app_warning_count**"

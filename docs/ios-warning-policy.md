@@ -33,10 +33,17 @@ This command builds iOS with:
 - pod install mode:
   - CI default: `deployment` (deterministic, no spec refresh)
   - local default: `repo-update`
+  - CI fallback on pod install failure: `repo-update` (single attempt, with explicit diagnostics)
+- CI pins CocoaPods to `1.16.2` before running the audit.
 
 Optional overrides:
 ```bash
-IOS_WARNING_AUDIT_POD_MODE=deployment IOS_WARNING_AUDIT_POD_RETRIES=2 npm run ios:verify-warnings
+IOS_WARNING_AUDIT_POD_MODE=deployment \
+IOS_WARNING_AUDIT_POD_RETRIES=2 \
+IOS_WARNING_AUDIT_POD_ALLOW_FALLBACK=1 \
+IOS_WARNING_AUDIT_POD_FALLBACK_MODE=repo-update \
+IOS_WARNING_AUDIT_POD_FALLBACK_RETRIES=1 \
+npm run ios:verify-warnings
 ```
 
 Artifacts are written to:
