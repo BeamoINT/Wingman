@@ -9,6 +9,7 @@ import {
   heartbeatDeviceIdentity,
 } from '../services/crypto/deviceIdentity';
 import { resolveMetroArea } from '../services/api/locationApi';
+import { resolveProfileAvatarUrl, uploadProfileAvatar } from '../services/api/profiles';
 import { getMessagingIdentity, SecureMessagingError } from '../services/crypto/messagingEncryption';
 import { trackEvent } from '../services/monitoring/events';
 import { initRevenueCat } from '../services/subscription/revenueCat';
@@ -297,6 +298,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (error && error.code !== 'PGRST116') {
         // PGRST116 = no rows returned - profile might not exist yet
         console.error('Error fetching profile:', error);
+      }
+
+      if (!profile) {
+        return profile;
+      }
+
+      const resolvedAvatarUrl = await resolveProfileAvatarUrl(profile.avatar_url);
+      if (resolvedAvatarUrl && resolvedAvatarUrl !== profile.avatar_url) {
+        return {
+          ...profile,
+          avatar_url: resolvedAvatarUrl,
+        };
       }
 
       return profile;
@@ -790,6 +803,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             data.user.id,
             (profile || null) as Record<string, unknown> | null,
           );
+
+          if (typeof signupData.avatar === 'string' && signupData.avatar.trim().length > 0) {
+            const { profile: avatarProfile, error: avatarError } = await uploadProfileAvatar(signupData.avatar);
+            if (!avatarError && avatarProfile) {
+              profile = avatarProfile;
+            } else if (avatarError) {
+              safeLog('Signup avatar upload failed', { error: avatarError.message || 'unknown' });
+            }
+          }
 
           await upsertFriendProfileFromSignup(
             data.user.id,

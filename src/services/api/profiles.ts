@@ -11,6 +11,7 @@ const PROFILE_AVATAR_BUCKET_CANDIDATES = [
   'profile-avatars',
   'profile-photos',
 ] as const;
+const PROFILE_AVATAR_SIGNED_URL_TTL_SECONDS = 60 * 60 * 24 * 365;
 
 const isBucketMissingError = (error: unknown): boolean => {
   const message = String((error as { message?: string } | null)?.message || '').toLowerCase();
@@ -20,6 +21,46 @@ const isBucketMissingError = (error: unknown): boolean => {
 const MIN_PROFILE_PHOTO_BYTES = 45_000;
 const MAX_PROFILE_PHOTO_BYTES = 10_485_760;
 const MIN_PROFILE_PHOTO_DIMENSION = 512;
+
+type AvatarStorageReference = {
+  bucket: string;
+  objectPath: string;
+};
+
+function parseAvatarStorageReference(url: string): AvatarStorageReference | null {
+  try {
+    const parsed = new URL(url);
+    const publicPrefix = '/storage/v1/object/public/';
+    const signedPrefix = '/storage/v1/object/sign/';
+    const path = parsed.pathname;
+
+    let withoutPrefix: string | null = null;
+    if (path.startsWith(publicPrefix)) {
+      withoutPrefix = path.slice(publicPrefix.length);
+    } else if (path.startsWith(signedPrefix)) {
+      withoutPrefix = path.slice(signedPrefix.length);
+    }
+
+    if (!withoutPrefix) {
+      return null;
+    }
+
+    const firstSlash = withoutPrefix.indexOf('/');
+    if (firstSlash <= 0 || firstSlash === withoutPrefix.length - 1) {
+      return null;
+    }
+
+    const bucket = withoutPrefix.slice(0, firstSlash).trim();
+    const objectPath = decodeURIComponent(withoutPrefix.slice(firstSlash + 1)).trim();
+    if (!bucket || !objectPath) {
+      return null;
+    }
+
+    return { bucket, objectPath };
+  } catch {
+    return null;
+  }
+}
 
 export interface ProfileData {
   id: string;
@@ -152,6 +193,45 @@ async function isReadablePublicImageUrl(url: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+async function buildAccessibleAvatarUrl(bucket: string, objectPath: string): Promise<string | null> {
+  const { data: publicUrlData } = supabase.storage
+    .from(bucket)
+    .getPublicUrl(objectPath);
+  const publicUrl = publicUrlData?.publicUrl || null;
+
+  if (publicUrl) {
+    const publicReadable = await isReadablePublicImageUrl(publicUrl);
+    if (publicReadable) {
+      return publicUrl;
+    }
+  }
+
+  const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+    .from(bucket)
+    .createSignedUrl(objectPath, PROFILE_AVATAR_SIGNED_URL_TTL_SECONDS);
+
+  if (signedUrlError || !signedUrlData?.signedUrl) {
+    return publicUrl;
+  }
+
+  return signedUrlData.signedUrl;
+}
+
+export async function resolveProfileAvatarUrl(rawAvatarUrl?: string | null): Promise<string | null> {
+  const avatarUrl = typeof rawAvatarUrl === 'string' ? rawAvatarUrl.trim() : '';
+  if (!avatarUrl) {
+    return null;
+  }
+
+  const storageRef = parseAvatarStorageReference(avatarUrl);
+  if (!storageRef) {
+    return avatarUrl;
+  }
+
+  const resolvedUrl = await buildAccessibleAvatarUrl(storageRef.bucket, storageRef.objectPath);
+  return resolvedUrl || avatarUrl;
 }
 
 /**
@@ -424,21 +504,9 @@ export async function uploadProfileAvatar(
       };
     }
 
-    const { data: publicUrlData } = supabase.storage
-      .from(activeBucket)
-      .getPublicUrl(uploadPath);
-
-    const avatarUrl = publicUrlData?.publicUrl;
+    const avatarUrl = await buildAccessibleAvatarUrl(activeBucket, uploadPath);
     if (!avatarUrl) {
       return { profile: null, error: new Error('Unable to generate profile photo URL') };
-    }
-
-    const avatarUrlReadable = await isReadablePublicImageUrl(avatarUrl);
-    if (!avatarUrlReadable) {
-      return {
-        profile: null,
-        error: new Error('Profile photo URL is not publicly readable. Ask an admin to verify profile-avatars storage policies.'),
-      };
     }
 
     const { data: updatedProfile, error: profileError } = await supabase

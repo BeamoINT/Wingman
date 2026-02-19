@@ -3,6 +3,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import type { RouteProp } from '@react-navigation/native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -350,11 +351,24 @@ export const SignupScreen: React.FC = () => {
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 0.8,
+        quality: 0.9,
+        base64: true,
       });
 
       if (!result.canceled && result.assets[0]) {
-        updateSignupData({ avatar: result.assets[0].uri });
+        const asset = result.assets[0];
+        let normalizedUri = asset.uri;
+
+        // Persist to cache so the image remains available through signup + upload.
+        if (typeof asset.base64 === 'string' && asset.base64.length > 0 && FileSystem.cacheDirectory) {
+          const normalizedPath = `${FileSystem.cacheDirectory}signup-avatar-${Date.now()}.jpg`;
+          await FileSystem.writeAsStringAsync(normalizedPath, asset.base64, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          normalizedUri = normalizedPath;
+        }
+
+        updateSignupData({ avatar: normalizedUri });
         await haptics.success();
       }
     } catch (error) {

@@ -5,6 +5,7 @@ import * as Location from 'expo-location';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  Linking,
   Pressable,
   StyleSheet,
   Switch,
@@ -32,6 +33,37 @@ const CHECKIN_INTERVAL_OPTIONS = [15, 30, 45, 60];
 const RESPONSE_WINDOW_OPTIONS = [5, 10, 15];
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+
+function resolveEmergencyDialNumber(countryName?: string): string {
+  const normalized = String(countryName || '').trim().toLowerCase();
+
+  if (normalized.includes('united kingdom') || normalized.includes('ireland')) {
+    return '999';
+  }
+
+  if (normalized.includes('australia')) {
+    return '000';
+  }
+
+  if (normalized.includes('new zealand')) {
+    return '111';
+  }
+
+  if (
+    normalized.includes('germany')
+    || normalized.includes('france')
+    || normalized.includes('spain')
+    || normalized.includes('italy')
+    || normalized.includes('portugal')
+    || normalized.includes('sweden')
+    || normalized.includes('norway')
+    || normalized.includes('denmark')
+  ) {
+    return '112';
+  }
+
+  return '911';
+}
 
 function formatElapsedDuration(elapsedMs: number): string {
   const safeMs = Number.isFinite(elapsedMs) ? Math.max(0, elapsedMs) : 0;
@@ -130,6 +162,9 @@ export const SafetyScreen: React.FC = () => {
   const holdStartRef = useRef<number | null>(null);
   const holdTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const holdIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [emergencyDialNumber, setEmergencyDialNumber] = useState(
+    resolveEmergencyDialNumber(user?.location?.country),
+  );
 
   const safetyAudioStateLabel = useMemo(() => {
     if (safetyAudioRecordingState === 'recording') {
@@ -235,7 +270,13 @@ export const SafetyScreen: React.FC = () => {
 
     const activeSession = sessions.find((session) => session.status === 'active') || null;
 
-    const { success, sentCount, failedCount, error } = await triggerSos({
+    const {
+      success,
+      sentCount,
+      failedCount,
+      emergencyDialNumber: resolvedDial,
+      error,
+    } = await triggerSos({
       bookingId: activeSession?.booking_id || undefined,
       location: location || undefined,
       includeLiveLocationLink: false,
@@ -244,10 +285,14 @@ export const SafetyScreen: React.FC = () => {
 
     setSosBusy(false);
 
+    if (resolvedDial) {
+      setEmergencyDialNumber(resolvedDial);
+    }
+
     if (!success) {
       Alert.alert(
         'SOS Alert Failed',
-        error || 'Unable to alert emergency contacts right now. Please try again.',
+        error || 'Unable to alert emergency contacts right now. Call emergency services directly.',
       );
       return;
     }
@@ -350,6 +395,19 @@ export const SafetyScreen: React.FC = () => {
     }
   }, [updatePreferences]);
 
+  const onPressCallEmergency = useCallback(async () => {
+    const phoneToDial = emergencyDialNumber || resolveEmergencyDialNumber(user?.location?.country);
+    const telUrl = `tel:${phoneToDial}`;
+
+    const supported = await Linking.canOpenURL(telUrl);
+    if (!supported) {
+      Alert.alert('Unable to place call', `Please call ${phoneToDial} from your phone dialer.`);
+      return;
+    }
+
+    await Linking.openURL(telUrl);
+  }, [emergencyDialNumber, user?.location?.country]);
+
   const onRespondPendingCheckin = useCallback(async (response: 'safe' | 'unsafe') => {
     if (!pendingCheckin?.pending_checkin_id) {
       return;
@@ -415,7 +473,7 @@ export const SafetyScreen: React.FC = () => {
         <Card variant="outlined" style={styles.acknowledgementCard}>
           <Text style={styles.acknowledgementTitle}>Safety Terms Required</Text>
           <Text style={styles.acknowledgementBody}>
-            Confirm you understand SOS is for real emergencies only and does not replace professional emergency response.
+            Confirm you understand SOS is for real emergencies only and does not replace calling emergency services.
           </Text>
           <Button
             title={isAcknowledgingDisclaimer ? 'Saving...' : 'Acknowledge Safety Terms'}
@@ -480,6 +538,13 @@ export const SafetyScreen: React.FC = () => {
           <View style={styles.sosProgressTrack}>
             <View style={[styles.sosProgressFill, { width: `${Math.round(sosProgress * 100)}%` }]} />
           </View>
+
+          <Button
+            title={`Call Emergency Services (${emergencyDialNumber})`}
+            variant="outline"
+            size="small"
+            onPress={() => { void onPressCallEmergency(); }}
+          />
         </Card>
       </View>
 
