@@ -13,9 +13,10 @@ Status legend:
 | Nullability completeness in legacy Objective-C headers | Expo modules, Sentry, Reanimated headers | `suppress` | Third-party legacy headers; no runtime risk in current integration. |
 | Deprecated iOS API usage warnings | Expo modules, maps, netinfo, screens, purchases | `suppress` | Upstream deprecation noise; functional behavior retained. |
 | Documentation-only warnings | React Fabric / renderer CSS / shadow mutation docs | `suppress` | Non-runtime warning category. |
-| Swift warning noise in react-native-compressor | `react-native-compressor` | `suppress` | Third-party Swift package emits many non-runtime warnings on current Swift toolchain; scoped target suppression applied. |
+| Swift warning noise in third-party pods | `react-native-compressor`, `RevenueCat` | `suppress` | Third-party Swift packages emit non-runtime warnings on the current Swift toolchain; scoped target suppression applied. |
 | Expo SDK Swift/ObjC warning noise | Expo iOS modules (`expo-*`, `expo-modules-core`) | `suppress` | Upstream SDK warnings under current Xcode/Swift mode; tracked via module-scoped allowlist patterns. |
 | Integer precision conversion warnings | Reanimated, Worklets, Screens | `suppress` | Third-party warning noise; no active crash evidence in current flow. |
 | Implicit retain self / unused function warnings | Gesture Handler, Sentry, others | `suppress` | Localized third-party style warnings without correctness impact. |
+| Strict prototype warnings (`-Wstrict-prototypes`) | `react-native-purchases` | `suppress` | Third-party Objective-C warning noise; scoped to pod target only to keep app target strict. |
 | Protocol conformance and switch exhaustiveness warnings | React Native Screens | `monitor` | Requires upstream-native code changes; avoid invasive local patching in critical-first pass. |
 | Pointer incompatibility warnings in maps/file-task delegates | react-native-maps / expo-file-system legacy | `monitor` | Potentially actionable but patch risk is high; revisit if runtime issues are observed. |

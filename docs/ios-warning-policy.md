@@ -26,12 +26,28 @@ This command builds iOS with:
 - scheme: `Wingman`
 - destination: `generic/platform=iOS Simulator`
 - code signing disabled
+- pod install mode:
+  - CI default: `deployment` (deterministic, no spec refresh)
+  - local default: `repo-update`
+
+Optional overrides:
+```bash
+IOS_WARNING_AUDIT_POD_MODE=deployment IOS_WARNING_AUDIT_POD_RETRIES=2 npm run ios:verify-warnings
+```
 
 Artifacts are written to:
 - `artifacts/ios-warning-audit/build.log`
 - `artifacts/ios-warning-audit/warnings.log`
 - `artifacts/ios-warning-audit/unmatched-warnings.log`
 - `artifacts/ios-warning-audit/report.md`
+- `artifacts/ios-warning-audit/pod-install.log`
+- `artifacts/ios-warning-audit/pod-install-summary.txt`
+
+Failure interpretation:
+- `Failing audit: pod install failed...` => dependency install issue (inspect `pod-install.log`).
+- `Failing audit: xcodebuild failed...` => compile/build error (inspect `build.log`).
+- `Failing audit: app-owned warnings detected.` => warning in app target files, must be fixed.
+- `Failing audit: unsanctioned third-party warnings detected.` => update suppression/allowlist policy or dependencies.
 
 ## Maintenance
 - Remove allowlist entries as dependencies are upgraded/fixed upstream.

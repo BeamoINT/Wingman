@@ -37,6 +37,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Check duplicate suffixed tracked files
+        run: bash ./scripts/ci/check-duplicate-suffixed-files.sh
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -59,6 +62,7 @@ jobs:
     needs: detect-native-changes
     if: needs.detect-native-changes.outputs.ios == 'true'
     runs-on: macos-14
+    timeout-minutes: 35
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -73,7 +77,22 @@ jobs:
         run: npm ci
 
       - name: Verify iOS warnings
+        env:
+          IOS_WARNING_AUDIT_POD_MODE: deployment
+          IOS_WARNING_AUDIT_POD_RETRIES: '2'
         run: npm run ios:verify-warnings
+
+      - name: Show iOS warning diagnostics
+        if: failure()
+        run: |
+          echo "=== report.md ==="
+          sed -n '1,220p' artifacts/ios-warning-audit/report.md || true
+          echo "=== unmatched-warnings.log ==="
+          sed -n '1,120p' artifacts/ios-warning-audit/unmatched-warnings.log || true
+          echo "=== pod-install-summary.txt ==="
+          sed -n '1,120p' artifacts/ios-warning-audit/pod-install-summary.txt || true
+          echo "=== pod-install.log (tail) ==="
+          tail -n 200 artifacts/ios-warning-audit/pod-install.log || true
 
       - name: Upload iOS warning artifacts
         if: always()

@@ -156,8 +156,12 @@ target 'Wingman' do
     nonnull_targets = %w[
       EXAV
     ]
+    strict_prototype_targets = %w[
+      RNPurchases
+    ]
     swift_warning_targets = %w[
       react-native-compressor
+      RevenueCat
     ]
 
     installer.pods_project.targets.each do |target|
@@ -190,6 +194,9 @@ target 'Wingman' do
         end
         if nonnull_targets.include?(target.name)
           add_warning_suppression!(settings, '-Wno-nonnull')
+        end
+        if strict_prototype_targets.include?(target.name)
+          add_warning_suppression!(settings, '-Wno-strict-prototypes')
         end
         if swift_warning_targets.include?(target.name)
           settings['SWIFT_SUPPRESS_WARNINGS'] = 'YES'

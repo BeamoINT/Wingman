@@ -1,0 +1,4 @@
+mode=deployment
+retries=2
+attempts=1
+exit_code=0
