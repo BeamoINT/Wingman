@@ -10,7 +10,7 @@ REPORT_FILE="$OUT_DIR/report.md"
 POD_LOG_FILE="$OUT_DIR/pod-install.log"
 POD_SUMMARY_FILE="$OUT_DIR/pod-install-summary.txt"
 ALLOWLIST_FILE="$ROOT_DIR/scripts/ios/warning-allowlist.txt"
-DESTINATION="${IOS_SIMULATOR_DESTINATION:-generic/platform=iOS Simulator}"
+DESTINATION_REQUESTED="${IOS_SIMULATOR_DESTINATION:-generic/platform=iOS Simulator}"
 SCHEME="${IOS_SCHEME:-Wingman}"
 WORKSPACE="$ROOT_DIR/ios/Wingman.xcworkspace"
 if [ -n "${IOS_WARNING_AUDIT_POD_MODE:-}" ]; then
@@ -44,6 +44,11 @@ if [ -n "${IOS_WARNING_AUDIT_POD_FALLBACK_RETRIES:-}" ]; then
 else
   POD_FALLBACK_RETRIES="1"
 fi
+if [ -n "${IOS_WARNING_AUDIT_RETRY_DESTINATION_ON_FAILURE:-}" ]; then
+  RETRY_DESTINATION_ON_FAILURE="${IOS_WARNING_AUDIT_RETRY_DESTINATION_ON_FAILURE}"
+else
+  RETRY_DESTINATION_ON_FAILURE="1"
+fi
 
 mkdir -p "$OUT_DIR"
 rm -f "$LOG_FILE" "$WARN_FILE" "$UNMATCHED_FILE" "$REPORT_FILE" "$POD_LOG_FILE" "$POD_SUMMARY_FILE"
@@ -63,6 +68,11 @@ if ! [[ "$POD_FALLBACK_RETRIES" =~ ^[0-9]+$ ]] || [ "$POD_FALLBACK_RETRIES" -lt 
 fi
 if ! [[ "$POD_ALLOW_FALLBACK" =~ ^[01]$ ]]; then
   echo "Invalid IOS_WARNING_AUDIT_POD_ALLOW_FALLBACK value: $POD_ALLOW_FALLBACK"
+  echo "Expected one of: 0, 1"
+  exit 1
+fi
+if ! [[ "$RETRY_DESTINATION_ON_FAILURE" =~ ^[01]$ ]]; then
+  echo "Invalid IOS_WARNING_AUDIT_RETRY_DESTINATION_ON_FAILURE value: $RETRY_DESTINATION_ON_FAILURE"
   echo "Expected one of: 0, 1"
   exit 1
 fi
@@ -86,6 +96,72 @@ pod_args_for_mode() {
       return 1
       ;;
   esac
+}
+
+discover_simulator_destination() {
+  local destinations_output
+  local simulator_id
+
+  set +e
+  destinations_output="$(
+    cd "$ROOT_DIR" && \
+    xcodebuild \
+      -workspace ios/Wingman.xcworkspace \
+      -scheme "$SCHEME" \
+      -showdestinations \
+      2>/dev/null
+  )"
+  local showdestinations_status=$?
+  set -e
+
+  if [ "$showdestinations_status" -ne 0 ]; then
+    return 1
+  fi
+
+  simulator_id="$(
+    printf '%s\n' "$destinations_output" | awk '
+      /platform:iOS Simulator/ && /id:/ {
+        if (match($0, /id:[^,}]*/)) {
+          id = substr($0, RSTART + 3, RLENGTH - 3)
+          gsub(/^[[:space:]]+|[[:space:]]+$/, "", id)
+          if (id != "dvtdevice-DVTiOSDeviceSimulatorPlaceholder-iphonesimulator:placeholder") {
+            print id
+            exit
+          }
+        }
+      }
+    '
+  )"
+
+  if [ -z "$simulator_id" ]; then
+    return 1
+  fi
+
+  printf 'id=%s' "$simulator_id"
+}
+
+run_xcodebuild() {
+  local destination="$1"
+  local log_mode="${2:-truncate}"
+
+  if [ "$log_mode" = "truncate" ]; then
+    : > "$LOG_FILE"
+  fi
+
+  set +e
+  (
+    cd "$ROOT_DIR"
+    xcodebuild \
+      -workspace ios/Wingman.xcworkspace \
+      -scheme "$SCHEME" \
+      -configuration Debug \
+      -destination "$destination" \
+      build \
+      CODE_SIGNING_ALLOWED=NO
+  ) 2>&1 | tee -a "$LOG_FILE"
+  local status=${PIPESTATUS[0]}
+  set -e
+  return "$status"
 }
 
 run_pod_install() {
@@ -204,19 +280,34 @@ if [ "$FALLBACK_USED" = "1" ] && [ "$pod_mode_used" = "$POD_FALLBACK_MODE" ]; th
 fi
 
 echo "Running canonical iOS warning audit build..."
-set +e
-(
-  cd "$ROOT_DIR"
-  xcodebuild \
-    -workspace ios/Wingman.xcworkspace \
-    -scheme "$SCHEME" \
-    -configuration Debug \
-    -destination "$DESTINATION" \
-    build \
-    CODE_SIGNING_ALLOWED=NO
-) 2>&1 | tee "$LOG_FILE"
-build_status=${PIPESTATUS[0]}
-set -e
+destination_used="$DESTINATION_REQUESTED"
+destination_fallback_used="0"
+
+if run_xcodebuild "$destination_used" "truncate"; then
+  build_status=0
+else
+  build_status=$?
+fi
+
+if [ "$build_status" -eq 70 ] && [ "$RETRY_DESTINATION_ON_FAILURE" = "1" ]; then
+  if rg -q "Unable to find a device matching the provided destination specifier" "$LOG_FILE"; then
+    fallback_destination="$(discover_simulator_destination || true)"
+    if [ -n "$fallback_destination" ] && [ "$fallback_destination" != "$destination_used" ]; then
+      destination_fallback_used="1"
+      destination_used="$fallback_destination"
+      echo "Retrying xcodebuild with discovered simulator destination: $destination_used"
+      {
+        echo
+        echo "=== Retrying xcodebuild with discovered simulator destination: $destination_used ==="
+      } >> "$LOG_FILE"
+      if run_xcodebuild "$destination_used" "append"; then
+        build_status=0
+      else
+        build_status=$?
+      fi
+    fi
+  fi
+fi
 
 # Keep only top-level warning records (exclude snippet/context lines that contain "warning:").
 rg "^[^ ].*:[0-9]+:[0-9]+: warning:|^Run script build phase .* warning:|^[^ ].* warning: The iOS Simulator deployment target" "$LOG_FILE" > "$WARN_FILE" || true
@@ -240,7 +331,9 @@ unmatched_count=$(wc -l < "$UNMATCHED_FILE" | tr -d ' ')
   echo "# iOS Warning Audit Report"
   echo
   echo "- Scheme: \`$SCHEME\`"
-  echo "- Destination: \`$DESTINATION\`"
+  echo "- Requested destination: \`$DESTINATION_REQUESTED\`"
+  echo "- Final destination: \`$destination_used\`"
+  echo "- Destination fallback used: \`$destination_fallback_used\`"
   echo "- CocoaPods version: \`$POD_EXECUTABLE_VERSION\`"
   echo "- Pod install configured mode: \`$POD_MODE\`"
   echo "- Pod install configured retries: \`$POD_RETRIES\`"
