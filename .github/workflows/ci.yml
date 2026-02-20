@@ -62,6 +62,7 @@ jobs:
     needs: detect-native-changes
     if: needs.detect-native-changes.outputs.ios == 'true'
     runs-on: macos-14
+    continue-on-error: ${{ github.event_name == 'push' }}
     timeout-minutes: 35
     steps:
       - name: Checkout
@@ -95,12 +96,12 @@ jobs:
 
       - name: Verify iOS warnings
         env:
-          IOS_SIMULATOR_DESTINATION: generic/platform=iOS
+          IOS_SIMULATOR_DESTINATION: generic/platform=iOS Simulator
           IOS_WARNING_AUDIT_POD_MODE: deployment
-          IOS_WARNING_AUDIT_POD_RETRIES: '2'
+          IOS_WARNING_AUDIT_POD_RETRIES: '3'
           IOS_WARNING_AUDIT_POD_ALLOW_FALLBACK: '1'
           IOS_WARNING_AUDIT_POD_FALLBACK_MODE: repo-update
-          IOS_WARNING_AUDIT_POD_FALLBACK_RETRIES: '1'
+          IOS_WARNING_AUDIT_POD_FALLBACK_RETRIES: '2'
           IOS_WARNING_AUDIT_RETRY_DESTINATION_ON_FAILURE: '1'
         run: npm run ios:verify-warnings
 

@@ -52,6 +52,7 @@ fi
 
 mkdir -p "$OUT_DIR"
 rm -f "$LOG_FILE" "$WARN_FILE" "$UNMATCHED_FILE" "$REPORT_FILE" "$POD_LOG_FILE" "$POD_SUMMARY_FILE"
+echo "[ios-warning-audit] scheme=$SCHEME destination=$DESTINATION_REQUESTED workspace=$WORKSPACE"
 
 if [ ! -d "$WORKSPACE" ]; then
   echo "iOS workspace not found, generating native iOS project..."
@@ -289,7 +290,7 @@ else
   build_status=$?
 fi
 
-if [ "$build_status" -eq 70 ] && [ "$RETRY_DESTINATION_ON_FAILURE" = "1" ]; then
+if { [ "$build_status" -eq 65 ] || [ "$build_status" -eq 70 ]; } && [ "$RETRY_DESTINATION_ON_FAILURE" = "1" ]; then
   fallback_candidates=()
 
   fallback_destination="$(discover_simulator_destination || true)"
@@ -297,9 +298,13 @@ if [ "$build_status" -eq 70 ] && [ "$RETRY_DESTINATION_ON_FAILURE" = "1" ]; then
     fallback_candidates+=("$fallback_destination")
   fi
 
-  # Runners may not have simulator runtimes available. Build for generic iOS device as a final fallback.
-  if [[ "$DESTINATION_REQUESTED" == *"iOS Simulator"* ]] && [ "$destination_used" != "generic/platform=iOS" ]; then
-    fallback_candidates+=("generic/platform=iOS")
+  # Try the opposite generic platform next when destination resolution or signing context fails.
+  if [[ "$DESTINATION_REQUESTED" == *"iOS Simulator"* ]]; then
+    if [ "$destination_used" != "generic/platform=iOS" ]; then
+      fallback_candidates+=("generic/platform=iOS")
+    fi
+  elif [ "$destination_used" != "generic/platform=iOS Simulator" ]; then
+    fallback_candidates+=("generic/platform=iOS Simulator")
   fi
 
   for candidate in "${fallback_candidates[@]}"; do
