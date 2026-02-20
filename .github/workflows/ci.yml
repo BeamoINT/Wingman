@@ -95,6 +95,7 @@ jobs:
 
       - name: Verify iOS warnings
         env:
+          IOS_SIMULATOR_DESTINATION: generic/platform=iOS
           IOS_WARNING_AUDIT_POD_MODE: deployment
           IOS_WARNING_AUDIT_POD_RETRIES: '2'
           IOS_WARNING_AUDIT_POD_ALLOW_FALLBACK: '1'

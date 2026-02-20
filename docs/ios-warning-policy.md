@@ -29,7 +29,9 @@ This command builds iOS with:
 - workspace: `ios/Wingman.xcworkspace`
 - scheme: `Wingman`
 - destination: `generic/platform=iOS Simulator`
-- destination fallback: if the requested simulator destination is unavailable, the audit retries once with a discovered simulator `id=...`
+- destination fallback:
+  - retry with discovered simulator `id=...` when available
+  - final fallback to `generic/platform=iOS` when simulator destinations are unavailable
 - code signing disabled
 - pod install mode:
   - CI default: `deployment` (deterministic, no spec refresh)
@@ -46,6 +48,11 @@ IOS_WARNING_AUDIT_POD_FALLBACK_MODE=repo-update \
 IOS_WARNING_AUDIT_POD_FALLBACK_RETRIES=1 \
 IOS_WARNING_AUDIT_RETRY_DESTINATION_ON_FAILURE=1 \
 npm run ios:verify-warnings
+```
+
+CI override currently uses:
+```bash
+IOS_SIMULATOR_DESTINATION=generic/platform=iOS
 ```
 
 Artifacts are written to:

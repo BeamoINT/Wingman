@@ -290,23 +290,33 @@ else
 fi
 
 if [ "$build_status" -eq 70 ] && [ "$RETRY_DESTINATION_ON_FAILURE" = "1" ]; then
-  if rg -q "Unable to find a device matching the provided destination specifier" "$LOG_FILE"; then
-    fallback_destination="$(discover_simulator_destination || true)"
-    if [ -n "$fallback_destination" ] && [ "$fallback_destination" != "$destination_used" ]; then
-      destination_fallback_used="1"
-      destination_used="$fallback_destination"
-      echo "Retrying xcodebuild with discovered simulator destination: $destination_used"
-      {
-        echo
-        echo "=== Retrying xcodebuild with discovered simulator destination: $destination_used ==="
-      } >> "$LOG_FILE"
-      if run_xcodebuild "$destination_used" "append"; then
-        build_status=0
-      else
-        build_status=$?
-      fi
-    fi
+  fallback_candidates=()
+
+  fallback_destination="$(discover_simulator_destination || true)"
+  if [ -n "$fallback_destination" ] && [ "$fallback_destination" != "$destination_used" ]; then
+    fallback_candidates+=("$fallback_destination")
   fi
+
+  # Runners may not have simulator runtimes available. Build for generic iOS device as a final fallback.
+  if [[ "$DESTINATION_REQUESTED" == *"iOS Simulator"* ]] && [ "$destination_used" != "generic/platform=iOS" ]; then
+    fallback_candidates+=("generic/platform=iOS")
+  fi
+
+  for candidate in "${fallback_candidates[@]}"; do
+    destination_fallback_used="1"
+    destination_used="$candidate"
+    echo "Retrying xcodebuild with fallback destination: $destination_used"
+    {
+      echo
+      echo "=== Retrying xcodebuild with fallback destination: $destination_used ==="
+    } >> "$LOG_FILE"
+    if run_xcodebuild "$destination_used" "append"; then
+      build_status=0
+      break
+    else
+      build_status=$?
+    fi
+  done
 fi
 
 # Keep only top-level warning records (exclude snippet/context lines that contain "warning:").
